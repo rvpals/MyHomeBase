@@ -17,7 +17,7 @@ export const JOURNAL_SECTIONS = [
   // library owned (migration 0141), so an icon uploaded for that would silently
   // reappear here.
   "saved-locations",
-  "views",
+  "topics",
   "report",
   "import",
   "calendar-import",
@@ -65,9 +65,9 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
     label: "Saved Locations",
     description: "Your saved places, and the entries written at each one.",
   },
-  views: {
-    label: "Views",
-    description: "Custom views of your journal data.",
+  topics: {
+    label: "Topics",
+    description: "Pick a subject and see the entries about it, and how they connect.",
   },
   report: {
     label: "Report",
@@ -168,7 +168,10 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   // Admin nav. The same idea in two places should read the same way, and no
   // other Journal section claims it.
   "saved-locations": "pin",
-  views: "window",
+  // Three linked nodes — the picture this section draws. Free as a Journal
+  // glyph, and deliberately not `shapes`: that one is Meta Data's, and both
+  // sections concern tags, so sharing a mark would blur the two rows.
+  topics: "network",
   report: "chart",
   // `upload` — the same glyph Expense and Stock give their Import sections.
   import: "upload",

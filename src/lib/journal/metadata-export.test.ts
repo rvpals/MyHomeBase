@@ -202,6 +202,8 @@ const PREFERENCES: JournalPreferences = {
   handwritingSize: "2xl",
   // Likewise not the default.
   reviewBeforeCalendarImport: true,
+  topicMatchBody: false,
+  topicEpisodeGapDays: 14,
   excludedWords: [],
   // Set, and deliberately not null, so the export assertion proves the colour
   // is carried. The texture pointer stays null: it is machine-specific and is
@@ -211,6 +213,11 @@ const PREFERENCES: JournalPreferences = {
   // Neither the pointer nor its strength is part of a bundle: the strength
   // only means anything alongside a picture, and the picture doesn't travel.
   contentTextureOpacity: 0.1,
+  // These DO travel, unlike the texture settings above: a face and a size are
+  // reading preferences, not machine facts. Non-default so the export
+  // assertion proves they are carried rather than defaulted.
+  contentFont: "inter",
+  contentFontSize: "lg",
 };
 
 function bundleOf(overrides: Partial<JournalMetadataBundle> = {}): JournalMetadataBundle {
@@ -267,7 +274,11 @@ describe("buildMetadataBundle", () => {
       photoRoot: "//NAS_DS223/photos",
       handwritingSize: "2xl",
       reviewBeforeCalendarImport: true,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       contentTextColor: "#1A2B3C",
+      contentFont: "inter",
+      contentFontSize: "lg",
     });
   });
 
@@ -409,6 +420,9 @@ describe("planMetadataImport", () => {
           photoRoot: "//NAS_DS223/photos",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          topicMatchBody: false,
+          topicEpisodeGapDays: 14,
+          contentFontSize: "sm",
         },
       }),
     );
@@ -424,6 +438,9 @@ describe("planMetadataImport", () => {
           photoRoot: "",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          topicMatchBody: false,
+          topicEpisodeGapDays: 14,
+          contentFontSize: "sm",
         },
       }),
     );
@@ -614,6 +631,9 @@ describe("metadataPreferenceEntries", () => {
           photoRoot: "//NAS_DS223/photos",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          topicMatchBody: false,
+          topicEpisodeGapDays: 14,
+          contentFontSize: "sm",
         },
       }),
     );
@@ -625,6 +645,9 @@ describe("metadataPreferenceEntries", () => {
       { key: "temperature_unit", value: "celsius" },
       { key: "handwriting_size", value: "xl" },
       { key: "review_before_calendar_import", value: "false" },
+      // Always written, and defaulted by the schema — so a bundle predating
+      // this preference restores 14px, which is what the field used then.
+      { key: "content_font_size", value: "sm" },
     ]);
   });
 
@@ -637,6 +660,9 @@ describe("metadataPreferenceEntries", () => {
           photoRoot: "",
           handwritingSize: "4xl",
           reviewBeforeCalendarImport: false,
+          topicMatchBody: false,
+          topicEpisodeGapDays: 14,
+          contentFontSize: "sm",
         },
       }),
     );
@@ -667,6 +693,8 @@ describe("metadataPreferenceEntries", () => {
       { key: "handwriting_size", value: "2xl" },
       { key: "review_before_calendar_import", value: "true" },
       { key: "content_text_color", value: "#1A2B3C" },
+      { key: "content_font_size", value: "lg" },
+      { key: "content_font", value: "inter" },
       { key: "default_latitude", value: "40.7128" },
       { key: "default_longitude", value: "-74.006" },
       { key: "default_location_name", value: "New York" },
@@ -682,7 +710,10 @@ describe("metadataPreferenceEntries", () => {
           photoRoot: "",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          topicMatchBody: false,
+          topicEpisodeGapDays: 14,
           contentTextColor: "#ABCDEF",
+          contentFontSize: "sm",
         },
       }),
     );
@@ -695,6 +726,34 @@ describe("metadataPreferenceEntries", () => {
     expect(entries.map((entry) => entry.key)).not.toContain("content_texture_id");
     // Nor its strength, which only means something alongside a picture.
     expect(entries.map((entry) => entry.key)).not.toContain("content_texture_opacity");
+    // The font size DOES travel, which is the contrast that makes the rule
+    // legible: a size is a reading preference, a texture pointer is a row id.
+    expect(entries.map((entry) => entry.key)).toContain("content_font_size");
+  });
+
+  it("restores a content face, and tolerates one this build does not load", () => {
+    const parsed = journalMetadataBundleSchema.parse({
+      format: JOURNAL_METADATA_FORMAT,
+      version: JOURNAL_METADATA_FORMAT_VERSION,
+      exportedAt: new Date().toISOString(),
+      preferences: {
+        defaultLocation: null,
+        temperatureUnit: "celsius",
+        photoRoot: "",
+        // Not a face this build loads. The bundle must still PARSE — a backup
+        // is not worth rejecting over a font — and the read path discards the
+        // key, so the field falls back to the theme.
+        contentFont: "some-face-from-a-newer-build",
+      },
+    });
+    expect(parsed.preferences?.contentFont).toBe("some-face-from-a-newer-build");
+    expect(metadataPreferenceEntries(parsed)).toContainEqual({
+      key: "content_font",
+      value: "some-face-from-a-newer-build",
+    });
+    // That the stored row then resolves to the theme rather than a broken
+    // family is `preferences.test.ts`'s to prove — see "falls back to the
+    // theme for a face this build does not load".
   });
 
   it("omits the colour row when the bundle has none, rather than writing a blank", () => {
@@ -739,6 +798,9 @@ describe("metadataPreferenceEntries", () => {
           photoRoot: "",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          topicMatchBody: false,
+          topicEpisodeGapDays: 14,
+          contentFontSize: "sm",
         },
       }),
     );

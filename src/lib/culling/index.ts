@@ -54,6 +54,18 @@ export {
   type CullingSettings,
 } from "./settings";
 
+// The single-photograph counterpart. NOT a cull of one: culling ranks a set, and a set
+// of one ranks 0.5 by construction, so this reports the absolute measurements instead
+// and carries no score. See the header of `inspect.ts`.
+export {
+  exposureVerdict,
+  inspectPhoto,
+  type ExposureVerdict,
+  type InspectResult,
+  type InspectedPhoto,
+  type UninspectablePhoto,
+} from "./inspect";
+
 export { cullRequestSchema, type CullRequestInput } from "./schema";
 
 export { analyzeImage } from "./analyze";

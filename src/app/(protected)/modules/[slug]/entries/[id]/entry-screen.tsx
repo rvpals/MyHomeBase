@@ -213,6 +213,24 @@ export function JournalEntryScreen({
     }
   }
 
+  // Clone: start a new entry seeded from this one. Navigation only — the New
+  // Entry screen reads the source entry server-side from `?clone=`, so nothing
+  // about the entry travels in the URL and a reload or a bookmark re-seeds the
+  // same form. The id is enough because that page re-authorises the module and
+  // re-reads the row itself.
+  //
+  // No `setIsBusy` here: this leaves the page rather than awaiting a write, and
+  // a busy flag set on a component that is about to unmount only disables the
+  // toolbar for the frame before it goes.
+  //
+  // Reachable only when the entry is readable — an encrypted entry renders the
+  // unlock prompt in place of this viewer (see the branch below), so a sealed
+  // entry has no Clone button to press and a clone can never carry a title the
+  // reader has not already opened.
+  function handleClone() {
+    router.push(`${JOURNAL_MODULE_PATH}/new-entry?clone=${entry.id}`);
+  }
+
   async function handleDelete() {
     setIsBusy(true);
     setError(undefined);
@@ -326,6 +344,7 @@ export function JournalEntryScreen({
           onLock={handleLock}
           onPrint={() => window.print()}
           onEdit={() => setIsEditing(true)}
+          onClone={handleClone}
           onShowLocation={(location) => setMapView({ kind: "one", location })}
           onShowAllLocations={() => setMapView({ kind: "all" })}
           onToggleLock={handleToggleLock}

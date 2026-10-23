@@ -4,8 +4,11 @@ import {
   configuredCullCeiling,
   configuredPhotoRoot,
   cullPhotoPaths,
+  inspectPhoto,
   MAX_CULL_CEILING,
   NodeCullingImageStore,
+  type ExposureVerdict,
+  type PhotoMetrics,
   type RejectedPhoto,
   type ScoredPhoto,
 } from "@/lib/culling";
@@ -148,6 +151,90 @@ function toGalleryPhoto(photo: ScoredPhoto, isKeeper: boolean): CulledGalleryPho
     reason: photo.reason,
     isKeeper,
   };
+}
+
+/** What one photograph measured, flattened for a view. */
+export interface InspectedGalleryPhoto {
+  /** The archive-relative path. */
+  relativePath: string;
+  /** The file's own name, for display. */
+  name: string;
+  /** The absolute measurements, in each metric's own units. */
+  metrics: PhotoMetrics;
+  /** Pixel dimensions of the original, after EXIF rotation. */
+  width: number;
+  height: number;
+  /** The one verdict a single photograph's numbers support. */
+  exposure: ExposureVerdict;
+  /** The clipping threshold that verdict was reached against, 0-1. */
+  clipTolerance: number;
+}
+
+export interface GalleryInspectResult {
+  ok: boolean;
+  /** The refusal, the unreadable file, or the archive fault. */
+  error?: string;
+  /** The measurements, when they could be taken. */
+  photo?: InspectedGalleryPhoto;
+}
+
+/**
+ * Measures ONE photograph on its own terms, for the Random photo card's cull button.
+ *
+ * READ-ONLY, like every other entry point in this module: one file read, nothing
+ * written, moved or deleted.
+ *
+ * ## Why this is not `cullGalleryPhotosAction` with one path
+ *
+ * Because that would answer nothing. The culler ranks photographs against each other,
+ * and a batch of one ranks at the neutral midpoint by construction -- a tack-sharp
+ * frame and a ruined one would both come back scoring 0.5 and reading "slightly soft,
+ * fairly exposed, moderate contrast". This returns the absolute measurements instead,
+ * and carries NO score and NO keeper verdict, because with no set there is nothing to
+ * be a keeper of. See the header of `lib/culling/inspect.ts`.
+ *
+ * @param relativePath The photograph, relative to the archive root.
+ */
+export async function inspectGalleryPhotoAction(
+  relativePath: string,
+): Promise<GalleryInspectResult> {
+  // A SESSION rather than this module's grant, for exactly the reason
+  // `cullGalleryPhotosAction` above records: `/api/journal/photos` already serves the
+  // BYTES of any archive photo to any signed-in reader, so a reader who can already
+  // see this picture gains only measurements of it. Nothing is written, which is what
+  // makes the weaker check safe.
+  if (!(await hasSession())) return { ok: false, error: "Not signed in." };
+
+  const parsed = photoRelativePathSchema.safeParse(relativePath);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Not a valid photo path." };
+  }
+
+  try {
+    const result = await inspectPhoto(
+      new NodeCullingImageStore(configuredPhotoRoot()),
+      parsed.data,
+    );
+
+    if (result.kind === "unreadable") {
+      return { ok: false, error: `${result.name} could not be measured: ${result.error}` };
+    }
+
+    return {
+      ok: true,
+      photo: {
+        relativePath: result.relativePath,
+        name: result.name,
+        metrics: result.metrics,
+        width: result.width,
+        height: result.height,
+        exposure: result.exposure,
+        clipTolerance: result.clipTolerance,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Measuring failed." };
+  }
 }
 
 /**

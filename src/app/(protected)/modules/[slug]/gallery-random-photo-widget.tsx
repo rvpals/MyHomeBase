@@ -26,7 +26,11 @@ import {
   listAllPhotosInFolderAction,
   readPhotoDetailsAction,
 } from "../../photos-viewer-actions";
-import { cullGalleryPhotosAction } from "./gallery-culling-actions";
+import {
+  cullGalleryPhotosAction,
+  inspectGalleryPhotoAction,
+  type InspectedGalleryPhoto,
+} from "./gallery-culling-actions";
 import {
   drawRandomPhotoAction,
   listFavPhotosAction,
@@ -101,6 +105,105 @@ function messageFor(pick: RandomPhotoPick): string {
 }
 
 /**
+ * A measurement, rounded for reading rather than for arithmetic.
+ *
+ * One decimal place: the Laplacian variance of a real photograph runs to hundreds, and
+ * the digits past the point are decode noise that would only invite a reader to compare
+ * two numbers that are not meaningfully different.
+ */
+function round(value: number): string {
+  return value.toFixed(1);
+}
+
+/** A 0-1 clipping fraction as a percentage, which is how a reader thinks about it. */
+function percent(fraction: number): string {
+  return `${(fraction * 100).toFixed(1)}%`;
+}
+
+/**
+ * The rows of the measurement panel.
+ *
+ * Built here rather than inline in the JSX so the panel is a `map` over facts instead
+ * of a wall of markup, and so the ORDER is stated once: the two sharpness figures, then
+ * the three exposure ones, then the frame's size.
+ *
+ * ## The explanations
+ *
+ * `note` says what the number MEANS and which way is better, because the raw figures
+ * are meaningless to anyone who has not read `lib/culling/metrics.ts` -- a Laplacian
+ * variance of 412 tells an unprepared reader nothing at all. Each note is written from
+ * that file's documented behaviour rather than from a general idea of what the word
+ * usually means, so the panel cannot drift away from what was actually computed.
+ *
+ * Every note says "higher is X" or "nearer X is better" and stops there. None of them
+ * says whether THIS value is good, and that restraint is the point: there is no
+ * absolute cutoff for sharpness or contrast anywhere in this codebase because none
+ * exists -- 412 is tack-sharp from a phone at night and soft from a DSLR in daylight.
+ * Inventing a threshold so a note could say "sharp" would be exactly the dishonesty the
+ * rank-based scorer was built to avoid.
+ *
+ * `hint` is the one exception, and only for clipping: `config.exposure.clipTolerance`
+ * is a real absolute threshold, so "overexposed" is a judgement these numbers genuinely
+ * support on their own.
+ */
+function measurementRows(
+  photo: InspectedGalleryPhoto,
+): { label: string; value: string; note: string; hint?: string }[] {
+  const { metrics } = photo;
+  const tolerance = percent(photo.clipTolerance);
+
+  return [
+    {
+      label: "Sharpness",
+      value: round(metrics.sharpness),
+      // Variance of the Laplacian over the whole frame -- see `laplacianVariance`.
+      note: "Edge detail across the whole frame. Higher is sharper; near zero means out of focus. The scale depends on the camera and the scene, so it only compares against similar photos.",
+    },
+    {
+      label: "Centre sharpness",
+      value: round(metrics.centerSharpness),
+      // The same measure over the centre 50% by linear dimension -- a quarter of the
+      // area. Worth explaining rather than leaving as a near-duplicate number: the gap
+      // between the two figures is the informative part.
+      note: "The same measure over the middle quarter of the frame, where the subject usually is. Much higher than the figure above means a sharp subject against a deliberately blurred background, not a soft photo.",
+    },
+    {
+      label: "Brightness",
+      value: `${round(metrics.brightness)} / 255`,
+      // Mean luminance. 128 is mid-grey, which is what the scorer ranks distance from.
+      note: "Average luminance of every pixel. 128 is mid-grey; the culler treats nearer the middle as better exposed, so very low is dark and very high is washed out.",
+    },
+    {
+      label: "Contrast",
+      value: round(metrics.contrast),
+      // Standard deviation of luminance.
+      note: "How widely the tones spread out. Higher means punchier; a low figure means a flat or hazy frame, whatever its average brightness.",
+    },
+    {
+      label: "Shadow clipping",
+      value: percent(metrics.shadowClipping),
+      // `clippedFraction(pixels, shadowLevel = 5, "below")`.
+      note: `Pixels crushed to near-black, with no detail left to recover. Over ${tolerance} counts as underexposed.`,
+      hint:
+        photo.exposure === "underexposed" ? `underexposed — over ${tolerance}` : undefined,
+    },
+    {
+      label: "Highlight clipping",
+      value: percent(metrics.highlightClipping),
+      // `clippedFraction(pixels, highlightLevel = 250, "above")`.
+      note: `Pixels blown to near-white, with no detail left to recover. Over ${tolerance} counts as overexposed — a blown sky cannot be brought back.`,
+      hint: photo.exposure === "overexposed" ? `overexposed — over ${tolerance}` : undefined,
+    },
+    {
+      label: "Dimensions",
+      value: `${photo.width} × ${photo.height}`,
+      // From `analyzeImage`, which rotates before measuring.
+      note: "Pixel size of the original after any EXIF rotation, so a portrait shot reads as taller than it is wide.",
+    },
+  ];
+}
+
+/**
  * The card's title, with how long ago the photograph was taken when that is known.
  *
  * Computed on the client, per render, deliberately: the age is relative to *now*, and
@@ -168,14 +271,53 @@ export function RandomPhotoWidget({
   const [favorites, setFavorites] = useState(initialFavorites);
   const [isFavoriting, setIsFavoriting] = useState(false);
 
+  // The cull button's result, shown under the caption. THREE pieces rather than one
+  // nullable result, because "measuring", "measured" and "could not measure" are three
+  // different things the panel says, and collapsing them would make an in-flight run
+  // indistinguishable from a finished one with no numbers.
+  const [isInspecting, setIsInspecting] = useState(false);
+  const [inspected, setInspected] = useState<InspectedGalleryPhoto | undefined>(undefined);
+  const [inspectError, setInspectError] = useState<string | undefined>(undefined);
+
   // The viewer's "add to album" plumbing. A hook rather than four more pieces of state
   // here, because the favourites screen and the albums screen need exactly the same
   // four props -- see use-album-filing.ts.
   const albumFiling = useAlbumFiling();
 
+  /**
+   * Measures the photograph on screen and shows what came back.
+   *
+   * NOT a cull of one. The culler ranks a set, and a set of one ranks at the neutral
+   * midpoint by construction, so this reports the picture's own absolute measurements
+   * and the panel says plainly that there is no score — see `lib/culling/inspect.ts`.
+   */
+  async function handleInspect() {
+    if (pick.relativePath === undefined) return;
+    setIsInspecting(true);
+    // Both cleared up front: a second run must not leave the previous photo's numbers
+    // on screen while the new ones are still being read.
+    setInspected(undefined);
+    setInspectError(undefined);
+    try {
+      const result = await inspectGalleryPhotoAction(pick.relativePath);
+      if (result.ok && result.photo !== undefined) setInspected(result.photo);
+      else setInspectError(result.error ?? "Couldn't measure this photo.");
+    } catch {
+      // The action turns an unreadable file into `{ ok: false }`; this only catches the
+      // request itself failing, which would otherwise leave the button spinning.
+      setInspectError("Couldn't measure this photo.");
+    } finally {
+      setIsInspecting(false);
+    }
+  }
+
   async function handleRefresh() {
     setIsDrawing(true);
     setError(undefined);
+    // The panel describes the photograph being replaced, so it goes with it. Leaving it
+    // up would caption a new picture with the old one's measurements.
+    setInspected(undefined);
+    setInspectError(undefined);
     try {
       const drawn = await drawRandomPhotoAction();
       // Armed BEFORE the pick is stored, so there is no render in between where the
@@ -325,6 +467,29 @@ export function RandomPhotoWidget({
             </Button>
           )}
 
+          {/* Measures this one photograph. A ROW ACTION, not a place, so it is a bare
+              `TreeIcon` rather than an icon slot — the same reasoning as the heart above
+              and the two glyphs below, and the rule in coding-guide.md → "Icons: use a
+              slot, not a bare glyph name". `flash` is in ALWAYS_CLASSIC, so a themed set
+              cannot swap it for artwork that reads as decoration.
+
+              Offered only when there is a photograph to measure. */}
+          {hasPhoto && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleInspect}
+              disabled={isInspecting || isDrawing || isImageLoading}
+              title="Cull this photo — measure it on its own"
+              ariaLabel="Cull this photo — measure it on its own"
+            >
+              <TreeIcon
+                name="flash"
+                className={`h-4 w-4 ${isInspecting ? "animate-pulse" : ""}`}
+              />
+            </Button>
+          )}
+
           {/* Opens the same viewer the picture itself opens, on the folder this
               photograph came from. KEPT ALONGSIDE the picture click rather than removed:
               the glyph names what the gesture does, which a bare photo does not, and it
@@ -452,6 +617,63 @@ export function RandomPhotoWidget({
           <figcaption className="mt-3 text-center text-sm text-muted break-words">
             {caption}
           </figcaption>
+
+          {/* The cull result, inline under the caption so the picture stays beside its
+              numbers. Two columns on a wide screen, one below 1024px — `max-lg:` only,
+              so the desktop grid is provably untouched. */}
+          {isInspecting && (
+            <p className="mt-3 text-sm text-muted" aria-live="polite">
+              Measuring this photograph…
+            </p>
+          )}
+
+          {inspectError && (
+            <p role="alert" className="mt-3 text-sm text-red-400">
+              {inspectError}
+            </p>
+          )}
+
+          {inspected && (
+            <div className="mt-3 rounded-lg border border-line bg-paper p-3">
+              <p className="text-sm font-semibold text-ink">Cull result · {inspected.name}</p>
+
+              {/* Two columns of rows on a wide screen, one below 1024px — `max-lg:`
+                  only, so the desktop grid is provably untouched. Each row stacks its
+                  own label/value line above the explanation, because the notes are
+                  sentences: a label/value grid with prose in a third column would leave
+                  one tall ragged column beside six short ones. */}
+              <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-3 max-lg:grid-cols-1">
+                {measurementRows(inspected).map((row) => (
+                  <div key={row.label}>
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="text-sm text-muted">{row.label}</dt>
+                      <dd className="text-sm tabular-nums text-ink">
+                        {row.value}
+                        {/* The one absolute judgement these numbers support. */}
+                        {row.hint && (
+                          <span className="ml-2 text-xs text-red-400">{row.hint}</span>
+                        )}
+                      </dd>
+                    </div>
+                    {/* What the number means and which way is better — never whether
+                        this particular value is good. See `measurementRows`. */}
+                    <p className="mt-0.5 text-xs leading-snug text-muted">{row.note}</p>
+                  </div>
+                ))}
+              </dl>
+
+              {/* Said plainly rather than left for the reader to infer. Culling ranks a
+                  set against itself; one photograph has no set, so there is deliberately
+                  no score and no keeper verdict here — and without this line the bare
+                  numbers would invite a comparison they cannot support. */}
+              <p className="mt-2 border-t border-line pt-2 text-xs text-muted">
+                These are this photograph&rsquo;s own measurements. There is no score or
+                keeper verdict: culling ranks photographs against each other, and a single
+                photograph has nothing to be ranked against. To rank this one, cull its
+                folder from the photo viewer.
+              </p>
+            </div>
+          )}
 
           {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
         </figure>

@@ -176,6 +176,9 @@ function fakeRepo(): JournalRepository {
     findEntries: () => {
       throw new Error("not used");
     },
+    findEntriesSql: () => {
+      throw new Error("not used");
+    },
     listFilters: () => {
       throw new Error("not used");
     },

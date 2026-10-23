@@ -42,6 +42,7 @@ import {
 import { emptyFilter } from "./filters";
 import { MAX_JOURNAL_ICON_BYTES } from "./schema";
 import type { JournalRepository } from "./ports";
+import { describeEntriesSql } from "./entries-sql";
 import type { EntryWriteData } from "./schema";
 import type {
   EntryLocation,
@@ -215,6 +216,11 @@ function fakeRepo(recycledCount = 0): JournalRepository {
       return matched
         .sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1))
         .slice(0, limit);
+    },
+    // The fake matches entries in JS rather than SQL, so it has no statement of
+    // its own to report. The real builder is exercised in entries-sql.test.ts.
+    findEntriesSql(filter, limit, bodyScope) {
+      return describeEntriesSql(filter, limit, bodyScope);
     },
     listFilters() {
       return [...savedFilters].sort((a, b) => a.name.localeCompare(b.name));

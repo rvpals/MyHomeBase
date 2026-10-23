@@ -1,6 +1,10 @@
 // Domain models for the MyJournal module. These are the shapes the rest of the
 // app sees — the repository maps the flat jrn_ table rows into these and back.
 
+// The seven theme faces. Imported rather than re-declared so the Content
+// field's font preference cannot drift from the set the app actually loads.
+import type { FontKey } from "@/lib/settings/themes";
+
 // Weather is stored as four flattened columns on jrn_entries but modeled here as
 // a single optional object: an entry either has weather or it doesn't.
 export interface Weather {
@@ -109,6 +113,56 @@ export interface JournalEntry {
   externalContent: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * The fields a **clone** carries over from an existing entry.
+ *
+ * Cloning answers "another one of these, on a different day": the reader has an
+ * entry for a recurring event — a swimming practice, a weekly class — and wants
+ * the next one without re-picking the same categories, tags and place.
+ *
+ * So this is deliberately the entry's *shape* and not its *substance*:
+ *
+ * - **Carried**: title, place name, categories, tags, locations — the fields
+ *   that say what kind of event this is and where it happens.
+ * - **Dropped**: date and time (the whole point is a new one), content (the
+ *   writing is what differs between two instances of the same event), weather
+ *   (tied to the original day, so copying it would assert something false about
+ *   the new one), pinned/locked/encrypted state, and every identity field
+ *   (`id`, `source`, `externalId`) — a clone is a new, independent entry, not a
+ *   second reference to the original.
+ *
+ * Nothing links a clone back to what it was cloned from. The copy is complete
+ * at the moment it is made, so editing or deleting the original never reaches
+ * the clone — the same rule a prefill template follows.
+ */
+export interface JournalEntryCloneSeed {
+  /** The entry this was taken from, for the New Entry screen's heading only. */
+  sourceEntryId: number;
+  title: string;
+  placeName: string;
+  categories: string[];
+  tags: string[];
+  /**
+   * The source's pins, stripped of their row identity (`id`, `entryId`,
+   * `sortOrder`) — those belong to the original's rows, and the clone's pins are
+   * written fresh when it is saved.
+   *
+   * `savedLocationId` is kept when the original pin came from the saved-place
+   * library, so the clone still answers "which entries happened here". That is
+   * a pointer to a *place*, not to the source entry, so it carries no link back.
+   */
+  locations: JournalEntryCloneLocation[];
+}
+
+/** One pin on a clone seed: the entry's own copy of a place, with no row identity. */
+export interface JournalEntryCloneLocation {
+  latitude: number;
+  longitude: number;
+  locationName: string;
+  streetAddress?: string;
+  savedLocationId?: number;
 }
 
 export interface JournalCategory {
@@ -335,6 +389,20 @@ export type JournalTemperatureUnit = "celsius" | "fahrenheit";
  */
 export type JournalHandwritingSize = "xl" | "2xl" | "3xl" | "4xl";
 
+/**
+ * How large the Content field's text is drawn with Handwriting **off**.
+ *
+ * The Tailwind size suffix, for the reason `JournalHandwritingSize` gives: an
+ * arbitrary pixel count can't become a class at the call site, so storing the
+ * suffix keeps every representable value a class that provably exists.
+ *
+ * A different set from the handwriting sizes, and deliberately overlapping only
+ * at `xl`. This is ordinary body text in a form, so it starts at `sm` — the
+ * size every other field on the entry form uses, and what this field was before
+ * it was configurable — where the cursive set starts at the 20px script floor.
+ */
+export type JournalContentSize = "sm" | "base" | "lg" | "xl" | "2xl";
+
 export interface JournalDefaultLocation {
   latitude: number;
   longitude: number;
@@ -366,6 +434,29 @@ export interface JournalPreferences {
    */
   handwritingSize: JournalHandwritingSize;
   /**
+   * The face the Content field uses with Handwriting **off**, or `null` to
+   * follow the theme's own body font.
+   *
+   * One of the seven theme faces (`FONT_KEYS`), not the six script faces: this
+   * is the field in its ordinary state, and design.md keeps script off anything
+   * read at length. All seven are already loaded on every page, so this points
+   * at a `--font-*` variable that exists rather than adding one.
+   *
+   * Null rather than a stored default because the alternative can never be
+   * cleared: a new install would be pinned to whichever face shipped as the
+   * default, and a theme switch would stop moving this field with it.
+   */
+  contentFont: FontKey | null;
+  /**
+   * Size of the Content field's text with Handwriting **off**. Does not affect
+   * cursive mode, which has `handwritingSize`.
+   *
+   * Unlike the handwriting size this is **not** null-able: every value in the
+   * set is a legal size and `sm` is what the field already used, so there is no
+   * "unset" state to distinguish.
+   */
+  contentFontSize: JournalContentSize;
+  /**
    * When true, the Calendar Import section pauses before writing anything and
    * shows what the journal already holds on each date it is about to import
    * into, so a date that already has an entry can be dropped from the run.
@@ -375,6 +466,29 @@ export interface JournalPreferences {
    * than arrive switched on.
    */
   reviewBeforeCalendarImport: boolean;
+  /**
+   * When true, the Topics section searches entry **bodies** as well as tags,
+   * categories and titles.
+   *
+   * Defaults to **false**. Tag and category matches are deliberate — the
+   * reader put them there — while a word appearing somewhere in a 400-word
+   * body is often incidental, and a topic graph full of incidental matches is
+   * a hairball nobody can read. Off by default means the precise answer comes
+   * first and the wider net is a choice.
+   *
+   * The Topics screen always reports how many entries this setting is hiding,
+   * so switching it on is an informed decision rather than a guess.
+   */
+  topicMatchBody: boolean;
+  /**
+   * Days of silence before the Topics timeline starts a new episode.
+   *
+   * Twelve entries tagged `HSA` across three years are not one topic — they
+   * are three or four separate dealings with the same subject. This is the gap
+   * that separates them. Clamped to 1..365 on read; see
+   * `clampEpisodeGapDays`.
+   */
+  topicEpisodeGapDays: number;
   /**
    * The app-texture-library picture drawn behind the entry form's Content
    * field, or `null` for the hand-drawn `.paper-texture` sheet the field used

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  CONTENT_SIZE_OPTIONS,
   DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
   HANDWRITING_SIZE_OPTIONS,
   JOURNAL_SETTING_KEYS,
   NO_JOURNAL_CONTENT_TEXTURE,
+  contentFontFamily,
+  contentSizeClass,
   handwritingSizeClass,
   journalPreferencesToEntries,
+  nextContentSizeUp,
   resolveJournalContentTexture,
   resolveJournalContentTextureOpacity,
   resolveJournalPreferences,
@@ -26,10 +30,14 @@ describe("resolveJournalPreferences", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: [],
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
   });
 
@@ -46,10 +54,14 @@ describe("resolveJournalPreferences", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: [],
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
   });
 
@@ -75,10 +87,14 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: ["Beach", "picnic"],
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
     const row = entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.excludedWords);
     expect(row?.value).toBe("beach,picnic");
@@ -91,10 +107,14 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: [],
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
     // A blank value would be rejected by the module-settings schema, so the
     // empty list has to mean "no row".
@@ -109,10 +129,14 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: [],
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
     expect(entries.some((entry) => entry.key === JOURNAL_SETTING_KEYS.defaultLocationName)).toBe(false);
     expect(entries.every((entry) => entry.value !== "")).toBe(true);
@@ -129,6 +153,8 @@ describe("journalPreferencesToEntries", () => {
       handwritingSize: "3xl" as const,
       // Not the default either, for the same reason.
       reviewBeforeCalendarImport: true,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       // Non-empty for the same reason as the two above: a round-trip through an
       // empty list would also pass if the field were dropped entirely, so it
       // would prove nothing. Two words rather than one so the serializer's
@@ -140,6 +166,13 @@ describe("journalPreferencesToEntries", () => {
       // Not the default, so the round-trip proves it is carried.
       contentTextureOpacity: 0.45,
       contentTextColor: "#1A2B3C",
+      // Both non-default, for the same reason as the fields above: a round-trip
+      // through the fallback would also pass if the field were dropped.
+      // `as const` for the same reason `temperatureUnit` above has it — this
+      // object carries no annotation, so a bare string widens and no longer
+      // satisfies the union.
+      contentFont: "inter" as const,
+      contentFontSize: "lg" as const,
     };
     const rebuilt = resolveJournalPreferences(
       journalPreferencesToEntries(original).map((entry, index) => ({
@@ -162,10 +195,14 @@ describe("journalPreferencesToEntries", () => {
         photoRoot: "   ",
         handwritingSize: "xl",
         reviewBeforeCalendarImport: false,
+        topicMatchBody: false,
+        topicEpisodeGapDays: 14,
         excludedWords: [],
         contentTextureId: null,
         contentTextureOpacity: 0.1,
         contentTextColor: null,
+        contentFont: null,
+        contentFontSize: "sm",
       }).some((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot),
     ).toBe(false);
 
@@ -177,10 +214,14 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "  /volume1/MEDIA/PHOTO/BY YEAR  ",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: [],
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.photoRoot)?.value).toBe(
       "/volume1/MEDIA/PHOTO/BY YEAR",
@@ -244,14 +285,105 @@ describe("handwriting size", () => {
       photoRoot: "",
       handwritingSize: "2xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: [],
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.handwritingSize)?.value).toBe(
       "2xl",
     );
+  });
+});
+
+describe("topic match body", () => {
+  it("defaults to off when no row is stored", () => {
+    // Body matching widens a topic into incidental mentions, so it has to be
+    // asked for rather than arrive switched on.
+    expect(resolveJournalPreferences([]).topicMatchBody).toBe(false);
+  });
+
+  it("reads a stored 'true' as on", () => {
+    const prefs = resolveJournalPreferences([setting(JOURNAL_SETTING_KEYS.topicMatchBody, "true")]);
+    expect(prefs.topicMatchBody).toBe(true);
+  });
+
+  it("treats anything that isn't 'true' as off", () => {
+    for (const stored of ["false", "1", "0", "yes", "", "TRUE", " true "]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.topicMatchBody, stored),
+      ]);
+      expect(prefs.topicMatchBody, `stored ${JSON.stringify(stored)}`).toBe(false);
+    }
+  });
+});
+
+describe("topic episode gap days", () => {
+  it("defaults to a fortnight when no row is stored", () => {
+    expect(resolveJournalPreferences([]).topicEpisodeGapDays).toBe(14);
+  });
+
+  it("reads a stored whole number", () => {
+    const prefs = resolveJournalPreferences([
+      setting(JOURNAL_SETTING_KEYS.topicEpisodeGapDays, "30"),
+    ]);
+    expect(prefs.topicEpisodeGapDays).toBe(30);
+  });
+
+  // The failure that motivated clamping rather than trusting: `Number("")` is
+  // 0, an integer in range once clamped, so a blank row would otherwise read
+  // as a one-day gap and give every entry its own episode.
+  it("falls back to the default for a blank or unparseable row", () => {
+    for (const stored of ["", "   ", "soon", "1.5"]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.topicEpisodeGapDays, stored),
+      ]);
+      expect(prefs.topicEpisodeGapDays, `stored ${JSON.stringify(stored)}`).toBe(14);
+    }
+  });
+
+  it("clamps a hand-edited value into range", () => {
+    const low = resolveJournalPreferences([setting(JOURNAL_SETTING_KEYS.topicEpisodeGapDays, "0")]);
+    expect(low.topicEpisodeGapDays).toBe(1);
+
+    const negative = resolveJournalPreferences([
+      setting(JOURNAL_SETTING_KEYS.topicEpisodeGapDays, "-5"),
+    ]);
+    expect(negative.topicEpisodeGapDays).toBe(1);
+
+    const high = resolveJournalPreferences([
+      setting(JOURNAL_SETTING_KEYS.topicEpisodeGapDays, "99999"),
+    ]);
+    expect(high.topicEpisodeGapDays).toBe(365);
+  });
+
+  it("writes both Topics rows at every value, so a change sticks", () => {
+    const entries = journalPreferencesToEntries({
+      defaultLocation: null,
+      temperatureUnit: "fahrenheit",
+      photoRoot: "",
+      handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 30,
+      excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
+    });
+
+    expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.topicMatchBody)?.value).toBe(
+      "false",
+    );
+    expect(
+      entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.topicEpisodeGapDays)?.value,
+    ).toBe("30");
   });
 });
 
@@ -290,12 +422,16 @@ describe("review before calendar import", () => {
         photoRoot: "",
         handwritingSize: "xl",
         reviewBeforeCalendarImport: enabled,
+        topicMatchBody: false,
+        topicEpisodeGapDays: 14,
         // Empty: this test is about the review flag's row, and an irrelevant
         // non-empty value here would only add noise to what it asserts.
         excludedWords: [],
         contentTextureId: null,
         contentTextureOpacity: 0.1,
         contentTextColor: null,
+        contentFont: null,
+        contentFontSize: "sm",
       });
       expect(
         entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport)
@@ -349,10 +485,14 @@ describe("content background texture", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: [],
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
     const row = entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.contentTextureId);
     expect(row?.value).toBe(NO_JOURNAL_CONTENT_TEXTURE);
@@ -385,6 +525,14 @@ describe("content background texture", () => {
     expect(resolveJournalContentTexture(1, [texture(1)])?.opacity).toBe(
       DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
     );
+  });
+
+  it("carries the library picture's own tile/cover mode through", () => {
+    // Unlike the opacity, the mode is NOT overridden here: a picture marked
+    // `tile` is one meant to repeat at its natural size, and stretching it
+    // would be drawing it wrong rather than drawing it differently.
+    expect(resolveJournalContentTexture(1, [texture(1, { mode: "tile" })])?.mode).toBe("tile");
+    expect(resolveJournalContentTexture(1, [texture(1, { mode: "cover" })])?.mode).toBe("cover");
   });
 
   it("resolves to undefined when nothing is chosen", () => {
@@ -428,10 +576,14 @@ describe("content text color", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: [],
       contentTextureId: null,
       contentTextureOpacity: 0.1,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
     expect(entries.some((entry) => entry.key === JOURNAL_SETTING_KEYS.contentTextColor)).toBe(
       false,
@@ -478,14 +630,114 @@ describe("content texture strength", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
       excludedWords: [],
       contentTextureId: null,
       contentTextureOpacity: 2.5,
       contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
     });
     // Written even with no texture chosen: the value has no "unset" member, so
     // a row is never ambiguous -- the same call the size and review flag make.
     expect(entries.find((entry) => entry.key === JOURNAL_SETTING_KEYS.contentTextureOpacity)
       ?.value).toBe("1");
+  });
+});
+
+describe("content font and size", () => {
+  it("reads a stored face back as itself", () => {
+    const prefs = resolveJournalPreferences([setting(JOURNAL_SETTING_KEYS.contentFont, "inter")]);
+    expect(prefs.contentFont).toBe("inter");
+  });
+
+  it("falls back to the theme for a face this build does not load", () => {
+    // The failure path that matters: the value becomes a CSS variable
+    // reference, and one naming a face no loader declares would silently
+    // render the browser fallback -- which reads as a bug, not a setting.
+    // A script face is rejected too: those are deliberately not offered here.
+    for (const bogus of ["", "   ", "comic-sans", "great-vibes", "Inter", "font-inter"]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.contentFont, bogus),
+      ]);
+      expect(prefs.contentFont, `stored ${JSON.stringify(bogus)}`).toBeNull();
+    }
+    // And an absent row means the same thing.
+    expect(resolveJournalPreferences([]).contentFont).toBeNull();
+  });
+
+  it("maps a chosen face to the CSS variable the loaders declare", () => {
+    expect(contentFontFamily("inter")).toBe("var(--font-inter)");
+    expect(contentFontFamily("jetbrains-mono")).toBe("var(--font-jetbrains-mono)");
+  });
+
+  it("maps no face, and an unloaded one, to undefined", () => {
+    // `undefined` rather than a family name, so the caller omits the property
+    // entirely and the theme's own body font keeps applying.
+    expect(contentFontFamily(null)).toBeUndefined();
+    expect(contentFontFamily("great-vibes" as never)).toBeUndefined();
+  });
+
+  it("omits the face row when unset, rather than writing a blank", () => {
+    const entries = journalPreferencesToEntries({
+      defaultLocation: null,
+      temperatureUnit: "fahrenheit",
+      photoRoot: "",
+      handwritingSize: "xl",
+      reviewBeforeCalendarImport: false,
+      topicMatchBody: false,
+      topicEpisodeGapDays: 14,
+      excludedWords: [],
+      contentTextureId: null,
+      contentTextureOpacity: 0.1,
+      contentTextColor: null,
+      contentFont: null,
+      contentFontSize: "sm",
+    });
+    expect(entries.some((entry) => entry.key === JOURNAL_SETTING_KEYS.contentFont)).toBe(false);
+    expect(entries.every((entry) => entry.value !== "")).toBe(true);
+  });
+
+  it("reads every offered size back as itself", () => {
+    for (const option of CONTENT_SIZE_OPTIONS) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.contentFontSize, option.value),
+      ]);
+      expect(prefs.contentFontSize, `stored ${option.value}`).toBe(option.value);
+    }
+  });
+
+  it("falls back to 14px for a size it does not offer", () => {
+    for (const bogus of ["xs", "3xl", "14px", "", "Small"]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.contentFontSize, bogus),
+      ]);
+      expect(prefs.contentFontSize, `stored ${JSON.stringify(bogus)}`).toBe("sm");
+    }
+  });
+
+  it("starts at the size the field already used, so nothing moves until asked", () => {
+    // `sm` is 14px -- what every other field on the entry form uses, and what
+    // the Content field was before this was configurable.
+    expect(resolveJournalPreferences([]).contentFontSize).toBe("sm");
+    expect(CONTENT_SIZE_OPTIONS[0]).toMatchObject({ value: "sm", px: 14 });
+  });
+
+  it("maps every offered size to a distinct literal Tailwind class", () => {
+    // Literal, because Tailwind compiles ahead of time -- an interpolated
+    // `text-[...]` would emit no CSS and the field would lose its size.
+    const classes = CONTENT_SIZE_OPTIONS.map((option) => option.className);
+    expect(new Set(classes).size).toBe(CONTENT_SIZE_OPTIONS.length);
+    for (const option of CONTENT_SIZE_OPTIONS) {
+      expect(contentSizeClass(option.value)).toBe(option.className);
+    }
+  });
+
+  it("steps the fullscreen stage one size up, and saturates at the top", () => {
+    expect(nextContentSizeUp("sm")).toBe("base");
+    expect(nextContentSizeUp("xl")).toBe("2xl");
+    // Nothing above `2xl`: wrapping would make the stage smaller than the card.
+    expect(nextContentSizeUp("2xl")).toBe("2xl");
   });
 });

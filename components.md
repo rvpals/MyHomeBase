@@ -122,6 +122,7 @@ pattern instead of inventing one.
 | [`FilterTile`](#filtertile) | **One category or tag** as a square, toggleable filter tile | [src/components/filter-tile.tsx](src/components/filter-tile.tsx) | yes |
 | [`LocationVenn`](#locationvenn) | **Saved places as a Venn diagram** — where they overlap by tag or category | [src/components/location-venn.tsx](src/components/location-venn.tsx) | yes |
 | [`LocationGraphView`](#locationgraphview) | **Saved places as a force-directed graph** — joined wherever they share a tag | [src/components/location-graph-view.tsx](src/components/location-graph-view.tsx) | yes |
+| [`TaxonomyGraphView`](#taxonomygraphview) | **Anything tagged, as a force-directed graph** — the same physics, any subject | [src/components/taxonomy-graph-view.tsx](src/components/taxonomy-graph-view.tsx) | yes |
 | [`PhotoOfTheDay`](#photooftheday--photoofthedaybutton) / `PhotoOfTheDayButton` | **Photos for a date or a date range**, as a closable dialog | [src/components/photo-of-the-day.tsx](src/components/photo-of-the-day.tsx) | yes |
 | [`TickerViewer`](#tickerviewer) | Full record dialog for one ticker — 3 tabs of cards | [src/components/ticker-viewer.tsx](src/components/ticker-viewer.tsx) | yes |
 | [`MessageQueue`](#messagequeue--monitorwarningdialog) / `MonitorWarningDialog` | **The app-wide message queue** — header bell with an unread badge, and the Unread / Read message window | [src/components/message-queue.tsx](src/components/message-queue.tsx) | yes |
@@ -308,6 +309,19 @@ enough that a changed button label isn't enough — a bulk edit, a merge, a batc
   gated on `isBulkBusy && confirmEncrypt !== undefined` rather than on `isBulkBusy`
   alone, so the quick selection actions beside it — Lock, Unlock, Delete — don't
   dim the whole page for work that is over before the scrim renders.
+- Journal → Topics
+  ([journal-topics-view.tsx](<src/app/(protected)/modules/[slug]/journal-topics-view.tsx>)) —
+  the topic lookup, and the one call site here that covers a **read rather than a
+  write**. Pressing Show topic is a `router.push` to a server-rendered route that
+  matches the term against every entry, so the page sits unchanged for the whole
+  wait and reads as a click that didn't land. [`NavPending`](#navpending) cannot
+  help: `useLinkStatus` only works inside a `<Link>`. The flag is a
+  `useTransition` wrapped around the push, which stays pending until the new
+  screen is ready. `tone="subtle"` because most lookups return quickly, and
+  `progress="indeterminate"` because a server render returns once and nothing can
+  count it. The picker chips and the Related links are real `<Link>`s whose
+  `onNavigate` routes the plain click through the same transition — so they keep
+  their hrefs for middle-click and "copy link", and still show the overlay.
 
 **Render it as a sibling of a `Modal`, not a child.** It is `z-[60]` where `Modal` is
 `z-50`, so the dialog dims along with the rest of the page — otherwise the thing the
@@ -487,6 +501,11 @@ Row-click navigation:
 - MyJournal Calendar Import — [journal-calendar-import-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-import-view.tsx) *(selection as a **pick-what-to-import** list: the ticked rows are the import's input, and rows the plan marked unimportable are filtered out of the action rather than disabled)*
 - MyJournal Entries — [journal-entries-view.tsx](src/app/(protected)/modules/[slug]/journal-entries-view.tsx) *(the **All Entries**, **Unlocked Entries** and **Substantial Entries** tabs, one `EntriesTab` rendered three times with a `lockScope` and a `bodyScope` — Substantial is bodies over ten words, decided in SQL by [body-length.ts](src/lib/journal/body-length.ts), never client-side — each tab needs its own `key` or React reuses one instance and they all show the first-mounted tab's rows. Substantial alone swaps **Place** for a **Body Length** word count, drops the record-view eye and keeps its own grid `storageKey`; row selection + bulk edit/lock/unlock/encrypt/delete — the Lock and Unlock pair confirm through [`BulkConfirm`](#bulkconfirm), as Delete does; **Encrypt** goes through [`EncryptionPrompt`](#encryptionprompt) in `encrypt` mode with a `count`, behind a [`BusyOverlay`](#busyoverlay). The bulk edit is [journal-entries-bulk-edit.tsx](src/app/(protected)/modules/[slug]/journal-entries-bulk-edit.tsx), shared with the Log tab; unlike Expense’s single-valued fields it offers **Add / Remove / Replace** per field, because an entry holds several categories and tags)*
 - MyJournal Log — [journal-log-view.tsx](src/app/(protected)/modules/[slug]/journal-log-view.tsx) *(the **Log** tab of Entries, not a section of its own; row click opens `JournalViewer` in a `Modal`; the same bulk edit as the other tabs, plus bulk delete to the recycle bin)*
+- MyJournal Entries, all three grid tabs — *("Show SQL" showing the **real** statement the
+  rows came from, not a hand-written equivalent: `findEntries` and the dialog both read
+  [entries-sql.ts](src/lib/journal/entries-sql.ts), so they cannot drift. Admin-only, and
+  the server withholds the text entirely from everyone else. A re-run's arbitrary columns
+  replace the grid behind a "Back to entries" button, as on the Journal home screen)*
 - SQL Explorer, Investments (accounts / positions / watchlist / analytics / next-day actions)
 
 **Filter operators.** A column filter box is a substring match by default, and also
@@ -4027,6 +4046,7 @@ print/export view share it.
 | `entry` | `JournalEntry` (type from `@/lib/journal`) | |
 | `onPrint?` | `() => void` | Omit to hide Print. |
 | `onEdit?` | `() => void` | Omit to hide Edit. Disabled while locked. |
+| `onClone?` | `() => void` | Adds a Clone button beside Edit — start a new entry from this one, copying its title, place, categories, tags and locations. Omit to hide it. **Deliberately enabled on a locked entry**, unlike every other button in the row: a lock guards edits to *this* entry, and a clone only reads fields already on screen and writes a separate new one. The caller decides what cloning means — the journal entry screen navigates to `new-entry?clone=<id>`. |
 | `onShowLocation?` | `(location: EntryLocation) => void` | Adds a per-location "Map" button. |
 | `onShowAllLocations?` | `() => void` | Adds a "Map All Locations" button below the list. **Only rendered when the entry has more than one location** — with one, the per-location "Map" button already does the same job. The caller renders the multi-pin map. |
 | `onToggleLock?` | `(nextLocked: boolean) => void` | Omit to hide Lock. |
@@ -4049,6 +4069,7 @@ print/export view share it.
   entry={entry}
   onPrint={() => window.print()}
   onEdit={() => setEditing(true)}
+  onClone={() => router.push(`/modules/journal/new-entry?clone=${entry.id}`)}
   onShowLocation={(location) => setMapView({ kind: "one", location })}
   onShowAllLocations={() => setMapView({ kind: "all" })}
   onToggleLock={(nextLocked) => handleToggleLock(nextLocked)}
@@ -4876,14 +4897,28 @@ drawn is in the accessibility tree, so the component renders a **real list of th
 places underneath**, sorted most-connected first — that is the keyboard and screen-reader
 path, and it doubles as a "which places are hubs" readout.
 
-**The simulation is not in this file.** `lib/sys-locations/location-graph.ts` owns
-`buildLocationGraph` (nodes and edges) and `stepSimulation` / `settleGraph` (the physics),
-all pure and tested without rendering anything. This component owns pixels, pointers and
-the animation loop.
+**The simulation is not in this file, and it is not location-specific either.**
+The physics lives in `lib/shared/taxonomy-graph.ts` — `buildTaxonomyGraph` (nodes and
+edges) and `stepSimulation` / `settleGraph` — all pure and tested without rendering
+anything. `lib/sys-locations/location-graph.ts` is now a thin location-shaped face over
+it: it re-exports the physics untouched and wraps the builder so a node still publishes
+its payload as `place` (this component reads `node.place` throughout). This component
+owns pixels, pointers and the animation loop. See
+[`TaxonomyGraphView`](#taxonomygraphview) for the same picture over anything else.
 
 **The loop stops.** Once kinetic energy falls below `REST_ENERGY` the layout has settled
 and animation halts — a force simulation left running redraws an identical picture sixty
 times a second forever. Dragging a node wakes it again.
+
+**The integrator has a speed limit (`maxVelocity`), and it is load-bearing.**
+`minDistance` caps the force from a single *pair*; a node's velocity is the sum over
+every other node, so it does not bound the system. That never showed at a few dozen
+nodes. The Topics map (145 subjects seeded into a 160-unit disc, so most pairs start
+inside `minDistance`) made it fail outright: energy multiplied about fifteen times per
+step, overflowed to `Infinity`, every coordinate became `NaN`, and the canvas drew
+nothing at all — blank space, with no error anywhere. The clamp is applied to the
+velocity vector rather than per axis, so a clamped node keeps its direction. It does not
+change where a layout settles, only how fast a node may move while getting there.
 
 Colours are read off `:root` at runtime (canvas takes no CSS classes) and **re-read on
 theme change** via a `MutationObserver`, so the graph never keeps drawing in the previous
@@ -4892,6 +4927,58 @@ theme's accent. An **unconnected place draws hollow** — in the library but sha
 **Used by:** Admin → Locations → Location Manager
 [manager/view.tsx](src/app/(protected)/admin/locations/manager/view.tsx), as the `graph`
 view mode.
+
+---
+
+## TaxonomyGraphView
+
+**Anything tagged, as a force-directed graph.** The sibling of
+[`LocationGraphView`](#locationgraphview): same physics, same canvas, same interactions —
+but generic over `GraphSubject` (`id`, `name`, `categories`, `tags`) rather than over
+saved places, and it takes the node label ready-made instead of falling back to
+coordinates.
+
+**Reach for this one for any new graph.** `LocationGraphView` stays because the Location
+Manager reads `node.place` throughout and knows about lat/long fallbacks; everything else
+should be a `GraphSubject`.
+
+- **Source:** [src/components/taxonomy-graph-view.tsx](src/components/taxonomy-graph-view.tsx)
+- **Import:** `import { TaxonomyGraphView } from "@/components/taxonomy-graph-view";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `subjects` | `readonly S[]` | What to graph. The layout re-settles when this changes identity, so pass a memoised array. |
+| `kind` | `TaxonomyKind` | Which taxonomy joins them — `"tag"` or `"category"`. |
+| `onSelect?` | `(subject: S) => void` | Raised with the subject whose node was clicked. Generic, so the caller gets its own row type back. |
+| `height?` | `string` | Canvas height. Default `"32rem"`. |
+| `weightOf?` | `(subject: S) => number` | What a node's **size** should mean. Omitted, nodes are sized by degree (how many links). Pass it when the nodes have their own magnitudes — Journal's Topics map sizes a tag by how many entries carry it. Scaled against the largest weight in the set, and square-rooted, because the eye compares a dot's *area*. |
+| `accentOf?` | `(subject: S) => "primary" \| "secondary"` | Which of two accents a node draws in, for a graph holding two kinds of thing (Topics map: tags vs. categories). A two-way choice rather than a colour, because the palette is read from the theme at runtime and the caller has nothing to pick from. |
+| `className?` | `string` | |
+
+```tsx
+<TaxonomyGraphView subjects={topicSubjects} kind="tag" onSelect={openEntry} height="34rem" />
+```
+
+Everything said about `LocationGraphView` applies here too: **canvas not SVG**, with a
+real list underneath as the keyboard and screen-reader path; **the loop stops** once the
+layout settles; and colours are read off `:root` and re-read on theme change, because
+canvas takes no CSS classes and design.md forbids literal colour values.
+
+**Not rendered on a phone.** A force graph at phone width is a hairball nobody can tap.
+Callers are expected to branch on `useIsCompact()` and show something else — Journal →
+Topics shows its Related list instead. That is the rare case design.md allows a viewport
+read rather than a `max-lg:` variant, because it is a genuinely different component and
+not a restyled one.
+
+**Used by:** Journal → Topics
+[journal-topics-view.tsx](src/app/(protected)/modules/[slug]/journal-topics-view.tsx),
+**twice** — as the Graph tab, where nodes are *entries* joined by shared tags (one
+topic's local picture), and as the Map shown before a term is picked, where nodes are
+*tags and categories* joined by co-occurrence (the whole journal's picture). The second
+is the one that uses `weightOf` and `accentOf`. Same component, same physics, different
+adapter: see `topicGraphSubjects` and `topicMapSubjects` in
+`src/lib/journal-topics/graph.ts`.
 
 ---
 

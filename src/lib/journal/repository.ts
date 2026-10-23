@@ -16,8 +16,8 @@ import {
 } from "./schema";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import { displayEntryTitle } from "./encryption";
-import { buildBodyLengthSql, type JournalBodyScope } from "./body-length";
-import { buildFilterSql, buildOrderBy } from "./filters";
+import type { JournalBodyScope } from "./body-length";
+import { buildEntriesSql, describeEntriesSql } from "./entries-sql";
 import { LOG_CATEGORY_NAME } from "./journal";
 import { parseStoredJournalFilter, parseStoredPrefillFields } from "./schema";
 import type {
@@ -420,39 +420,26 @@ export class SqliteJournalRepository implements JournalRepository {
     limit: number,
     bodyScope: JournalBodyScope = "all",
   ): JournalEntry[] {
-    const compiled = buildFilterSql(filter);
-    // The body-length term, when the Substantial Entries tab is asking. ANDed on
-    // as its own parenthesised term rather than merged into the filter's
-    // conditions — the reader's filter may join with OR, and adding this beside
-    // those conditions would make it one more *alternative* instead of a
-    // narrowing. Same arrangement, and the same reason, as withLockedCondition.
-    const body = buildBodyLengthSql(bodyScope);
-    // No WHERE at all when nothing narrows, rather than a synthetic `1=1` — an
-    // empty filter is a real state ("All entries") and this keeps the query the
-    // planner sees identical to listRecentEntries in that case.
-    const terms: string[] = [];
-    // Parenthesised: the filter's own groups may be joined with OR, and ANDing
-    // the body-length term onto a bare `a OR b` would bind to `b` alone.
-    if (compiled) terms.push(`(${compiled.sql})`);
-    if (body) terms.push(body.sql);
-    const where = terms.length > 0 ? `WHERE ${terms.join(" AND ")}` : "";
-    // Literal string from an allowlist, never interpolated input — see
-    // buildOrderBy. An empty sort yields the same clause this query always had.
-    const orderBy = buildOrderBy(filter.sort);
-    const rows = this.db
-      .prepare(
-        `SELECT e.*
-         FROM jrn_entries e
-         ${where}
-         ORDER BY ${orderBy}
-         LIMIT @__limit`,
-      )
-      // Named params throughout: buildFilterSql generates its own keys, and
-      // `__limit` and the body-length threshold are prefixed so they can't
-      // collide with one of them.
-      .all({ ...(compiled?.params ?? {}), ...(body?.params ?? {}), __limit: limit }) as EntryRow[];
+    // Assembled by buildEntriesSql rather than inline, so the statement the
+    // "Show SQL" dialog displays is literally the one that ran. See
+    // entries-sql.ts.
+    const { sql, params } = buildEntriesSql(filter, limit, bodyScope);
+    // Named params throughout: buildFilterSql generates its own keys, and
+    // `__limit` and the body-length threshold are prefixed so they can't
+    // collide with one of them.
+    const rows = this.db.prepare(sql).all(params) as EntryRow[];
 
     return this.hydrateEntries(rows);
+  }
+
+  findEntriesSql(
+    filter: JournalFilter,
+    limit: number,
+    bodyScope: JournalBodyScope = "all",
+  ): string {
+    // Display only — the parameters are inlined here, never prepared. findEntries
+    // above runs the same statement with them bound.
+    return describeEntriesSql(filter, limit, bodyScope);
   }
 
   listFilters(): SavedJournalFilter[] {

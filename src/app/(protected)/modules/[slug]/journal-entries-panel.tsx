@@ -24,6 +24,7 @@
 import {
   describeFilter,
   emptyFilter,
+  entriesSql,
   findEntries,
   listCategories,
   listFilters,
@@ -59,16 +60,22 @@ export interface JournalEntriesPanelProps {
    */
   filterQuery?: string;
   /**
-   * Which tab to open on — "log" for the Log tab, "unlocked" for Unlocked
-   * Entries, "substantial" for Substantial Entries, anything else (or nothing)
-   * for All Entries. Not validated here:
-   * `Tabs` falls back to its first tab on a key it doesn't recognise, so a stale
-   * `?tab=` lands on All Entries rather than 404ing.
+   * Which tab to open on — "log" for the Log tab, "main" for All Entries,
+   * "substantial" for Substantial Entries, anything else (or nothing) for
+   * Unlocked Entries, which is the first tab and the default. Not validated
+   * here: the view matches the key against the four it knows and falls back to
+   * "unlocked", so a stale `?tab=` opens the default rather than 404ing.
    */
   initialTab?: string;
   /** Optional heading, for embedding outside the Entries section. */
   title?: string;
   description?: string;
+  /**
+   * Whether the viewer may see and re-run the query behind each grid. Admins
+   * only, decided by the caller, which is the component that knows the session.
+   * Presentation only — `runJournalSqlAction` re-checks the role on the server.
+   */
+  canRunSql?: boolean;
 }
 
 export function JournalEntriesPanel({
@@ -77,6 +84,7 @@ export function JournalEntriesPanel({
   initialTab,
   title,
   description,
+  canRunSql = false,
 }: JournalEntriesPanelProps) {
   const savedFilters = listFilters(deps.journalRepo);
 
@@ -128,13 +136,10 @@ export function JournalEntriesPanel({
   // would silently be the unlocked subset of the first 500, not the first 500
   // unlocked. The condition is the same one findJournalEntriesAction and the
   // bulk refresh re-apply, so all three agree.
+  const unlockedFilter = withLockedCondition(scopedFilter, "unlocked");
   const unlockedEntries = queryError
     ? []
-    : findEntries(
-        deps.journalRepo,
-        withLockedCondition(scopedFilter, "unlocked"),
-        ENTRIES_LIMIT,
-      );
+    : findEntries(deps.journalRepo, unlockedFilter, ENTRIES_LIMIT);
 
   // The Substantial tab's first page — a read of its own, for the same reason
   // the unlocked list is: narrowing `entries` here would give the substantial
@@ -144,6 +149,35 @@ export function JournalEntriesPanel({
   const substantialEntries = queryError
     ? []
     : findEntries(deps.journalRepo, scopedFilter, ENTRIES_LIMIT, "substantial");
+
+  // Each tab's statement, built from the same scoped filter its rows came from.
+  //
+  // Still built when `queryError` is set — that is the state someone is most
+  // likely to be opening this dialog to understand. There is no "wrong SQL" to
+  // show in that case: tryParseFilterQuery throws before producing a filter, so
+  // nothing was ever compiled and `filter` is still the empty one. Showing that
+  // empty query bare would be a lie, because it returns every entry while the
+  // grid shows none — so what actually happened is appended as SQL comments.
+  //
+  // They go *after* the statement, never before it: the re-run guard is
+  // `/^\s*SELECT\b/` (sql-explorer/schema.ts), so a leading comment would make
+  // the dialog's own text fail to run with "Only SELECT queries are allowed
+  // here." Trailing comments keep it runnable.
+  const sqlFor = (filterForTab: JournalFilter, bodyScope: "all" | "substantial" = "all") => {
+    if (!canRunSql) return undefined;
+    const statement = entriesSql(deps.journalRepo, filterForTab, ENTRIES_LIMIT, bodyScope);
+    if (!queryError) return statement;
+    return [
+      statement,
+      "",
+      "-- NOTE: the filter query above could not be read, so this screen ran",
+      "-- nothing and the grid lists no rows. The statement above is the",
+      "-- UNFILTERED fallback -- running it returns every entry, which is NOT",
+      "-- what the grid is showing.",
+      `-- Filter query: ${filterQuery ?? ""}`,
+      `-- Parser said: ${queryError}`,
+    ].join("\n");
+  };
 
   // The Log tab is the section that used to live at /modules/journal/log, moved
   // in whole: the same unfiltered list, and the same two icon maps its viewer
@@ -156,6 +190,10 @@ export function JournalEntriesPanel({
       initialEntries={entries}
       initialUnlockedEntries={unlockedEntries}
       initialSubstantialEntries={substantialEntries}
+      initialSql={sqlFor(scopedFilter)}
+      initialUnlockedSql={sqlFor(unlockedFilter)}
+      initialSubstantialSql={sqlFor(scopedFilter, "substantial")}
+      canRunSql={canRunSql}
       initialFilters={savedFilters}
       categoryOptions={categories.map((category) => category.name)}
       tagOptions={tags.map((tag) => tag.name)}

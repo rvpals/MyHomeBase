@@ -80,6 +80,8 @@ function renderSection(
   requestedTab: string | undefined,
   requestedReportEdit: string | undefined,
   requestedReportRun: string | undefined,
+  requestedTopic: string | undefined,
+  requestedCloneId: number | undefined,
 ) {
   if (slug === CLASSROOM_MODULE_SLUG && isClassroomSection(section)) {
     return (
@@ -128,6 +130,8 @@ function renderSection(
         selectedDate={requestedDate}
         requestedReportEdit={requestedReportEdit}
         requestedReportRun={requestedReportRun}
+        requestedTopic={requestedTopic}
+        requestedCloneId={requestedCloneId}
       />
     );
   }
@@ -225,6 +229,20 @@ export default async function ModuleSectionPage({
     // ?filter= uses.
     edit?: string | string[];
     run?: string | string[];
+    // The subject the Journal's Topics section is showing. In the URL rather
+    // than client state because that is the entire state of a topic: a topic is
+    // not a stored row, so `?topic=HSA` IS the saved lookup — bookmarkable,
+    // sendable, and linkable from any tag chip elsewhere in the app. Left raw:
+    // the section renders its picker for a blank or unmatched term rather than
+    // 404ing, the same forgiving rule `?tab=` follows.
+    topic?: string | string[];
+    // The entry Journal's New Entry section is cloning — set by the Clone button
+    // in the entry viewer's toolbar. Only the id travels: the section re-reads
+    // the entry server-side, so none of its text is in the URL and the seed is
+    // whatever the entry says *now* rather than a snapshot from when the link
+    // was made. That also makes the clone form reloadable and bookmarkable, the
+    // same reasoning ?filter= and ?topic= follow.
+    clone?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -250,6 +268,8 @@ export default async function ModuleSectionPage({
     tab,
     edit,
     run,
+    topic,
+    clone,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -303,6 +323,20 @@ export default async function ModuleSectionPage({
   // Same first-element rule. Raw again: an unknown tab key is ignored by the
   // strip rather than 404ing a link that was valid before a tab was renamed.
   const requestedTab = Array.isArray(tab) ? tab[0] : tab;
+  // Same first-element rule, so a repeated ?topic= can't concatenate two
+  // subjects into one nonsense term. Raw: the Topics section shows its picker
+  // for anything that matches nothing.
+  const requestedTopic = Array.isArray(topic) ? topic[0] : topic;
+  // Same first-element rule. Parsed to a number here rather than left raw,
+  // unlike the params above: this one is a row id, so "not a positive integer"
+  // is not a value any section could interpret — it is simply absent, and the
+  // New Entry section then renders the blank form it would have shown without
+  // the param at all. `Number("12abc")` is NaN and `Number("")` is 0, so both
+  // fall through to undefined.
+  const rawCloneId = Array.isArray(clone) ? clone[0] : clone;
+  const parsedCloneId = Number(rawCloneId);
+  const requestedCloneId =
+    Number.isInteger(parsedCloneId) && parsedCloneId > 0 ? parsedCloneId : undefined;
 
   // Before the lookup, because this slug no longer resolves to a module row. The
   // section slugs are unchanged, so the path maps one-for-one; only the three
@@ -351,6 +385,8 @@ export default async function ModuleSectionPage({
     requestedTab,
     requestedReportEdit,
     requestedReportRun,
+    requestedTopic,
+    requestedCloneId,
   );
   if (!body) notFound();
 

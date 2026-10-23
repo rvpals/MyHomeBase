@@ -371,6 +371,86 @@ subquery in `lib/sys-locations`: the journal may read the library, but the libra
 no module's table. `SavedLocationWithUsage.usageCount` is therefore still always 0 and is
 not what this screen shows.
 
+The **Topics** section takes a subject — a tag, a category, or any word — and shows the
+entries about it three ways: a timeline of episodes, a force-directed graph, and the tags
+and categories that keep it company. It **adds no table and no migration**, and there is
+no LLM anywhere in it.
+
+**Before a term is picked, the section shows the journal's map** — a graph whose nodes
+are the *tags and categories themselves*, joined wherever two appear on the same entry,
+each sized by how many entries carry it and coloured by whether it is a tag or a
+category. Clicking a node opens it as the topic. This is the counterpart to the Graph
+tab, and the difference is what each one's nodes are: the Map is every subject in the
+journal (the whole shape), the Graph is the entries about one of them (one answer's
+shape).
+
+It needs no new component and no migration. `buildTopicMap` in
+`src/lib/journal-topics/map.ts` counts the pairings in one pure pass over
+`listEntries()` — the counts cannot come from `listTopTags`/`listTopCategories`, which
+group by name and so never know which names shared an entry. `topicMapSubjects` then
+feeds them to the same `buildTaxonomyGraph` the entry graph uses, by a trick worth
+knowing: **each node's `tags` array is set to the pair tokens it takes part in**, so the
+builder's "join wherever two subjects share a name" rule reproduces the map's own edges
+exactly, with the physics untouched.
+
+Two thresholds keep it legible, both defaulting to 2 and both in the library rather than
+the view: a name on fewer entries than `minEntryCount` is dropped entirely, and a pairing
+seen on fewer entries than `minSharedEntries` draws no edge. The second matters more —
+spare nodes merely crowd a map, while a spurious edge actively misleads by pulling
+unrelated subjects into one cluster. The view reports how many names were hidden, so the
+threshold is something to reason about rather than a mystery. The chip list stays below
+the map as the keyboard path and the narrow fallback.
+
+**A topic is a term, not a stored row.** `/modules/journal/topics?topic=HSA` is the entire
+state of the screen, which is what makes every tag chip elsewhere in the app a one-line
+link into it and makes a lookup bookmarkable and sendable. A blank or unmatched `?topic=`
+renders the picker rather than 404ing, the same forgiving rule `?tab=` follows. Nothing
+persists, so nothing has to be curated, deleted, or kept in step with the taxonomy.
+
+The matching lives in `src/lib/journal-topics/` as pure functions over entries. Five
+choices worth knowing:
+
+- **Fuzzy matching is deliberately conservative.** Trigram similarity at a 0.5 threshold,
+  with exact and acronym rules above it, and terms of three characters or fewer skip
+  trigrams entirely. `HSA` therefore finds the tag `H.S.A.` and the category
+  `Health Savings Account`, and does *not* find "Shasta" or "has a". Short acronyms share
+  trigrams with a surprising number of ordinary words, and a graph full of false edges is
+  the one failure that makes the whole screen useless.
+- **Title and body are matched by whole words, not by similarity.** A 400-word entry
+  shares few trigrams with a 3-letter term however prominently it features, and a
+  substring search for `art` would hit "start", "party" and "heart".
+- **Body matching is off by default**, behind the `topic_match_body` preference. Tags are
+  deliberate; a word buried in a long entry usually is not. The screen always reports how
+  many entries the setting is hiding and links to Preferences — a setting that silently
+  shrinks results is worse than no setting.
+- **Encrypted entries appear, with their text sealed.** Their tags and categories are
+  plaintext, so they genuinely belong to the topic; their title and body are never read.
+  They show as "Encrypted entry" and are counted separately in the summary, because a
+  graph that quietly omitted them would understate what the journal holds.
+- **The episode gap is a preference** (`topic_episode_gap_days`, 14 by default, clamped
+  1–365). Twelve entries tagged `HSA` across three years are three or four separate
+  dealings with the same subject, and this is the gap that separates them.
+
+The graph is drawn by [`TaxonomyGraphView`](./components.md#taxonomygraphview) over
+`src/lib/shared/taxonomy-graph.ts` — **the same simulation the Location Manager uses**.
+That module was lifted out of `lib/sys-locations/location-graph.ts` for this feature:
+nothing in the physics was ever location-specific, so the generic constraint narrowed from
+`SavedLocation` (which demanded latitude and longitude) to `GraphSubject` (`id`, `name`,
+`categories`, `tags`), which a journal entry already satisfies. The location module is now
+a thin face over it and the Location Manager is untouched.
+
+Every way into a topic — the search button, the picker chips, the Related links —
+goes through one `useTransition` and shows a [`BusyOverlay`](./components.md#busyoverlay)
+while it runs. The lookup is a `router.push` to a server-rendered route that matches the
+term against every entry, so without it the page sits unchanged for the whole wait and
+reads as a click that didn't land. `NavPending` cannot cover this: `useLinkStatus` only
+works inside a `<Link>`, and this is a programmatic navigation.
+
+**Narrow:** the Timeline, Related and Entries tabs work as-is. The Graph tab shows the
+Related list instead — a force graph at phone width is a hairball nobody can tap, which is
+a genuinely different component rather than a restyled one and so reads `useIsCompact()`
+rather than a `max-lg:` variant.
+
 The date arithmetic lives in `src/lib/journal/calendar.ts` as pure functions over ISO
 strings — grid shape and padding, the ‹ › stepping, the 30-character title elision, the
 year view's heat scale, and parsing a typed date. Nothing about a calendar is computed in
@@ -494,9 +574,11 @@ Five choices worth knowing:
   only the calendar's other fields update. Untick it (CLI: `--replace`) for the old
   replace-the-whole-entry behaviour.
 
-**Entries** is three tabs. **All Entries** is the filter dropdown and the entries it narrows;
-**Unlocked Entries** is the same screen with a server-side `isLocked is false` condition
-(`withLockedCondition`, its own AND group so an OR-joined filter can't leak a locked row);
+**Entries** is three tabs. **Unlocked Entries** comes first — the filter dropdown and the
+entries it narrows, with a server-side `isLocked is false` condition (`withLockedCondition`,
+its own AND group so an OR-joined filter can't leak a locked row); **All Entries** is the
+same screen with no narrowing, and sits last of the grids while remaining the tab the
+screen opens on (`defaultActiveKey`, not tab order);
 **Log** lists every entry carrying the `Log` category — logged activities rather than
 written entries, which is where calendar imports land. The Log tab is one `DataGrid`
 with search, filters, CSV export and a bulk delete that moves rows to the **recycle

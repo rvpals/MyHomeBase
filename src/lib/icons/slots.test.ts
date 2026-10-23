@@ -129,7 +129,7 @@ describe("sectionSlotId", () => {
       // slot (`journal_section_log`) is still registered and still rendered, on
       // the tab label rather than in the panel.
       journal: [
-        "main", "new-entry", "entries", "calendar", "views", "report", "import",
+        "main", "new-entry", "entries", "calendar", "topics", "report", "import",
         "calendar-import", "review-data", "recycle-bin",
         "configuration", "templates", "metadata", "home-screen",
         // Migration 0141 retired the journal's own location library and moved it

@@ -125,6 +125,17 @@ const metadataPreferencesSchema = z.object({
    */
   reviewBeforeCalendarImport: z.boolean().default(false),
   /**
+   * The two Topics settings, defaulted for the same reason as everything above:
+   * a bundle written before Topics existed is still a legal file and restores
+   * with body matching off and the standard fortnight gap — exactly what the
+   * module does when neither setting has ever been saved.
+   *
+   * They travel because they are reading preferences rather than machine facts,
+   * the same test `handwritingSize` passes and `contentTextureId` fails.
+   */
+  topicMatchBody: z.boolean().default(false),
+  topicEpisodeGapDays: z.number().int().min(1).max(365).default(14),
+  /**
    * Nullable and defaulted for the same reason as the two above. `null` means
    * "follow the theme's ink", which is what an older bundle restores to.
    *
@@ -141,6 +152,32 @@ const metadataPreferencesSchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "Expected a #RRGGBB colour.")
     .nullish(),
+  /**
+   * The Content field's face and size with Handwriting off.
+   *
+   * These travel, where the texture settings above do not, by the rule this
+   * schema already follows: a face and a size are reading preferences about
+   * one field, like the handwriting size, while a texture pointer is a row id
+   * in one install's library. Nothing about a font is machine-specific — all
+   * seven faces ship with the app.
+   *
+   * The face is an open string here rather than a `z.enum` of `FONT_KEYS`: a
+   * bundle naming a face this build doesn't load must still be a legal file,
+   * and `resolveJournalPreferences` already discards an unrecognised key on
+   * read. Validating it twice would turn a restorable backup into a parse
+   * error over a font.
+   */
+  contentFont: z.string().nullish(),
+  /**
+   * Defaulted like `handwritingSize` above, and for the same reason: a bundle
+   * written before this preference existed is still a legal file and restores
+   * at 14px, which is what the field used then.
+   *
+   * Required on `z.output` — a defaulted field is always present once parsed —
+   * so a hand-written bundle object in a test carries it even though a JSON
+   * backup on disk need not.
+   */
+  contentFontSize: z.enum(["sm", "base", "lg", "xl", "2xl"]).default("sm"),
 });
 
 /**
@@ -259,7 +296,11 @@ export function buildMetadataBundle(
       photoRoot: preferences.photoRoot,
       handwritingSize: preferences.handwritingSize,
       reviewBeforeCalendarImport: preferences.reviewBeforeCalendarImport,
+      topicMatchBody: preferences.topicMatchBody,
+      topicEpisodeGapDays: preferences.topicEpisodeGapDays,
       contentTextColor: preferences.contentTextColor,
+      contentFont: preferences.contentFont,
+      contentFontSize: preferences.contentFontSize,
     },
   };
 }
@@ -422,6 +463,11 @@ export function metadataPreferenceEntries(
       key: "review_before_calendar_import",
       value: preferences.reviewBeforeCalendarImport ? "true" : "false",
     },
+    // Both written at every value, for the same reason the review flag is: a
+    // restore has to be able to turn body matching back off and to put the
+    // episode gap back to the default, not merely to raise them.
+    { key: "topic_match_body", value: preferences.topicMatchBody ? "true" : "false" },
+    { key: "topic_episode_gap_days", value: String(preferences.topicEpisodeGapDays) },
   ];
 
   // Omitted when unset rather than written blank -- the settings schema rejects
@@ -430,6 +476,15 @@ export function metadataPreferenceEntries(
   // additive rule the rest of this function follows.
   if (preferences.contentTextColor) {
     entries.push({ key: "content_text_color", value: preferences.contentTextColor });
+  }
+
+  // The size is always written -- it has no "unset" member, and the schema
+  // defaults it, so a bundle predating this preference restores 14px. The face
+  // is omitted when unset, like the colour: an absent row means "follow the
+  // theme", and a blank value is rejected.
+  entries.push({ key: "content_font_size", value: preferences.contentFontSize });
+  if (preferences.contentFont) {
+    entries.push({ key: "content_font", value: preferences.contentFont });
   }
 
   const location = preferences.defaultLocation;

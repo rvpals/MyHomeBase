@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { Comments } from "@/components/comments";
@@ -18,7 +18,10 @@ import { useCurrentPosition } from "@/components/use-current-position";
 import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import {
   applyPrefillTemplate,
+  contentFontFamily,
+  contentSizeClass,
   handwritingSizeClass,
+  nextContentSizeUp,
   resolveJournalContentTexture,
   type JournalHandwritingSize,
   type JournalPreferences,
@@ -102,8 +105,16 @@ function KeyIcon({ className = "" }: { className?: string }) {
   );
 }
 
-const INPUT_CLASS =
-  "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+// Every field's shape except its size, so a field that sets its own size does
+// not emit two conflicting `text-*` classes. Tailwind v4 puts both in the same
+// layer, where the winner is decided by the order they appear in the generated
+// stylesheet rather than in the class attribute — so "append the override" is
+// not reliable, and the only safe fix is to leave the base size out.
+const INPUT_BASE_CLASS =
+  "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+
+/** The ordinary form field: the shape above at the standard 14px. */
+const INPUT_CLASS = `${INPUT_BASE_CLASS} text-sm`;
 
 const pad2 = (value: number) => String(value).padStart(2, "0");
 
@@ -226,6 +237,7 @@ export function JournalEntryForm({
   locationCategoryOptions = [],
   locationTagOptions = [],
   initialValues,
+  initialLocations,
   onSaved,
   onSavingChange,
   saveLabel,
@@ -260,6 +272,20 @@ export function JournalEntryForm({
    */
   initialValues?: JournalEntryFormInitialValues;
   /**
+   * Starting pins for the location list, instead of an empty one.
+   *
+   * Separate from `initialValues` because locations are not a form *field*: they
+   * live in their own state, are edited by the location picker rather than by
+   * typing, and are an array of objects rather than a string. Folding them into
+   * `JournalEntryFormInitialValues` would mean one prop whose members are set
+   * through two different mechanisms.
+   *
+   * Used by Clone, which copies the source entry's pins so a recurring event
+   * keeps its place. Absent on the New Entry screen and on Review Data's merge,
+   * both of which start with no pins.
+   */
+  initialLocations?: JournalLocationInput[];
+  /**
    * Called after a successful save. The New Entry screen leaves this off and
    * gets the default behaviour (clear the form, ready for the next entry);
    * Review Data's merge dialog uses it to close itself and refresh the list,
@@ -289,7 +315,13 @@ export function JournalEntryForm({
   // seeded them. Lazy initialiser, so the clock is read when the form mounts
   // rather than on every render.
   const [form, setForm] = useState(() => seededForm(initialValues));
-  const [locations, setLocations] = useState<JournalLocationInput[]>([]);
+  // Seeded from `initialLocations` when the caller supplied pins (Clone), empty
+  // otherwise. Copied rather than aliased, for the same reason the form's own
+  // arrays are: adding a pin here must not reach back into the seed the server
+  // built, which React keeps alive across re-renders.
+  const [locations, setLocations] = useState<JournalLocationInput[]>(() => [
+    ...(initialLocations ?? []),
+  ]);
   // Weather is held as three strings, not an EntryWeatherInput, because these
   // are text inputs: a half-typed temperature ("-", "1.") is not a number yet
   // and the field still has to let the writer get there. `typedWeather` below
@@ -358,7 +390,11 @@ export function JournalEntryForm({
   // short of closing the dialog and ticking the rows again.
   function reset() {
     setForm(seededForm(initialValues));
-    setLocations([]);
+    // Back to the seeded pins, not to none — on a cloned form "Clear" means
+    // "undo my edits", and wiping the copied locations would throw away the
+    // part of the clone that is most tedious to re-pick by hand. Matches how
+    // `seededForm` above treats the text fields.
+    setLocations([...(initialLocations ?? [])]);
     setWeatherTemp("");
     setWeatherUnit("");
     setWeatherDescription("");
@@ -600,19 +636,53 @@ export function JournalEntryForm({
     contentTexture ? (
       <span
         aria-hidden
-        className={`pointer-events-none absolute inset-0 bg-cover bg-center ${radiusClass}`}
+        // `tile` repeats the picture at its natural size, `cover` stretches one
+        // copy — the library row's own choice, as the resolver documents. Two
+        // properties rather than one shorthand, because size and repeat have to
+        // disagree between the modes (the same pair `app-texture` emits).
+        className={`pointer-events-none absolute inset-0 bg-center ${radiusClass}`}
         style={{
           backgroundImage: contentTexture.backgroundImage,
+          backgroundSize: contentTexture.mode === "tile" ? "auto" : "cover",
+          backgroundRepeat: contentTexture.mode === "tile" ? "repeat" : "no-repeat",
           opacity: contentTexture.opacity,
         }}
       />
     ) : undefined;
 
-  // `undefined` leaves the `text-ink` class to do its job, which is what an
-  // unset preference means — the theme's own ink, following a theme switch.
-  const contentColorStyle = preferences.contentTextColor
-    ? { color: preferences.contentTextColor }
-    : undefined;
+  // The inline style both copies of the Content field carry.
+  //
+  // An omitted property leaves the class to do its job, which is what each
+  // unset preference means: `text-ink` for the colour and the theme's body
+  // face for the font, both following a theme switch rather than freezing at
+  // whatever the theme was when the preference was saved.
+  //
+  // The FACE applies in both modes, cursive included — it is the field's font
+  // and `font-script-journal` overrides it in the class when Handwriting is on.
+  // The SIZE does not: that is `cursiveClass`'s job in cursive mode, and
+  // `contentSizeClass` below only reaches the plain state.
+  const contentFamily = contentFontFamily(preferences.contentFont);
+  const contentTextStyle: CSSProperties | undefined =
+    preferences.contentTextColor || contentFamily
+      ? {
+          ...(preferences.contentTextColor ? { color: preferences.contentTextColor } : {}),
+          ...(contentFamily ? { fontFamily: contentFamily } : {}),
+        }
+      : undefined;
+
+  // The plain (non-cursive) size. Resolved once for both copies of the field,
+  // for the same reason `cursiveClass` is.
+  const plainSizeClass = contentSizeClass(preferences.contentFontSize);
+
+  // The fullscreen stage has always drawn the plain field one step larger than
+  // the card does (it was `text-base` against the card's `text-sm`), because a
+  // sheet centred on a black stage carries a bigger size comfortably. That
+  // relationship is kept rather than dropped: the reader's choice sets the
+  // card, and the stage stays one step up — except at the top of the scale,
+  // where there is nothing above to step to.
+  const plainFullscreenSizeClass = contentSizeClass(
+    nextContentSizeUp(preferences.contentFontSize),
+  );
 
   // The two tab bodies, built here rather than inline in the `items` array so
   // the JSX below stays readable. Both close over the one `form` state above.
@@ -718,16 +788,18 @@ export function JournalEntryForm({
             rows={18}
             // `relative` lifts the field above the texture underlay; without a
             // position it would paint under the picture.
-            style={contentColorStyle}
+            style={contentTextStyle}
             className={
               isHandwriting || contentTexture
                 ? `relative w-full resize-y border-0 bg-transparent px-3 py-2 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
-                    // Cursive carries its own size; a textured field with
-                    // Handwriting off keeps the ordinary form-field size, so it
-                    // still matches Title and Place name.
-                    isHandwriting ? cursiveClass : "text-sm"
+                    // Cursive carries its own size; the plain state takes the
+                    // reader's Content font size, which defaults to the same
+                    // `text-sm` the other fields use.
+                    isHandwriting ? cursiveClass : plainSizeClass
                   }`
-                : `${INPUT_CLASS} resize-y`
+                : // The size-free base, so this is the only `text-*` on the
+                  // element — see `INPUT_BASE_CLASS`.
+                  `${INPUT_BASE_CLASS} resize-y ${plainSizeClass}`
             }
           />
         </div>
@@ -1017,9 +1089,9 @@ export function JournalEntryForm({
               placeholder="What happened today…"
               autoFocus
               aria-label="Content"
-              style={contentColorStyle}
+              style={contentTextStyle}
               className={`relative h-full w-full resize-none border-0 bg-transparent p-4 text-ink focus-visible:outline-none ${
-                isHandwriting ? cursiveClass : "text-base"
+                isHandwriting ? cursiveClass : plainFullscreenSizeClass
               }`}
             />
           </div>

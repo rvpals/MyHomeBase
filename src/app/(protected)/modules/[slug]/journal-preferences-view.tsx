@@ -7,12 +7,19 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { ColorField } from "@/components/color-field";
 import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import {
+  CONTENT_SIZE_OPTIONS,
   HANDWRITING_SIZE_OPTIONS,
+  type JournalContentSize,
   type JournalHandwritingSize,
   type JournalPreferences,
   type JournalTemperatureUnit,
 } from "@/lib/journal";
 import type { PhotoArchiveDiagnosis } from "@/lib/journal-photos";
+// The seven theme faces and their labels — the same catalogue the theme
+// builder offers, so the Content field can never name a face the app does not
+// load. The six script faces are deliberately absent: this setting governs the
+// field in its ordinary state, and design.md keeps script off body copy.
+import { FONT_KEYS, FONT_LABELS, type FontKey } from "@/lib/settings/themes";
 import { checkPhotoAccessAction, saveJournalPreferencesAction } from "./journal-actions";
 import { restoreWordAction } from "./journal-word-actions";
 import { JournalLocationField, type PickedLocation } from "./journal-location-field";
@@ -63,9 +70,22 @@ export function JournalPreferencesView({
   const [reviewBeforeCalendarImport, setReviewBeforeCalendarImport] = useState(
     preferences.reviewBeforeCalendarImport,
   );
+  const [topicMatchBody, setTopicMatchBody] = useState(preferences.topicMatchBody);
+  // Held as a string so the field can be emptied while typing — a number-typed
+  // state would turn a cleared box into NaN or snap it back to a value the
+  // reader is in the middle of replacing. Parsed on save.
+  const [topicEpisodeGapDays, setTopicEpisodeGapDays] = useState(
+    String(preferences.topicEpisodeGapDays),
+  );
   const [contentTextureId, setContentTextureId] = useState(preferences.contentTextureId);
   const [contentTextureOpacity, setContentTextureOpacity] = useState(
     preferences.contentTextureOpacity,
+  );
+  // `""` is the "follow the theme" state — a <select> has no null, and an empty
+  // option value is how that choice is expressed in the markup.
+  const [contentFont, setContentFont] = useState<string>(preferences.contentFont ?? "");
+  const [contentFontSize, setContentFontSize] = useState<JournalContentSize>(
+    preferences.contentFontSize,
   );
   // Held as the raw string rather than as `string | null`, because `ColorField`
   // raises every keystroke including invalid ones — a half-typed "#1A2" has to
@@ -132,6 +152,12 @@ export function JournalPreferencesView({
         photoRoot,
         handwritingSize,
         reviewBeforeCalendarImport,
+        topicMatchBody,
+        // Falls back rather than erroring on a cleared or nonsense box: the
+        // library clamps the same way on read, so the two agree.
+        topicEpisodeGapDays: Number.isInteger(Number(topicEpisodeGapDays))
+          ? Math.min(Math.max(Number(topicEpisodeGapDays), 1), 365)
+          : preferences.topicEpisodeGapDays,
         // Carried through untouched. This form does not edit the word list — the
         // (x) buttons below write it directly — but the save behind this button
         // is *wholesale*, so omitting the field here would delete every stored
@@ -139,6 +165,10 @@ export function JournalPreferencesView({
         excludedWords,
         contentTextureId,
         contentTextureOpacity,
+        // Narrowed back to the typed union on the way out; `""` is the
+        // select's way of saying "no face chosen", which is `null` here.
+        contentFont: contentFont === "" ? null : (contentFont as FontKey),
+        contentFontSize,
         // Normalized to upper case here as well as in the resolver, so the
         // value this screen sends is the one it would read back.
         contentTextColor: trimmedColor === "" ? null : trimmedColor.toUpperCase(),
@@ -260,6 +290,48 @@ export function JournalPreferencesView({
           </label>
         </div>
 
+        {/* Its own group, like Calendar import above: these two govern the
+            Topics section rather than how an entry is written. */}
+        <div className="flex flex-col gap-2 border-t border-line pt-4">
+          <span className="block text-sm font-medium text-ink">Topics</span>
+          <label className="flex items-start gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={topicMatchBody}
+              onChange={(event) => setTopicMatchBody(event.target.checked)}
+            />
+            <span>
+              Search entry text as well as tags and titles
+              <span className="mt-0.5 block text-xs text-muted">
+                Off by default. Tags and categories are deliberate, so they find the entries
+                a topic is really about; a word appearing somewhere in a long entry often
+                means nothing. With this off, the Topics screen still tells you how many
+                entries it is leaving out. Encrypted entries are never searched either way —
+                they can only ever match on their tags.
+              </span>
+            </span>
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Days between episodes</span>
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={topicEpisodeGapDays}
+              onChange={(event) => setTopicEpisodeGapDays(event.target.value)}
+              className={INPUT_CLASS}
+            />
+            <span className="mt-0.5 block text-xs text-muted">
+              On the Topics timeline, entries further apart than this start a new episode.
+              Twelve entries about one subject spread over three years are usually three or
+              four separate occasions, and this is the gap that separates them. 14 days by
+              default.
+            </span>
+          </label>
+        </div>
+
         <div className="flex flex-col gap-2 border-t border-line pt-4">
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-ink">Photo folder</span>
@@ -350,6 +422,54 @@ export function JournalPreferencesView({
           <p className="text-sm text-muted">
             Setting some preferences for the journal entry screen.
           </p>
+
+          {/* The face and size for the field in its ORDINARY state. Cursive
+              keeps its own pair: the app-wide script face (Administration →
+              Display Settings → Script Fonts) and the Handwriting font size in
+              the card above. Said here because the field has two states and a
+              setting that silently governed only one would be a trap. */}
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Content font</span>
+            <select
+              value={contentFont}
+              onChange={(event) => setContentFont(event.target.value)}
+              disabled={isBusy}
+              className={SELECT_CLASS}
+            >
+              <option value="">Follow the theme&apos;s text font</option>
+              {FONT_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {FONT_LABELS[key]}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-muted">
+              The face the Content field is written in with{" "}
+              <strong className="font-medium text-ink">Handwriting</strong> off. Left on
+              the theme&apos;s own font, it changes when you change theme. Cursive mode uses
+              the app-wide script face instead.
+            </span>
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Content font size</span>
+            <select
+              value={contentFontSize}
+              onChange={(event) => setContentFontSize(event.target.value as JournalContentSize)}
+              disabled={isBusy}
+              className={SELECT_CLASS}
+            >
+              {CONTENT_SIZE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label} ({option.px}px)
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-muted">
+              Applies with Handwriting off; cursive keeps its own size. The full-screen
+              editor draws one step larger, as it always has.
+            </span>
+          </label>
 
           <ContentTextureField
             textures={textures}
@@ -460,7 +580,8 @@ function ContentTextureField({
       <p className="mt-1 text-xs text-muted">
         A picture drawn behind the Content field while you write. Pictures come from the
         application&apos;s texture library — add one under Administration → Configuration → App
-        Texture, then pick it here. Each is drawn at the strength it was tuned to in the library.
+        Texture, then pick it here. Whether a picture tiles or is stretched to fill is the
+        library&apos;s own setting for that picture; the strength below is this journal&apos;s.
       </p>
 
       {textures.length === 0 ? (
@@ -549,10 +670,18 @@ function ContentTextureField({
           <div className="mt-5">
             <p className="text-xs font-medium text-ink">Preview</p>
             <div className="relative mt-2 h-32 w-full max-w-sm overflow-hidden rounded-md border border-line bg-paper">
+              {/* Drawn the way the real field draws it, tiling included — a
+                  preview that stretched a picture the field will repeat would
+                  be worse than no preview. */}
               <span
                 aria-hidden
-                className="absolute inset-0 bg-cover bg-center"
-                style={{ backgroundImage: `url("${thumbnail(selected)}")`, opacity }}
+                className="absolute inset-0 bg-center"
+                style={{
+                  backgroundImage: `url("${thumbnail(selected)}")`,
+                  backgroundSize: selected.mode === "tile" ? "auto" : "cover",
+                  backgroundRepeat: selected.mode === "tile" ? "repeat" : "no-repeat",
+                  opacity,
+                }}
               />
               {/* `currentColor` so one `color` drives every line, and the
                   fallback is the theme's ink exactly as the real field's is. */}

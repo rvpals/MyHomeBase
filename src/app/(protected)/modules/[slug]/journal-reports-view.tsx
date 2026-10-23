@@ -150,9 +150,9 @@ export function JournalReportsView({
                   </Button>
                   {/* Duplicate and Delete keep bare glyphs: they are row
                       actions, not places, so they are deliberately not slotted.
-                      `clip` rather than a copy glyph -- TREE_ICON_NAMES has no
-                      "copy", and inventing one for a row action would be a new
-                      glyph for the whole app to carry. */}
+                      `copy` now that the concept exists -- it was added for the
+                      entry viewer's Clone button, and this row action means the
+                      same thing, so it should not go on showing a paperclip. */}
                   <Button
                     size="sm"
                     variant="secondary"
@@ -161,7 +161,7 @@ export function JournalReportsView({
                     title={`Duplicate ${report.name}`}
                     ariaLabel={`Duplicate ${report.name}`}
                   >
-                    <TreeIcon name="clip" className="h-4 w-4" />
+                    <TreeIcon name="copy" className="h-4 w-4" />
                   </Button>
                   {!report.isBuiltin &&
                     (confirmId === report.id ? (

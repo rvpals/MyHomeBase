@@ -135,6 +135,27 @@ export function findEntries(
 }
 
 /**
+ * The statement `findEntries` runs, with its parameters inlined for display.
+ *
+ * Parses the filter exactly as `findEntries` does, so what the reader is shown
+ * reflects the same normalisation the real read applied — a condition the
+ * schema drops is missing from both, rather than appearing only in the display.
+ *
+ * **Display only.** The result is not parameterised and must never be prepared.
+ */
+export function entriesSql(
+  repo: JournalRepository,
+  filter: JournalFilter,
+  limit = 200,
+  bodyScope: JournalBodyScope = "all",
+): string {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`entriesSql: limit must be a positive integer, got ${limit}.`);
+  }
+  return repo.findEntriesSql(journalFilterSchema.parse(filter), limit, bodyScope);
+}
+
+/**
  * The category that marks an entry as a logged activity rather than something
  * written — seeded by migration 0088, and the default the calendar import
  * applies.

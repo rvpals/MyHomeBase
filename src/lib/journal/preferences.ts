@@ -1,6 +1,11 @@
-import type { DashboardTextureItem } from "@/lib/dashboard-texture";
+import type { DashboardTextureItem, DashboardTextureMode } from "@/lib/dashboard-texture";
 import type { ModuleSetting } from "@/lib/module-settings";
+// The seven theme faces, as a value as well as a type: the Content font is
+// validated against this list on read, so a stale or hand-edited key falls back
+// to the theme rather than emitting a font-family that resolves to nothing.
+import { FONT_KEYS, type FontKey } from "@/lib/settings/themes";
 import type {
+  JournalContentSize,
   JournalHandwritingSize,
   JournalPreferences,
   JournalTemperatureUnit,
@@ -16,10 +21,14 @@ export const JOURNAL_SETTING_KEYS = {
   photoRoot: "photo_root",
   handwritingSize: "handwriting_size",
   reviewBeforeCalendarImport: "review_before_calendar_import",
+  topicMatchBody: "topic_match_body",
+  topicEpisodeGapDays: "topic_episode_gap_days",
   excludedWords: "excluded_words",
   contentTextureId: "content_texture_id",
   contentTextureOpacity: "content_texture_opacity",
   contentTextColor: "content_text_color",
+  contentFont: "content_font",
+  contentFontSize: "content_font_size",
 } as const;
 
 /**
@@ -34,6 +43,23 @@ export const JOURNAL_SETTING_KEYS = {
  * the default keeps the look the picker had before the slider existed.
  */
 export const DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY = 0.1;
+
+/**
+ * Days of silence before the Topics timeline starts a new episode, when the
+ * reader has not set one.
+ *
+ * Fourteen: long enough that a fortnight of quiet reads as "that was a separate
+ * occasion", short enough that a weekly recurring thing stays in one run.
+ *
+ * These three mirror the bounds documented in `@/lib/journal-topics/episodes`.
+ * They are restated rather than imported because that module imports this
+ * one's types, and importing back would make the pair mutually dependent for
+ * three numbers. `preferences.test.ts` pins them to the same values.
+ */
+export const DEFAULT_TOPIC_EPISODE_GAP_DAYS = 14;
+/** A gap of 0 would make every entry its own episode — the timeline switched off. */
+export const MIN_TOPIC_EPISODE_GAP_DAYS = 1;
+export const MAX_TOPIC_EPISODE_GAP_DAYS = 365;
 
 /**
  * What `content_texture_id` holds when no picture is chosen.
@@ -106,6 +132,85 @@ export function handwritingSizeClass(size: JournalHandwritingSize): string {
   return (match ?? HANDWRITING_SIZE_OPTIONS[0]).className;
 }
 
+/** 14px — `text-sm`, what every other field on the entry form uses. */
+const DEFAULT_CONTENT_SIZE: JournalContentSize = "sm";
+
+/**
+ * The sizes the Content field offers with Handwriting **off**.
+ *
+ * A separate table from `HANDWRITING_SIZE_OPTIONS` rather than a shared one,
+ * because the two surfaces want different ranges: cursive starts at the 20px
+ * script floor design.md sets, while this is ordinary body text in a form and
+ * starts at the 14px every sibling field uses. They overlap only at 20px.
+ *
+ * `label` is named rather than numeric for the same reason the handwriting
+ * table's is — this is a reading-comfort choice, not a typographic one — but
+ * the px is shown beside it, since a writer picking a size for a form field
+ * reasonably wants to know what they are getting.
+ *
+ * Every `className` is a literal that appears in the source, so Tailwind's
+ * scanner emits all five. Don't rewrite these as interpolations.
+ */
+export const CONTENT_SIZE_OPTIONS: readonly {
+  value: JournalContentSize;
+  label: string;
+  className: string;
+  px: number;
+}[] = [
+  { value: "sm", label: "Small", className: "text-sm", px: 14 },
+  { value: "base", label: "Medium", className: "text-base", px: 16 },
+  { value: "lg", label: "Large", className: "text-lg", px: 18 },
+  { value: "xl", label: "X-Large", className: "text-xl", px: 20 },
+  { value: "2xl", label: "XX-Large", className: "text-2xl", px: 24 },
+];
+
+/**
+ * The Tailwind class for a stored Content size, falling back to the default for
+ * anything unrecognised — so a hand-edited row can't leave the field with no
+ * size class at all. Same contract as `handwritingSizeClass`.
+ */
+export function contentSizeClass(size: JournalContentSize): string {
+  const match = CONTENT_SIZE_OPTIONS.find((option) => option.value === size);
+  return (match ?? CONTENT_SIZE_OPTIONS[0]).className;
+}
+
+/**
+ * The next size up the scale, or the same size at the top.
+ *
+ * Exists for the fullscreen Content stage, which has always drawn the plain
+ * field one step larger than the card does — a sheet centred on a black stage
+ * carries a bigger size comfortably, and before this was configurable the two
+ * were hardcoded `text-base` and `text-sm`. Keeping the step means the reader's
+ * choice sets the card and the stage stays proportional, rather than the stage
+ * silently losing the bump the moment the preference shipped.
+ *
+ * Saturates rather than wrapping: at `2xl` there is nothing above to step to,
+ * and wrapping to `sm` would make the stage *smaller* than the card.
+ */
+export function nextContentSizeUp(size: JournalContentSize): JournalContentSize {
+  const index = CONTENT_SIZE_OPTIONS.findIndex((option) => option.value === size);
+  if (index < 0) return DEFAULT_CONTENT_SIZE;
+  return CONTENT_SIZE_OPTIONS[Math.min(index + 1, CONTENT_SIZE_OPTIONS.length - 1)].value;
+}
+
+/**
+ * The CSS `font-family` for a stored Content face, or `undefined` to leave the
+ * field on the theme's body font.
+ *
+ * Returns a `var(--font-…)` reference rather than a family name: all seven
+ * faces are already declared on every page by `layout.tsx`'s `localFont`
+ * loaders, and those variables are the seam. Naming a family directly here
+ * would duplicate what the loaders own and break the moment one is swapped.
+ *
+ * `undefined` for an unrecognised key as well as for `null`, so a row written
+ * by a build that offered a face this one doesn't falls back to the theme
+ * rather than emitting a `font-family` that resolves to nothing.
+ */
+export function contentFontFamily(font: FontKey | null): string | undefined {
+  if (font === null) return undefined;
+  return FONT_KEYS.includes(font) ? `var(--font-${font})` : undefined;
+}
+
 /**
  * Parses the journal module's key/value settings rows into typed preferences.
  * A default location is only reported when both coordinates parse as finite
@@ -148,6 +253,27 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
   const reviewBeforeCalendarImport =
     byKey.get(JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport) === "true";
 
+  // Same strict "true" test, for the same reason.
+  const topicMatchBody = byKey.get(JOURNAL_SETTING_KEYS.topicMatchBody) === "true";
+
+  // Clamped rather than trusted, like the texture opacity above: the stored
+  // value is text, and an absent row or a hand-edited "0" must not become a
+  // one-day gap that gives every entry its own episode.
+  //
+  // Clamped here rather than by `clampEpisodeGapDays` in `@/lib/journal-topics`,
+  // which holds the same bounds: that module imports this one's types, so
+  // reaching back into it would make the two mutually dependent. The bounds are
+  // stated once there and enforced once here, and `preferences.test.ts` pins
+  // this copy to the same numbers.
+  const rawGap = byKey.get(JOURNAL_SETTING_KEYS.topicEpisodeGapDays) ?? "";
+  const storedGap = Number(rawGap);
+  // `Number("")` is 0 -- an integer, and in range once clamped -- so a blank or
+  // missing row would otherwise read as a one-day gap rather than as "unset".
+  const topicEpisodeGapDays =
+    rawGap.trim() !== "" && Number.isInteger(storedGap)
+      ? Math.min(Math.max(storedGap, MIN_TOPIC_EPISODE_GAP_DAYS), MAX_TOPIC_EPISODE_GAP_DAYS)
+      : DEFAULT_TOPIC_EPISODE_GAP_DAYS;
+
   // Comma-joined in one row rather than a row per word: the list is read and
   // written whole, and `parseExcludedWords` already tolerates the blanks,
   // casing and duplicates a hand-edited value could carry.
@@ -177,16 +303,35 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
     byKey.get(JOURNAL_SETTING_KEYS.contentTextureOpacity),
   );
 
+  // Validated against the loaded faces rather than cast: the value becomes a
+  // CSS variable reference, and one naming a face this build doesn't load
+  // would render the browser fallback — which looks like a bug, not a setting.
+  // An absent or unrecognised row means "follow the theme's body font".
+  const storedFont = byKey.get(JOURNAL_SETTING_KEYS.contentFont);
+  const contentFont = FONT_KEYS.find((key) => key === storedFont) ?? null;
+
+  // Clamped against the offered list for the same reason the handwriting size
+  // is: the stored value becomes a Tailwind class, and an unrecognised one
+  // would leave the field with no size class at all.
+  const storedContentSize = byKey.get(JOURNAL_SETTING_KEYS.contentFontSize);
+  const contentFontSize =
+    CONTENT_SIZE_OPTIONS.find((option) => option.value === storedContentSize)?.value ??
+    DEFAULT_CONTENT_SIZE;
+
   return {
     defaultLocation,
     temperatureUnit,
     photoRoot,
+    topicMatchBody,
+    topicEpisodeGapDays,
     handwritingSize,
     reviewBeforeCalendarImport,
     excludedWords,
     contentTextureId,
     contentTextureOpacity,
     contentTextColor,
+    contentFont,
+    contentFontSize,
   };
 }
 
@@ -210,14 +355,26 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
  * divergence `resolveNavTexture` and `resolveToolbar` make. A library picture's
  * opacity was tuned for whatever surface it was last used on, and the Content
  * field is a surface you stare at while writing, so it gets its own knob rather
- * than inheriting one. The picture's mode and blur are not read at all: this
- * draws `bg-cover`, so a `tile` row would have nothing to say here.
+ * than inheriting one.
+ *
+ * The picture's **own** `mode` is honoured, though — unlike the opacity, and
+ * deliberately so. Opacity is surface-dependent (a strength tuned for a
+ * dashboard really is wrong behind a paragraph you are writing), but a seamless
+ * pattern is seamless everywhere: a picture marked `tile` is one meant to
+ * repeat at its natural size, and stretching it here would be drawing it wrong
+ * rather than drawing it differently. This is what `resolveAppTexture` does for
+ * page backgrounds too; only the navigation and the personal toolbars override
+ * the mode, because a 260px column is too narrow to show a stretched picture at
+ * all.
+ *
+ * `blur` is still not read: it is applied by a filter on the page-background
+ * rule, and the Content field's layer has no equivalent.
  */
 export function resolveJournalContentTexture(
   contentTextureId: number | null,
   textures: readonly DashboardTextureItem[],
   opacity: number = DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
-): { backgroundImage: string; opacity: number } | undefined {
+): { backgroundImage: string; opacity: number; mode: DashboardTextureMode } | undefined {
   if (contentTextureId === null) return undefined;
 
   const picture = textures.find((texture) => texture.id === contentTextureId);
@@ -234,6 +391,9 @@ export function resolveJournalContentTexture(
     // raw number (a slider mid-drag, a value from somewhere other than
     // `resolveJournalPreferences`) can't put an out-of-range opacity on screen.
     opacity: Math.min(1, Math.max(0, opacity)),
+    // The library row's own, straight through. The repository already narrows
+    // anything unrecognised to `cover`, so there is nothing to clamp here.
+    mode: picture.mode,
   };
 }
 
@@ -256,6 +416,17 @@ export function journalPreferencesToEntries(
     {
       key: JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport,
       value: preferences.reviewBeforeCalendarImport ? "true" : "false",
+    },
+    // Both Topics settings follow the same rule as the row above: written at
+    // every value, so unticking the box or restoring the default gap is a real
+    // change rather than a no-op that leaves the old row in place.
+    {
+      key: JOURNAL_SETTING_KEYS.topicMatchBody,
+      value: preferences.topicMatchBody ? "true" : "false",
+    },
+    {
+      key: JOURNAL_SETTING_KEYS.topicEpisodeGapDays,
+      value: String(preferences.topicEpisodeGapDays),
     },
     // Always written, including the "none" case, as the sentinel rather than a
     // missing row — the same call `handwritingSize` and
@@ -281,7 +452,18 @@ export function journalPreferencesToEntries(
       key: JOURNAL_SETTING_KEYS.contentTextureOpacity,
       value: String(Math.min(1, Math.max(0, preferences.contentTextureOpacity))),
     },
+    // Always written, like the handwriting size: every value in the set is a
+    // legal size and there is no "unset" member, so a row is never ambiguous.
+    { key: JOURNAL_SETTING_KEYS.contentFontSize, value: preferences.contentFontSize },
   ];
+
+  // Omitted when unset rather than stored as "": the schema rejects a blank
+  // value, and an absent row is what "follow the theme's body font" means on
+  // read. The same shape the text colour uses, and for the same reason — an
+  // unset face already has a name, so there is nothing a sentinel would add.
+  if (preferences.contentFont !== null) {
+    entries.push({ key: JOURNAL_SETTING_KEYS.contentFont, value: preferences.contentFont });
+  }
 
   // Omitted when unset rather than stored as "": the schema requires a
   // non-empty value, and an absent row is what "use the theme's ink" means on

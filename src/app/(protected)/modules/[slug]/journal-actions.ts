@@ -23,6 +23,7 @@ import {
   deleteTag,
   findAdjacentEntryDate,
   findEntries,
+  entriesSql,
   withLogCondition,
   type JournalLogScope,
   withLockedCondition,
@@ -710,6 +711,12 @@ export interface JournalFilterListResult extends ActionResult {
 
 export interface JournalEntriesResult extends ActionResult {
   entries?: JournalEntry[];
+  /**
+   * The statement that produced `entries`, for the grid's "Show SQL" dialog.
+   * Admins only — a non-admin can't run SQL here, so there is nothing to show
+   * them and the query text simply isn't sent.
+   */
+  sql?: string;
 }
 
 /**
@@ -733,20 +740,40 @@ export async function findJournalEntriesAction(
 ): Promise<JournalEntriesResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
   try {
+    // Built once and used for both the read and the display, so the statement
+    // the reader is shown is the one their rows came from.
+    const scoped = withLockedCondition(withLogCondition(filter, scope), lockScope);
     return {
       ok: true,
       entries: findEntries(
         deps.journalRepo,
-        withLockedCondition(withLogCondition(filter, scope), lockScope),
+        scoped,
         ENTRIES_RESULT_LIMIT,
         // Not a filter condition — it rides alongside, because the filter schema
         // would drop it. See body-length.ts.
         bodyScope,
       ),
+      sql: (await canShowJournalSql())
+        ? entriesSql(deps.journalRepo, scoped, ENTRIES_RESULT_LIMIT, bodyScope)
+        : undefined,
     };
   } catch (error) {
     return toErrorResult(error, "Failed to apply the filter.");
   }
+}
+
+/**
+ * Whether the caller may be shown the Entries query.
+ *
+ * The same role the re-run requires: showing the statement to someone who
+ * cannot run it is pointless, and the text names tables they have no business
+ * reading. `runJournalSqlAction` re-checks independently — this gates display,
+ * not execution.
+ */
+async function canShowJournalSql(): Promise<boolean> {
+  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
+  return Boolean(currentUser && isAdmin(currentUser));
 }
 
 /**

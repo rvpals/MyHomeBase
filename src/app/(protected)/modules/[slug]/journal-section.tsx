@@ -9,10 +9,12 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { listNamedMappings } from "@/lib/csv-import";
 import {
   JOURNAL_PREFILL_FIELDS,
+  cloneSeedFromEntry,
   countAllEntries,
   countEntriesByYearAndMonth,
   countEntriesPerSavedLocation,
   hasLinkedEntries,
+  getEntry,
   listCategories,
   listEntries,
   listEnabledPrefillTemplates,
@@ -28,6 +30,7 @@ import {
   visibleJournalHomeWidgets,
   topWords,
   resolveJournalPreferences,
+  type JournalEntryCloneSeed,
   type JournalPrefillField,
 } from "@/lib/journal";
 // The entry form's location picker offers these names as filter chips. They
@@ -45,6 +48,16 @@ import {
   reportFileName,
   runReport,
 } from "@/lib/journal-reports";
+// Topics: pure matching over the entries this branch reads. Nothing in here
+// touches the database or the settings — the two preferences that steer it are
+// resolved above and passed in.
+import {
+  buildCooccurrence,
+  buildEpisodes,
+  buildTopicMap,
+  matchTopic,
+  suggestTopics,
+} from "@/lib/journal-topics";
 // The entry form's Content background is a pointer into the app texture
 // library, so the Preferences screen needs the library to draw its picker.
 import { listDashboardTextures } from "@/lib/dashboard-texture";
@@ -54,6 +67,7 @@ import { deps } from "@/lib/wiring";
 import { requireUser } from "../../require-access";
 import { JOURNAL_SECTION_INFO, type JournalSection } from "./journal-sections";
 import { JournalCalendarPanel } from "./journal-calendar-panel";
+import { JournalTopicsView } from "./journal-topics-view";
 import { JournalEntriesPanel } from "./journal-entries-panel";
 import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 // The same name -> icon-URL map the Location Manager builds, reused rather than
@@ -87,6 +101,15 @@ const TOP_TAXONOMY_LIMIT = 10;
 // of this figure — there is no cache, so it is recomputed per render.
 const TOP_WORD_LIMIT = 10;
 
+/**
+ * How many tags and how many categories the Topics picker offers.
+ *
+ * Generous rather than ten: this is a browse list the reader scans for a
+ * subject, not a home-screen summary, and the view filters it down as they
+ * type.
+ */
+const TOPIC_SUGGESTION_LIMIT = 50;
+
 function SectionBody({
   section,
   isAdmin,
@@ -98,6 +121,8 @@ function SectionBody({
   selectedDate,
   requestedReportEdit,
   requestedReportRun,
+  requestedTopic,
+  requestedCloneId,
 }: {
   section: JournalSection;
   isAdmin: boolean;
@@ -116,6 +141,24 @@ function SectionBody({
   requestedReportEdit?: string;
   /** From ?run= — which report the Report section is running. */
   requestedReportRun?: string;
+  /**
+   * From ?topic= — the subject the Topics section is showing.
+   *
+   * A topic is not a stored row, so this param IS the lookup: blank renders
+   * the picker rather than 404ing, which is what lets any tag chip in the app
+   * link here without knowing whether the term will match anything.
+   */
+  requestedTopic?: string;
+  /**
+   * From ?clone= — the entry the New Entry section is cloning.
+   *
+   * Already validated as a positive integer by the route; an id that no longer
+   * names an entry is treated as absent here rather than as an error, so a
+   * stale link (the source was deleted, or the reader edited the URL) opens the
+   * ordinary blank form instead of 404ing a page that is perfectly usable
+   * without the seed.
+   */
+  requestedCloneId?: number;
 }) {
   switch (section) {
     case "main": {
@@ -178,8 +221,25 @@ function SectionBody({
       const preferences = resolveJournalPreferences(
         journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
       );
+      // Cloning (?clone=): the seed is built here, on the server, from a fresh
+      // read of the source entry — so the form starts from what that entry says
+      // now, and nothing about it had to travel in the URL.
+      //
+      // A missing entry yields no seed and the blank form renders, per the prop's
+      // note. A *sealed* entry yields no seed either: `getEntry` returns its title
+      // and content as "" with the real text in the encrypted columns, so cloning
+      // one from a link would silently produce an entry missing its headline. The
+      // viewer never offers Clone on a sealed entry anyway (the unlock prompt
+      // renders in place of the toolbar), so this only closes the hand-edited-URL
+      // path — and it closes it by falling back to a blank form, not by failing.
+      let cloneSeed: JournalEntryCloneSeed | undefined;
+      if (requestedCloneId !== undefined) {
+        const source = getEntry(deps.journalRepo, requestedCloneId);
+        if (source && !source.isEncrypted) cloneSeed = cloneSeedFromEntry(source);
+      }
       return (
         <JournalNewEntryView
+          cloneSeed={cloneSeed}
           categoryOptions={listCategories(deps.journalRepo).map((category) => category.name)}
           tagOptions={listTags(deps.journalRepo).map((tag) => tag.name)}
           preferences={preferences}
@@ -196,10 +256,16 @@ function SectionBody({
     case "entries":
       // ?filter= (set by the Top Tags/Categories cards) pre-selects a slice;
       // without it this lists everything and the reader picks from the dropdown.
-      // ?tab=log (set by the Statistics card's Log tile) opens on the Log tab,
-      // ?tab=unlocked on Unlocked Entries, anything else on All Entries —
-      // ?filter= only ever narrows the two grid tabs.
-      return <JournalEntriesPanel filterQuery={filterQuery} initialTab={requestedTab} />;
+      // ?tab=log (set by the Statistics card's Log tile) opens on the Log tab
+      // and ?tab=main on All Entries; anything else opens on Unlocked Entries,
+      // the first tab — ?filter= only ever narrows the grid tabs.
+      return (
+        <JournalEntriesPanel
+          filterQuery={filterQuery}
+          initialTab={requestedTab}
+          canRunSql={isAdmin}
+        />
+      );
 
     case "saved-locations": {
       // The library is Admin -> Locations' to own; this screen only reads it.
@@ -228,6 +294,49 @@ function SectionBody({
           categoryIcons={locationTaxonomyIconMap("category")}
           tagIcons={locationTaxonomyIconMap("tag")}
           basePath="/modules/journal/saved-locations"
+        />
+      );
+    }
+
+    case "topics": {
+      // The whole journal, because a topic is a question about all of it —
+      // there is no narrowing read that could answer "which entries are about
+      // HSA" without first matching every entry's tags, categories and title.
+      //
+      // The matching itself is pure and lives in `@/lib/journal-topics`; this
+      // branch only supplies the rows and the two preferences that steer it.
+      const topicsModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
+      const topicsPreferences = resolveJournalPreferences(
+        topicsModule ? listModuleSettingsFor(deps.moduleSettingsRepo, topicsModule.id) : [],
+      );
+
+      const term = (requestedTopic ?? "").trim();
+      // Read once, used for whichever of the two views this is: the map before
+      // a term is picked, the match after. Both need every entry — the map to
+      // count pairings, the match because any entry might be about the term.
+      const allEntries = listEntries(deps.journalRepo);
+      const result = matchTopic(allEntries, term, {
+        matchBody: topicsPreferences.topicMatchBody,
+      });
+
+      return (
+        <JournalTopicsView
+          term={term}
+          result={result}
+          episodes={buildEpisodes(result.entries, topicsPreferences.topicEpisodeGapDays)}
+          related={buildCooccurrence(result.entries, { exclude: result.matchedNames })}
+          // The picker's candidates. Read even when a term is set, so the
+          // reader can jump straight to another topic without clearing first.
+          suggestions={suggestTopics(
+            listTopTags(deps.journalRepo, TOPIC_SUGGESTION_LIMIT),
+            listTopCategories(deps.journalRepo, TOPIC_SUGGESTION_LIMIT),
+          )}
+          // Only when no term is picked: the map is not drawn alongside a
+          // topic's results, so building it there would be work nothing shows.
+          map={term === "" ? buildTopicMap(allEntries) : null}
+          matchBody={topicsPreferences.topicMatchBody}
+          episodeGapDays={topicsPreferences.topicEpisodeGapDays}
+          basePath="/modules/journal/topics"
         />
       );
     }
@@ -436,6 +545,8 @@ export async function JournalSection({
   selectedDate,
   requestedReportEdit,
   requestedReportRun,
+  requestedTopic,
+  requestedCloneId,
 }: {
   section: JournalSection;
   isAdmin: boolean;
@@ -446,6 +557,9 @@ export async function JournalSection({
   selectedDate?: string;
   requestedReportEdit?: string;
   requestedReportRun?: string;
+  requestedTopic?: string;
+  /** From ?clone= — the entry the New Entry section seeds itself from. */
+  requestedCloneId?: number;
 }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
@@ -494,6 +608,8 @@ export async function JournalSection({
           selectedDate={selectedDate}
           requestedReportEdit={requestedReportEdit}
           requestedReportRun={requestedReportRun}
+          requestedTopic={requestedTopic}
+          requestedCloneId={requestedCloneId}
         />
       </div>
     </JournalShell>

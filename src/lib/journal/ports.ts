@@ -155,6 +155,14 @@ export interface JournalRepository {
    * Omitted or `"all"` adds nothing.
    */
   findEntries(filter: JournalFilter, limit: number, bodyScope?: JournalBodyScope): JournalEntry[];
+  /**
+   * The statement `findEntries` would run for these arguments, with its
+   * parameters inlined for display. Backs the Entries grid's "Show SQL" dialog.
+   *
+   * **Never prepare the result** — it is a rendering of the query, not a
+   * parameterised one. Both come from the same builder, so they cannot drift.
+   */
+  findEntriesSql(filter: JournalFilter, limit: number, bodyScope?: JournalBodyScope): string;
   getEntryById(id: number): JournalEntry | undefined;
   /**
    * The entries immediately older and newer than `entryId` in (entry_date,

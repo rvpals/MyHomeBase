@@ -65,6 +65,12 @@ export const TREE_ICON_NAMES = [
   // same panel) and not `list` (rows of anything, which loses "this is a file").
   "csv-file",
   "shapes",
+  // Three linked nodes — Journal's Topics section, which draws exactly that.
+  // Deliberately not `shapes` (Meta Data's, and the two sections both concern
+  // tags, so sharing a glyph would blur them), not `chart` (Report's) and not
+  // `search`: a topic lookup starts with a search box but the section is about
+  // the relationships it finds, not the finding.
+  "network",
   "search",
   "magic",
   // Two sparkles — "ask a language model about this". Next to the favourite star in
@@ -130,6 +136,12 @@ export const TREE_ICON_NAMES = [
   // no icon slot points at either.
   "pushpin",
   "pushpin-filled",
+  // Journal's Clone button — two offset sheets, the long-standing "duplicate"
+  // drawing. Deliberately not `note` (a single page, already the nav's "a page
+  // of text"), not `clip` (attachment), and not `plus`, which says "add" without
+  // saying what is being added. Nothing else in this list means *duplicate*, and
+  // a clone's whole claim is that the new thing starts as a copy of an old one.
+  "copy",
 ] as const;
 
 /** One concept `TreeIcon` can draw. */

@@ -26,9 +26,11 @@ import { importJournalCsvCommand } from "./import-journal-csv";
 import { importRecipesCsvCommand } from "./import-recipes-csv";
 import { importJournalIcsCommand } from "./import-journal-ics";
 import { journalCalendarCommand } from "./journal-calendar";
+import { journalCloneCommand } from "./journal-clone";
 import { journalBulkEditCommand } from "./journal-bulk-edit";
 import { journalSameDateCommand } from "./journal-same-date";
 import { journalTaxonomyCommand } from "./journal-taxonomy";
+import { journalTopicsCommand } from "./journal-topics";
 import { journalReportsCommand } from "./journal-reports";
 import { journalTemplatesCommand } from "./journal-templates";
 import { listCsvAnalyticsCommand } from "./list-csv-analytics";
@@ -94,8 +96,10 @@ const commands: Record<string, Command> = {
   "import-journal-ics": importJournalIcsCommand,
   "journal-bulk-edit": journalBulkEditCommand,
   "journal-calendar": journalCalendarCommand,
+  "journal-clone": journalCloneCommand,
   "journal-same-date": journalSameDateCommand,
   "journal-taxonomy": journalTaxonomyCommand,
+  "journal-topics": journalTopicsCommand,
   "journal-reports": journalReportsCommand,
   "journal-templates": journalTemplatesCommand,
   "expense-top-spenders": expenseTopSpendersCommand,

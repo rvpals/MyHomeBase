@@ -218,6 +218,16 @@ The two callers, and why each is allowed:
   silently overridden on a narrow screen. A third caller wanting script for body copy is a
   design conversation, not a precedent this one sets.
 
+**The Content field's *plain* state is configurable too, and separately.** With
+Handwriting **off** the field is not a script surface at all, so it takes a face from the
+ordinary seven (`FONT_KEYS`) and a size from `CONTENT_SIZE_OPTIONS` (14/16/18/20/24px),
+both in **Journal → Configuration → Preferences → Journal Entry screen**. Unset means the
+theme's body face at 14px — what the field used before this existed — so it follows a
+theme change rather than freezing. The fullscreen stage draws one step larger, as it
+always did. None of this touches the two script tokens above: switching Handwriting on
+still hands the field to `--font-script-journal` at the handwriting size, which is why
+the two states each keep their own pair of settings.
+
 **The face and the size are separate settings, deliberately.** The face is app-wide and
 lives on Display Settings beside the theme and the icon set; the journal's handwriting
 *size* stays a preference inside the Journal module, because it is a reading-comfort

@@ -176,6 +176,29 @@ const CsvFile: IconComponent = (props) => (
   </svg>
 );
 
+// Three nodes joined by two edges — Journal's Topics section, which draws
+// literally this. Hand-drawn because no Iconify set in TREE_ICON_GLYPHS covers
+// the concept, the same reason `calendar` is hand-drawn.
+//
+// Each edge stops short of the circles it joins rather than running under a
+// filled node: every other glyph in this table is pure line art on `fill:
+// none`, and a node filled to mask the line would need a literal background
+// colour — which design.md forbids, and which would be wrong on half the
+// themes anyway.
+//
+// Asymmetric on purpose — two nodes high and one low reads as a relationship,
+// where an equilateral triangle at 16px is easily mistaken for `shapes`.
+const Network: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <line x1="9.3" y1="7" x2="14.7" y2="7" />
+    <line x1="7.8" y1="9.3" x2="10.7" y2="14.6" />
+    <line x1="16.2" y1="9.3" x2="13.3" y2="14.6" />
+    <circle cx="6.5" cy="7" r="2.6" />
+    <circle cx="17.5" cy="7" r="2.6" />
+    <circle cx="12" cy="17" r="2.6" />
+  </svg>
+);
+
 const Shapes: IconComponent = (props) => (
   <svg {...shared} {...props}>
     <path d="M8.5 3.5l4.5 7H4Z" />
@@ -770,6 +793,27 @@ const PushpinFilled: IconComponent = (props) => (
   </svg>
 );
 
+/* Two offset sheets — the long-standing "duplicate" drawing. Journal's Clone button,
+   which starts a new entry from an existing one.
+
+   THE BACK SHEET IS DRAWN AS AN OPEN CORNER, not a full second rectangle. Two complete
+   overlapping rectangles put a four-sided box inside another four-sided box, and at 16px
+   the shared region fills with parallel strokes that read as a grid or a window rather
+   than as two pages. Showing only the two sides of the back sheet that actually clear
+   the front one says "there is a second sheet behind this" with half the ink, and it is
+   what keeps the pair legible at nav size.
+
+   The front sheet is the plain one and sits lower-right, so the glyph reads as the copy
+   being pulled off the top of the original — the direction a clone actually goes. */
+const Copy: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The front sheet: the new entry. */}
+    <rect x="9" y="9" width="11.5" height="11.5" rx="2" />
+    {/* The back sheet, as the corner that clears it: the entry being cloned. */}
+    <path d="M6 15H5.5A2 2 0 0 1 3.5 13V5.5a2 2 0 0 1 2-2H13a2 2 0 0 1 2 2V6" />
+  </svg>
+);
+
 // A folded paper map: three panels, the fold lines between them, and the
 // zig-zag top and bottom edges the folds make. Journal's Location Map -- many
 // places at once, which is the whole distinction from `pin`.
@@ -862,6 +906,7 @@ const TREE_ICONS = {
   database: Database,
   "csv-file": CsvFile,
   shapes: Shapes,
+  network: Network,
   search: Search,
   magic: MagicHat,
   "ai-spark": AiSpark,
@@ -890,6 +935,7 @@ const TREE_ICONS = {
   receipt: Receipt,
   rocket: RocketLaunch,
   lock: Lock,
+  copy: Copy,
 } as const satisfies Record<TreeIconConcept, IconComponent>;
 
 /**

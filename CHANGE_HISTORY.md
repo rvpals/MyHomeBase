@@ -1,5 +1,82 @@
 # Change History
 
+## 2026-10-22 — Journal Topics section, entry Clone, Show SQL, single-photo measurements, shared taxonomy graph
+
+**No migration in this release** (0153 was the last, applied last release). The NAS database and its
+WAL/SHM files were backed up before this release (`npm run backup:nas`, stamp
+`2026-10-22T22-32-30`).
+
+**Heads-up — the Journal section `views` was replaced by `topics`.** Its slot id changed from
+`journal_section_views` to `journal_section_topics`, so any icon uploaded for the old *Views* row no
+longer applies; re-upload it on the Topics row if one existed. A bookmark to `/modules/journal/views`
+no longer resolves.
+
+### Journal → Topics (new section, replaces Views)
+
+- **Pick a subject and see the entries about it.** A topic is a *term*, not a stored row — the URL
+  (`/topics?topic=HSA`) is the whole state of the screen. The term is fuzzy-matched, so `HSA` finds
+  `H.S.A.` and `Health Savings Account`. A picker offers the top 50 tags and categories.
+- **Episodes**: matching entries are grouped into runs separated by a quiet gap, with the tags and
+  categories that travel with the topic listed as Related links.
+- **A map** the screen opens on: every subject as a node, with pairings drawn between names that share
+  entries, from the shared force-directed graph (below).
+- **Two new preferences** on Configuration → Preferences: *match entry bodies* (`topic_match_body`)
+  and *days before a new episode starts* (`topic_episode_gap_days`, 1–365). Encrypted entries match on
+  their plaintext tags only and print as encrypted; their title and body are never read.
+- Pressing *Show topic* raises a busy overlay for the server render (a `useTransition` around the
+  push, since `NavPending` only works inside a `<Link>`).
+- Library: new `src/lib/journal-topics/` (`fuzzy`, `match`, `episodes`, `cooccurrence`, `suggest`,
+  `map`, `graph`), pure and tested; nothing in it touches the database or settings.
+- CLI: `journal-topics list | map | show --term …` (read-only; `--match-body` and `--gap-days`
+  override the stored preferences for one run).
+
+### Journal → clone an entry
+
+- **Clone button** in the entry viewer's footer, beside Edit. It opens New Entry seeded with the
+  source's title, place name, categories, tags and locations; date, time, content, weather and
+  pinned/locked state are left to fill in. The heading reads *New Journal — cloned from entry #N*, and
+  after saving, the form returns to a blank one rather than sitting pre-filled one click from a duplicate.
+- **Enabled on a locked entry** on purpose — a lock guards edits to that entry, and a clone only reads
+  what is on screen and writes a separate one. An encrypted entry is refused.
+- New icon slot `journal_clone_action` and a `copy` glyph; the Reports row's duplicate action now uses
+  `copy` instead of a paperclip.
+- Library: `src/lib/journal/clone.ts` (`cloneSeedFromEntry`), with tests. CLI: `journal-clone show|new`
+  — `--date` is required on `new` and has no default, deliberately.
+
+### Journal → Entries
+
+- **Tab order changed**: Unlocked Entries, Substantial Entries, All Entries, Log. The screen now opens
+  on **Unlocked Entries**; `?tab=main` still reaches All Entries, and an unknown `?tab=` opens the default.
+- **Show SQL** (admin only) on each grid: shows the real statement the rows came from, and can re-run
+  it; arbitrary result columns replace the grid behind a *Back to entries* button. The statement is built
+  by `src/lib/journal/entries-sql.ts`, which `findEntries` also calls, so the dialog and the query
+  cannot drift. The server withholds the text from non-admins and `runJournalSqlAction` re-checks the role.
+
+### Picture Gallery → Random photo card
+
+- **Cull button now measures the photograph on screen.** A set of one has nothing to rank against (the
+  scorer would return the neutral 0.5 for any frame), so it reports absolute measurements instead:
+  sharpness, centre sharpness, brightness, contrast, shadow and highlight clipping, and dimensions,
+  each with a one-line note on what the number means. Clipping over the tolerance reads as under- or
+  overexposed; no score and no keeper verdict is shown. Read-only; the panel clears when the photo changes.
+- Library: `src/lib/culling/inspect.ts` (`inspectPhoto`), with tests. Action `inspectGalleryPhotoAction`
+  needs a signed-in session only, as the bytes are already served to any signed-in reader.
+
+### Shared taxonomy graph (internal + Location Manager)
+
+- The force-directed physics moved from `sys-locations/location-graph.ts` to `lib/shared/taxonomy-graph.ts`
+  (`buildTaxonomyGraph`, `stepSimulation`, `settleGraph`); the location file is now a thin wrapper that
+  keeps `node.place`. New `TaxonomyGraphView` component draws any `GraphSubject`.
+- **The integrator now has a speed limit (`maxVelocity`).** The Topics map (145 subjects seeded into a
+  small disc) overflowed the old integrator to `Infinity`, every coordinate became `NaN`, and the canvas
+  drew nothing. The clamp is on the velocity vector, so direction is kept. It changes how fast a node
+  may move while settling, not where the layout ends up — worth a look at the Location Manager graph.
+
+### Docs
+
+`CLI_registry.md`, `components.md`, `design.md`, `modules.md`, `menu_items.md` and
+`MyHomeBase_feature.md` were brought into line with the above.
+
 ## 2026-10-21 — Journal entry-screen preferences, photo culling, draggable floating toolbars and pucks, Features tab
 
 **Migration 0153 must be applied on the NAS.** It rebuilds `sys_toolbars` (copy-rename-drop) to

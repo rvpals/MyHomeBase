@@ -31,6 +31,7 @@ import type { EntryLocation, JournalEntry } from "@/lib/journal";
 // its own slots — `getIconSlot` is a lookup over a frozen table, not a hook.
 const ENCRYPTED_SLOT = getIconSlot("journal_entry_encrypted")!;
 const ENCRYPT_ACTION_SLOT = getIconSlot("journal_encrypt_action")!;
+const CLONE_ACTION_SLOT = getIconSlot("journal_clone_action")!;
 
 export interface JournalViewerProps {
   entry: JournalEntry;
@@ -38,6 +39,16 @@ export interface JournalViewerProps {
   onPrint?: () => void;
   /** Omit to hide the Edit button. Disabled while the entry is locked. */
   onEdit?: () => void;
+  /**
+   * Start a new entry from this one, copying its category, tags and locations
+   * over. Omit to hide the Clone button.
+   *
+   * **Enabled on a locked entry**, unlike Edit and Delete. A lock guards changes
+   * to *this* entry, and a clone changes nothing here — it only reads fields the
+   * reader can already see on screen and writes a separate, new entry. Disabling
+   * it would be a guard that protects nothing.
+   */
+  onClone?: () => void;
   /**
    * Called with a saved location when its "Map" button is pressed. Omit to hide
    * those buttons. The caller decides how to show it (this component stays free
@@ -295,6 +306,7 @@ export function JournalViewer({
   entry,
   onPrint,
   onEdit,
+  onClone,
   onShowLocation,
   onShowAllLocations,
   onToggleLock,
@@ -318,7 +330,7 @@ export function JournalViewer({
 }: JournalViewerProps) {
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
-  const hasActions = Boolean(onPrint || onEdit || onToggleLock || onDelete);
+  const hasActions = Boolean(onPrint || onEdit || onClone || onToggleLock || onDelete);
   const hasNeighborNav = Boolean(previousHref || nextHref);
 
   // Blank fields are omitted rather than shown as an empty placeholder, so an
@@ -563,6 +575,28 @@ export function JournalViewer({
               // so the button is disabled rather than failing after the click.
               <Button size="sm" onClick={onEdit} disabled={isBusy || entry.isLocked}>
                 Edit
+              </Button>
+            )}
+            {/* Clone sits beside Edit because the two are the pair a reader
+                chooses between on an entry they want more of: change this one,
+                or start another like it.
+
+                Deliberately NOT disabled on a locked entry, unlike every other
+                button in this row. A lock guards edits to *this* entry; cloning
+                reads fields already on screen and writes a separate new one, so
+                there is nothing here for the lock to protect. The hint says what
+                comes across, because "Clone" alone doesn't say that the date and
+                the writing are left for you to fill in. */}
+            {onClone && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={onClone}
+                disabled={isBusy}
+                title="Cloning existing entry to a new entry by copying some data over — its title, place, categories, tags and locations. The date and time are set to now and the content starts blank."
+              >
+                <SlotIcon slot={CLONE_ACTION_SLOT} className="h-4 w-4" />
+                Clone
               </Button>
             )}
             {onToggleLock && (

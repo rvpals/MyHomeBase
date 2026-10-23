@@ -146,6 +146,33 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-22 — Release (Journal Topics section, entry Clone, Show SQL, single-photo measurements, shared taxonomy graph)
+
+No migration. The Journal section *Views* became *Topics* (new icon slot id — an old *Views* icon upload no longer applies). Admin-only: items 15 and 21. Phone-only checks: items 8 and 22. Everything is untried.
+
+- [ ] **1.** Journal section panel / navigation tree: a *Topics* entry replaces *Views*, with the network icon; `/modules/journal/topics` loads
+- [ ] **2.** Journal → Topics: the picker lists tags and categories and narrows as you type
+- [ ] **3.** Journal → Topics: entering `HSA` also finds `H.S.A.` and `Health Savings Account` entries
+- [ ] **4.** Journal → Topics: Show topic raises a busy overlay until the result is ready
+- [ ] **5.** Journal → Topics result: entries are grouped into episodes, with Related tags and categories as links that work (including middle-click)
+- [ ] **6.** Journal → Topics: the map draws every subject and the pairings with no blank canvas, and settles
+- [ ] **7.** Journal → Configuration → Preferences: the body-matching switch and episode gap save and change the Topics result; an encrypted entry shows as encrypted with no title or body
+- [ ] **8.** Journal → Topics on a phone: picker, map and episodes fit without horizontal scroll
+- [ ] **9.** Journal entry viewer: a Clone button sits beside Edit and opens New Entry titled "cloned from entry #N"
+- [ ] **10.** Cloned form: title, place, categories, tags and locations are filled in; date, time and content are not; Clear on locations returns to the cloned pins
+- [ ] **11.** Save a clone: it is written once and the form returns to a blank New Entry; cloning a second entry replaces the first one's values
+- [ ] **12.** Clone on a locked entry works; on an encrypted entry it is refused
+- [ ] **13.** CLI: `npm run cli -- journal-clone show --id N` prints what would be copied; `new --id N --date …` writes an entry; omitting `--date` fails
+- [ ] **14.** Journal → Entries: the tabs read Unlocked, Substantial, All, Log and the screen opens on Unlocked; `?tab=main` opens All Entries
+- [ ] **15.** Journal → Entries as admin: Show SQL on each grid shows the statement, re-runs it, and a custom result replaces the grid until Back to entries; a non-admin sees no Show SQL
+- [ ] **16.** Home screen Random Photo card: the cull button shows measurements (sharpness, brightness, contrast, clipping, dimensions) with notes and no score
+- [ ] **17.** Random Photo card: drawing a new photo clears the previous measurements; an unreadable file shows a message instead of a stuck spinner
+- [ ] **18.** Journal → Reports: the duplicate row action shows the copy icon instead of a paperclip
+- [ ] **19.** Location Manager: the Graph view still lays out, settles and drags as before
+- [ ] **20.** CLI: `journal-topics list`, `map` and `show --term HSA --entries` print results; `--match-body` and `--gap-days` change a single run
+- [ ] **21.** Admin → Icons: the Topics and Clone entry slots are listed and accept an upload
+- [ ] **22.** Entry viewer footer on a phone: the Clone button fits with the other buttons
+
 ## 2026-10-21 — Release (Journal entry-screen preferences, photo culling, floating toolbars and draggable pucks, Features tab)
 
 Needs migration 0153 applied on the NAS (Display Settings → Toolbars, *Floating*). Phone-only checks: items 12, 20 and 25. Items 1–5 were tried by Min before release; everything else is untried.

@@ -2,14 +2,19 @@
 
 // The My Journal "Entries" browser, in four tabs:
 //
-//   **All Entries**      — a saved-filter dropdown, the selected filter's criteria
-//   shown back as readable text, and the matching entries below. Every entry,
-//   logged activities included.
-//   **Unlocked Entries** — the same screen, narrowed to entries that aren't
-//   locked. Same component (`EntriesTab`), one extra server-side condition.
-//   **Substantial Entries** — the same again, narrowed to entries whose body
+//   **Unlocked Entries** — a saved-filter dropdown, the selected filter's
+//   criteria shown back as readable text, and the matching entries below,
+//   narrowed to entries that aren't locked. First because it is the everyday
+//   view: the entries you can still edit.
+//   **Substantial Entries** — the same screen, narrowed to entries whose body
 //   runs to more than ten words. Encrypted entries never appear: a sealed body
 //   can't be measured. See src/lib/journal/body-length.ts.
+//   **All Entries**      — the same again with no narrowing at all. Every
+//   entry, locked and logged activities included. Last of the three grids
+//   because it is the widest net rather than the usual starting point, and no
+//   longer the tab the screen opens on — that is Unlocked Entries, named
+//   explicitly in `defaultActiveKey` rather than inherited from tab order.
+//   `?tab=main` still comes straight here.
 //   **Log**              — the logged activities on their own. This was its own
 //   section at /modules/journal/log until they became tabs of one screen;
 //   `JournalLogView` moved here unchanged, which is why the Log tab still has
@@ -60,6 +65,7 @@ import {
 import {
   deleteJournalFilterAction,
   findJournalEntriesAction,
+  runJournalSqlAction,
   saveJournalFilterAction,
 } from "./journal-actions";
 import {
@@ -135,6 +141,17 @@ const COLUMNS: DataGridColumn<JournalEntry>[] = [
  * once. Anything added to the shared list appears here too, which is the right
  * default: this tab wants every column the others have except Place.
  */
+/** One row of a "Show SQL" re-run's arbitrary result set. */
+interface SqlResultRow {
+  index: number;
+  cells: unknown[];
+}
+
+/** A result cell as display text. NULL and undefined both read as blank. */
+function cellToText(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
 const SUBSTANTIAL_COLUMNS: DataGridColumn<JournalEntry>[] = [
   ...COLUMNS.filter((column) => column.key !== "place"),
   {
@@ -176,6 +193,10 @@ export function JournalEntriesView({
   initialEntries,
   initialUnlockedEntries,
   initialSubstantialEntries,
+  initialSql,
+  initialUnlockedSql,
+  initialSubstantialSql,
+  canRunSql = false,
   initialFilters,
   categoryOptions,
   tagOptions,
@@ -206,15 +227,27 @@ export function JournalEntriesView({
         // Uncontrolled still — the tab is a starting point, not state the URL
         // keeps in step. `Tabs` ignores a key it doesn't know and shows the
         // first tab, so no validation is needed on the way in.
+        //
+        // The screen opens on **Unlocked Entries**, the first tab — the
+        // everyday view, and what `?tab=` lands on when it names nothing
+        // recognised. `"unlocked"` is still written out rather than left to
+        // `Tabs`' first-item fallback, so the landing tab stays a decision
+        // this line makes: reordering the strip must not silently move it.
+        //
+        // `?tab=main` still reaches All Entries, which is why "main" is in the
+        // list below even though it is no longer the default.
         defaultActiveKey={
-          initialTab === "log" || initialTab === "unlocked" || initialTab === "substantial"
+          initialTab === "log" ||
+          initialTab === "main" ||
+          initialTab === "unlocked" ||
+          initialTab === "substantial"
             ? initialTab
-            : "main"
+            : "unlocked"
         }
         items={[
           {
-            key: "main",
-            label: "All Entries",
+            key: "unlocked",
+            label: "Unlocked Entries",
             content: (
               <EntriesTab
                 // `key` is load-bearing, not decoration. `Tabs` renders only the
@@ -224,33 +257,12 @@ export function JournalEntriesView({
                 // keeps its state across a tab switch. `useState(initialEntries)`
                 // then only ever runs for whichever tab mounted first, and the
                 // other two render that tab's rows under their own heading.
-                key="all"
-                lockScope="all"
-                bodyScope="all"
-                initialEntries={initialEntries}
-                initialFilters={initialFilters}
-                categoryOptions={categoryOptions}
-                tagOptions={tagOptions}
-                locationCategoryOptions={locationCategoryOptions}
-                locationTagOptions={locationTagOptions}
-                initialFilterId={initialFilterId}
-                appliedQuery={appliedQuery}
-                queryError={queryError}
-              />
-            ),
-          },
-          {
-            key: "unlocked",
-            label: "Unlocked Entries",
-            content: (
-              // The same component, its own state — but only because of the
-              // `key` below. See the note there.
-              <EntriesTab
-                // See the note on the All Entries tab's key above.
                 key="unlocked"
                 lockScope="unlocked"
                 bodyScope="all"
                 initialEntries={initialUnlockedEntries}
+                initialSql={initialUnlockedSql}
+                canRunSql={canRunSql}
                 initialFilters={initialFilters}
                 categoryOptions={categoryOptions}
                 tagOptions={tagOptions}
@@ -269,11 +281,38 @@ export function JournalEntriesView({
               // A third instance of the same component, with its own state —
               // again only because of the `key`. See the note on the first tab.
               <EntriesTab
-                // See the note on the All Entries tab's key above.
+                // See the note on the Unlocked Entries tab's key above.
                 key="substantial"
                 lockScope="all"
                 bodyScope="substantial"
                 initialEntries={initialSubstantialEntries}
+                initialSql={initialSubstantialSql}
+                canRunSql={canRunSql}
+                initialFilters={initialFilters}
+                categoryOptions={categoryOptions}
+                tagOptions={tagOptions}
+                locationCategoryOptions={locationCategoryOptions}
+                locationTagOptions={locationTagOptions}
+                initialFilterId={initialFilterId}
+                appliedQuery={appliedQuery}
+                queryError={queryError}
+              />
+            ),
+          },
+          {
+            key: "main",
+            label: "All Entries",
+            content: (
+              // The same component again, with its own state — only because of
+              // the `key`. See the note on the Unlocked Entries tab.
+              <EntriesTab
+                // See the note on the Unlocked Entries tab's key above.
+                key="all"
+                lockScope="all"
+                bodyScope="all"
+                initialEntries={initialEntries}
+                initialSql={initialSql}
+                canRunSql={canRunSql}
                 initialFilters={initialFilters}
                 categoryOptions={categoryOptions}
                 tagOptions={tagOptions}
@@ -330,6 +369,20 @@ export interface JournalEntriesViewProps {
    * entries that fell outside that cap.
    */
   initialSubstantialEntries: JournalEntry[];
+  /**
+   * The statement each tab's first page came from, for the grid's "Show SQL"
+   * dialog. One per tab because the three differ in exactly the conditions the
+   * dialog is there to show. `undefined` for a non-admin or a failed query, and
+   * the button is then absent.
+   */
+  initialSql?: string;
+  initialUnlockedSql?: string;
+  initialSubstantialSql?: string;
+  /**
+   * Whether to offer "Show SQL" at all. Admins only — presentation only, since
+   * `runJournalSqlAction` re-checks the role before running anything.
+   */
+  canRunSql?: boolean;
   initialFilters: SavedJournalFilter[];
   categoryOptions: string[];
   tagOptions: string[];
@@ -356,10 +409,10 @@ export interface JournalEntriesViewProps {
   /** Why a supplied filterName/filterQuery couldn't be used. */
   queryError?: string;
   /**
-   * Which tab to open on — "log", "unlocked" or "substantial"; everything else
-   * lands on All Entries. The Statistics card's "Total Log Entries" tile is what
-   * sets "log"; `?filter=` can't reach the Log tab, since it only ever narrows
-   * the three grid tabs.
+   * Which tab to open on — "log", "main", "unlocked" or "substantial";
+   * everything else lands on Unlocked Entries, the first tab. The Statistics
+   * card's "Total Log Entries" tile is what sets "log"; `?filter=` can't reach
+   * the Log tab, since it only ever narrows the three grid tabs.
    */
   initialTab?: string;
   /** Overrides for the heading above the grid, when embedded outside the section. */
@@ -397,6 +450,8 @@ function EntriesTab({
   lockScope,
   bodyScope,
   initialEntries,
+  initialSql,
+  canRunSql = false,
   initialFilters,
   categoryOptions,
   tagOptions,
@@ -414,6 +469,8 @@ function EntriesTab({
   | "tagIcons"
   | "initialUnlockedEntries"
   | "initialSubstantialEntries"
+  | "initialUnlockedSql"
+  | "initialSubstantialSql"
 > & {
   /** `"all"` for the All Entries tab, `"unlocked"` for Unlocked Entries. */
   lockScope: JournalLockScope;
@@ -438,6 +495,18 @@ function EntriesTab({
   // what makes the filter select below it empty and disabled.
   const [browseCategory, setBrowseCategory] = useState("");
   const [entries, setEntries] = useState(initialEntries);
+  // The statement `entries` came from. Updated in lockstep with the rows above —
+  // every path that replaces one replaces the other, so the dialog can never
+  // describe a query that produced some earlier list. `undefined` whenever the
+  // server declined to send one (non-admin, or a filter that never compiled),
+  // which is also what hides the button.
+  const [sql, setSql] = useState(initialSql);
+  // A re-run's own result. Arbitrary columns, so it can't feed the grid above —
+  // it renders in its own grid below, the way the Journal home screen does.
+  const [sqlResult, setSqlResult] = useState<
+    { columns: string[]; rows: unknown[][] } | undefined
+  >(undefined);
+  const [sqlError, setSqlError] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(queryError);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
@@ -542,9 +611,20 @@ function EntriesTab({
         const result = await findJournalEntriesAction(filter, "all", lockScope, bodyScope);
         if (!result.ok) {
           setError(result.error);
+          // The rows on screen are still the previous filter's, so the stored
+          // statement still describes them correctly and is left alone. What it
+          // must not claim is that it produced *this* attempt's result, so the
+          // failure is appended for whoever opens the dialog to debug it.
+          setSql((current) =>
+            current === undefined
+              ? current
+              : `${current}\n\n-- NOTE: the last filter failed to apply and these rows are\n-- the PREVIOUS filter's. Server said: ${result.error ?? "unknown error"}`,
+          );
           return;
         }
         setEntries(result.entries ?? []);
+        // Replaced together with the rows, never independently.
+        setSql(result.sql);
       } finally {
         setIsLoading(false);
       }
@@ -606,9 +686,59 @@ function EntriesTab({
     };
   }
 
+  /**
+   * Runs an edited query from the "Show SQL" dialog.
+   *
+   * The result has arbitrary columns, so it cannot feed the grid above — it
+   * replaces it, with a "Back to entries" button, exactly as the Journal home
+   * screen does. The role is re-checked server-side; `canRunSql` only decides
+   * whether the button is drawn.
+   */
+  async function handleRunSql(nextSql: string) {
+    setSqlError(undefined);
+    const result = await runJournalSqlAction(nextSql);
+    if (!result.ok) {
+      setSqlError(result.error);
+      return;
+    }
+    setSqlResult({ columns: result.columns ?? [], rows: result.rows ?? [] });
+  }
+
+  // Both or neither: DataGrid only draws the button when `onRunSql` is present,
+  // and a statement the server declined to send means there is nothing to show.
+  const sqlProps = canRunSql && sql ? { sql, onRunSql: handleRunSql } : {};
+
+  // Columns for a re-run's arbitrary result set — derived from the returned
+  // column names, since the shape is whatever the edited query produced.
+  const resultColumns: DataGridColumn<SqlResultRow>[] = (sqlResult?.columns ?? []).map(
+    (name, columnIndex) => ({
+      key: `${name}-${columnIndex}`,
+      header: name,
+      value: (row) => {
+        const cell = row.cells[columnIndex];
+        return typeof cell === "number" ? cell : cellToText(cell);
+      },
+      render: (row) => cellToText(row.cells[columnIndex]),
+    }),
+  );
+
   /** Shared by both bulk actions: swap in the server's rows, say what happened. */
   function applyBulkResult(nextEntries: JournalEntry[], message: string, clearSelection: () => void) {
     setEntries(nextEntries);
+    // The refresh re-runs `currentScope()`, which is the *selected saved filter*
+    // — so for an ad-hoc `appliedQuery` (which currentScope can't reconstruct,
+    // see its note) these rows came from the unfiltered fallback, not from the
+    // statement on display. Said so in the statement rather than hiding the
+    // button: the dialog is a debugging tool, and a query with a note attached
+    // is more use than no query at all. Picking a filter re-queries and
+    // replaces this wholesale.
+    if (showAppliedQuery) {
+      setSql((current) =>
+        current === undefined
+          ? current
+          : `${current}\n\n-- NOTE: a bulk action refreshed these rows, and the refresh could\n-- not reconstruct the ad-hoc filter above -- it re-read with NO filter.\n-- The rows on screen came from that unfiltered read, not from this.`,
+      );
+    }
     setNotice(message);
     setError(undefined);
     clearSelection();
@@ -907,6 +1037,10 @@ function EntriesTab({
           <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted">
             {isLoading ? (
               "Applying filter…"
+            ) : sqlResult ? (
+              // A re-run is showing: the entry count below would describe rows
+              // that are no longer on screen.
+              `${sqlResult.rows.length} row(s) returned by your query.`
             ) : (
               <>
                 <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark tabular-nums">
@@ -924,7 +1058,15 @@ function EntriesTab({
               </>
             )}
           </p>
+          {/* Only while a re-run is showing — the way back to the entries this
+              tab is actually for. */}
+          {sqlResult && (
+            <Button size="sm" variant="secondary" onClick={() => setSqlResult(undefined)}>
+              Back to entries
+            </Button>
+          )}
         </div>
+        {sqlError && <p className="mb-2 text-sm text-red-400">{sqlError}</p>}
         {/* What "substantial" means, on the one tab where the word is doing the
             narrowing. Outside the Filtering card deliberately: the card folds
             away, and this explains the rows rather than the filter — a reader
@@ -938,89 +1080,106 @@ function EntriesTab({
             entries are never listed here — a sealed body can&rsquo;t be measured.
           </p>
         )}
-        <DataGrid
-          // The Substantial tab swaps Place for Body Length; the other two keep
-          // the shared set untouched.
-          columns={isSubstantial ? SUBSTANTIAL_COLUMNS : COLUMNS}
-          rows={entries}
-          getRowKey={(entry) => entry.id}
-          emptyMessage={
-            selected || showAppliedQuery
-              ? `No ${nounPrefix}entries match this filter.`
-              : rowNoun === ""
-                ? "No entries yet."
-                : `No ${nounPrefix}entries.`
-          }
-          enableExport
-          exportFileName={rowNoun === "" ? "journal-entries" : `journal-${rowNoun}-entries`}
-          // One key for All Entries and Unlocked — same columns, same rows, so a
-          // width or order set on one should hold on the other. The Substantial
-          // tab gets its own: its column set differs (Place out, Body Length in),
-          // and a saved order/hidden list naming columns this tab doesn't have
-          // would restore a stale arrangement.
-          storageKey={
-            isSubstantial
-              ? "myhomebase:journal-substantial-entries-grid"
-              : "myhomebase:journal-entries-grid"
-          }
-          // No per-row record button on this tab: the row already opens on click
-          // and the modal's draw is the hidden columns, which this tab doesn't
-          // have. Left on elsewhere — removing it there is not what was asked.
-          enableRecordView={!isSubstantial}
-          onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
-          enableSelection
-          renderSelectionActions={(selectedRows, clearSelection) => (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
-              >
-                Bulk edit
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() =>
-                  setConfirmLock({ rows: selectedRows, clearSelection, isLocked: true })
-                }
-              >
-                Lock
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() =>
-                  setConfirmLock({ rows: selectedRows, clearSelection, isLocked: false })
-                }
-              >
-                Unlock
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() => {
-                  setEncryptError(undefined);
-                  setConfirmEncrypt({ rows: selectedRows, clearSelection });
-                }}
-              >
-                Encrypt
-              </Button>
-              <Button
-                size="sm"
-                variant="danger"
-                disabled={isBulkBusy}
-                onClick={() => setConfirmDelete({ rows: selectedRows, clearSelection })}
-              >
-                Delete
-              </Button>
-            </>
-          )}
-        />
+        {/* A re-run's result replaces the entries grid rather than sitting beside
+            it: its columns are whatever the edited query returned, so none of
+            this tab's row actions (open, bulk edit, lock) mean anything against
+            them. "Back to entries" above restores the grid. */}
+        {sqlResult ? (
+          <DataGrid
+            columns={resultColumns}
+            rows={sqlResult.rows.map((cells, index) => ({ index, cells }))}
+            getRowKey={(row) => row.index}
+            emptyMessage="The query returned no rows."
+            enableExport
+            exportFileName="journal-query-result"
+            {...sqlProps}
+          />
+        ) : (
+          <DataGrid
+            // The Substantial tab swaps Place for Body Length; the other two keep
+            // the shared set untouched.
+            columns={isSubstantial ? SUBSTANTIAL_COLUMNS : COLUMNS}
+            rows={entries}
+            getRowKey={(entry) => entry.id}
+            emptyMessage={
+              selected || showAppliedQuery
+                ? `No ${nounPrefix}entries match this filter.`
+                : rowNoun === ""
+                  ? "No entries yet."
+                  : `No ${nounPrefix}entries.`
+            }
+            enableExport
+            exportFileName={rowNoun === "" ? "journal-entries" : `journal-${rowNoun}-entries`}
+            // One key for All Entries and Unlocked — same columns, same rows, so a
+            // width or order set on one should hold on the other. The Substantial
+            // tab gets its own: its column set differs (Place out, Body Length in),
+            // and a saved order/hidden list naming columns this tab doesn't have
+            // would restore a stale arrangement.
+            storageKey={
+              isSubstantial
+                ? "myhomebase:journal-substantial-entries-grid"
+                : "myhomebase:journal-entries-grid"
+            }
+            // No per-row record button on this tab: the row already opens on click
+            // and the modal's draw is the hidden columns, which this tab doesn't
+            // have. Left on elsewhere — removing it there is not what was asked.
+            enableRecordView={!isSubstantial}
+            onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
+            enableSelection
+            renderSelectionActions={(selectedRows, clearSelection) => (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isBulkBusy}
+                  onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
+                >
+                  Bulk edit
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isBulkBusy}
+                  onClick={() =>
+                    setConfirmLock({ rows: selectedRows, clearSelection, isLocked: true })
+                  }
+                >
+                  Lock
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isBulkBusy}
+                  onClick={() =>
+                    setConfirmLock({ rows: selectedRows, clearSelection, isLocked: false })
+                  }
+                >
+                  Unlock
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isBulkBusy}
+                  onClick={() => {
+                    setEncryptError(undefined);
+                    setConfirmEncrypt({ rows: selectedRows, clearSelection });
+                  }}
+                >
+                  Encrypt
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  disabled={isBulkBusy}
+                  onClick={() => setConfirmDelete({ rows: selectedRows, clearSelection })}
+                >
+                  Delete
+                </Button>
+              </>
+            )}
+            {...sqlProps}
+          />
+        )}
       </section>
 
       {bulkEdit && (

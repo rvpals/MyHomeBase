@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (198 commits, 2026-07-12 to 2026-10-21) and `CHANGE_HISTORY.md`.
+project's git history (199 commits, 2026-07-12 to 2026-10-22) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -133,6 +133,11 @@ The largest module — fifteen sections.
 - **Entry authoring** with GPS and weather captured at write time, a template
   suggestion dated by the local calendar, and photographs attached to an entry.
 - **Pin** an entry; **lock** it; **encrypt** it.
+- **Clone an entry** into a new one from the entry screen, copying its title, place,
+  categories, tags and locations across, and leaving the date, time and writing to fill
+  in. For anything that recurs — a weekly swimming practice, a class — the next entry is
+  one button and a new date rather than re-picking the same metadata. Also available from
+  the terminal as `journal-clone`.
 - **Entry screen preferences** — the Content field can sit on a texture from the app
   library at a strength you tune, and its text can take a colour of your choosing (the
   theme's own ink by default). Configuration is split into Location, general and
@@ -142,10 +147,11 @@ The largest module — fifteen sections.
 
 ### Entries
 
-Tabs for **All Entries**, **Unlocked Entries**, **Substantial Entries** (body past ten
-words) and **Log**, with a **Filtering card** of saved filters that carry a category and
+Tabs for **Unlocked Entries**, **Substantial Entries** (body past ten words),
+**All Entries** and **Log**, with a **Filtering card** of saved filters that carry a category and
 a description. **Bulk tools** — Lock / Unlock / Encrypt, delete, merge — and a grid
-status bar.
+status bar. Administrators get **Show SQL** on each grid: the real statement behind the
+rows, which can be edited and re-run.
 
 ### Locations
 
@@ -155,7 +161,16 @@ status bar.
   duplicate detection.
 - Categories and tags that carry icons.
 
-### Views, Report and Review Data
+### Topics
+
+Pick a subject — a tag, a category or any word, fuzzy-matched so `HSA` finds `Health
+Savings Account` — and see the entries about it grouped into **episodes**, plus the tags
+and categories that travel with it. The section opens on a **force-directed map** of every
+subject, with a line between names that share entries. Preferences choose whether entry
+bodies are searched and how many quiet days start a new episode. Encrypted entries match
+on their tags only. Also available from the terminal as `journal-topics`.
+
+### Report and Review Data
 
 Counts by years and months, **Journal Reports**, a Log-only lens, and a review screen
 for existing entries.
@@ -236,7 +251,10 @@ against three bots), **Pac-Man** and **Bridge**.
 - **Culling** — rank a folder's photographs by sharpness, exposure and contrast, collapse
   near-duplicates to one keeper, and dim what was set aside. Available on Magic List,
   Albums, Favorite photos, the photo viewer and a journal entry's photo dialog, and from
-  the CLI. Read-only: nothing is ever deleted or moved.
+  the CLI. Read-only: nothing is ever deleted or moved. On the home screen's Random Photo
+  card the same button instead **measures the one photograph** — sharpness, brightness,
+  contrast, highlight and shadow clipping, dimensions — since a set of one has nothing to
+  rank against.
 - Keep or file a photo from a journal entry.
 
 ## Tools

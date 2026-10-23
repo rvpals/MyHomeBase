@@ -51,10 +51,12 @@ alongside its row here.
 | [`import-journal-ics`](#import-journal-ics) | write (read with `--dry-run`/`--review`) | no |
 | [`journal-bulk-edit`](#journal-bulk-edit) | write (read with `--dry-run`) | no |
 | [`journal-calendar`](#journal-calendar) | read | no |
+| [`journal-clone`](#journal-clone) | read (writes with `new`) | no |
 | [`journal-same-date`](#journal-same-date) | read (writes with `--delete`, `--lock`, or `--merge --save`) | no |
 | [`browse-sqlite`](#browse-sqlite) | read + write | no |
 | [`browse-csv`](#browse-csv) | read + write | no |
 | [`journal-taxonomy`](#journal-taxonomy) | read (writes with `--unused --delete`, or `--merge --apply`) | no |
+| [`journal-topics`](#journal-topics) | read | no |
 | [`journal-templates`](#journal-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
 | [`expense-top-spenders`](#expense-top-spenders) | read | no |
 | [`explain-rule`](#explain-rule) | read | no |
@@ -407,6 +409,42 @@ Source: [src/cli/journal-calendar.ts](src/cli/journal-calendar.ts)
 
 ---
 
+## `journal-clone`
+
+Start a new journal entry from an existing one — the terminal half of the entry viewer's
+Clone button. For a recurring event (a weekly swimming practice, a class) it writes the
+next instance without re-picking the same categories, tags and place.
+
+```sh
+npm run cli -- journal-clone show --id 42
+npm run cli -- journal-clone new --id 42 --date 2026-10-29
+npm run cli -- journal-clone new --id 42 --date 2026-10-29 --time 17:30 --title "AG3 meet"
+```
+
+`show` prints what would be copied and changes nothing; `new` writes the entry.
+
+**Copied:** title, place name, categories, tags and locations — the fields that say what
+kind of event this is and where it happens. **Not copied:** date, time, content, weather,
+and pinned/locked state. The rule itself is `cloneSeedFromEntry` in
+[src/lib/journal/clone.ts](src/lib/journal/clone.ts), which is also what the web button
+uses — if the two ever disagree about what a clone carries, the rule has leaked out of the
+library.
+
+`--date` is required on `new` and has no default **on purpose**: a clone exists to land on
+a different day, so defaulting to today would make the one field you must think about the
+one field you can forget. `--title` overrides the copied title for the common case where
+the clone differs by name as well as by day.
+
+An **encrypted** entry is refused rather than cloned: its title and content read as empty
+outside the entry screen, so a clone would silently lose its headline. Unlock it on the
+entry screen and clone it there.
+
+**Exit** — 0; 1 on a missing or non-positive `--id`, an id that names no entry, an
+encrypted source entry, a missing `--date` on `new`, or a date the entry schema rejects.
+Source: [src/cli/journal-clone.ts](src/cli/journal-clone.ts)
+
+---
+
 ## `journal-bulk-edit`
 
 The Journal → Entries screen's bulk actions from the terminal: the same selection edit and
@@ -470,6 +508,51 @@ Dry run — nothing written. 1 would change, 1 locked and skipped.
 Date, time and title are deliberately **not** editable here or in the web dialog: they
 identify an entry, and setting one across a selection would collapse rows the importer's
 duplicate check treats as distinct.
+
+## `journal-topics`
+
+The Journal → Topics screen from the terminal: give it a term and it prints the entries
+about it, grouped into episodes, plus the tags and categories that travel with them.
+
+**Read-only.** A topic is not a stored row — the term *is* the lookup — so there is
+nothing here to save or delete.
+
+The two flags override the stored journal preferences for one run, which is the reason
+they exist: the web screen reads whatever is saved, and a terminal is the right place to
+ask "what would I see with body matching on?" without changing a setting for everyone.
+
+Encrypted entries can match on their tags (those are plaintext) and are counted in the
+output, but their title and body are never read and they print as `(encrypted)`.
+
+```
+npm run cli -- journal-topics list
+npm run cli -- journal-topics map
+npm run cli -- journal-topics map --min-entries 3 --min-shared 3
+npm run cli -- journal-topics show --term HSA
+npm run cli -- journal-topics show --term HSA --entries
+npm run cli -- journal-topics show --term HSA --match-body
+npm run cli -- journal-topics show --term HSA --gap-days 30
+```
+
+**Input**
+
+| Flag | Type | Required | Notes |
+|---|---|---|---|
+| `--term` | string | yes (for `show`) | the subject to look up; fuzzy-matched, so `HSA` finds `H.S.A.` and `Health Savings Account` |
+| `--entries` | switch | no | print the flat matched list instead of episodes and related names |
+| `--match-body` | switch | no | also search entry bodies, overriding `topic_match_body` for this run |
+| `--gap-days` | integer 1–365 | no | days before a new episode starts, overriding `topic_episode_gap_days` |
+| `--min-entries` | integer ≥ 1 | no | `map` only: drop names on fewer entries than this. Default 2 |
+| `--min-shared` | integer ≥ 1 | no | `map` only: draw no pairing seen on fewer entries than this. Default 2 |
+
+**Output** — `list` prints every tag and category with its entry count, biggest first.
+`map` prints the subjects and then every pairing, densest first — the terminal form of
+the graph the Topics screen opens on, and the way to check the edges without drawing
+them. `show` prints a summary line, then the episodes with their entries, then what the
+topic travels with. When body matching is off and would have found more, it says how
+many.
+
+---
 
 ## `journal-same-date`
 

@@ -21,9 +21,12 @@ export type {
   TodayInHistoryEntry,
   JournalEntryRef,
   JournalEntryNeighbors,
+  JournalEntryCloneSeed,
+  JournalEntryCloneLocation,
   JournalPreferences,
   JournalDefaultLocation,
   JournalTemperatureUnit,
+  JournalContentSize,
   JournalHandwritingSize,
   JournalPrefillField,
   JournalPrefillMode,
@@ -56,6 +59,10 @@ export {
   resolveJournalContentTextureOpacity,
   journalPreferencesToEntries,
   handwritingSizeClass,
+  contentFontFamily,
+  contentSizeClass,
+  nextContentSizeUp,
+  CONTENT_SIZE_OPTIONS,
   DEFAULT_JOURNAL_CONTENT_TEXTURE_OPACITY,
   HANDWRITING_SIZE_OPTIONS,
   JOURNAL_SETTING_KEYS,
@@ -185,6 +192,7 @@ export {
   listEntriesInDateRange,
   searchEntries,
   findEntries,
+  entriesSql,
   listFilters,
   listFilterCategories,
   getFilter,
@@ -247,6 +255,9 @@ export {
   isSubstantialBody,
   type JournalBodyScope,
 } from "./body-length";
+// The Entries grid's "Show SQL": the statement findEntries runs, rendered for a
+// reader. Display only — see entries-sql.ts.
+export { buildEntriesSql, describeEntriesSql, inlineSqlParams } from "./entries-sql";
 // Which managed categories/tags no entry uses — the Meta Data section's
 // "Clean up" button and the breakdown its bulk Delete confirms with.
 export {
@@ -289,6 +300,10 @@ export {
   setPrefillTemplateEnabled,
   listPrefillSuggestions,
 } from "./prefill";
+// Cloning: a clone is taken from one entry you are looking at, a prefill
+// template from a saved list. Neighbours here because they are the two ways a
+// new entry starts out non-blank — see clone.ts on why they stay separate.
+export { cloneSeedFromEntry } from "./clone";
 export {
   importJournalCsv,
   planJournalImport,

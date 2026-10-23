@@ -97,7 +97,7 @@ group becomes a label between rows rather than a second accordion.
 | Entries | `entries` | — | `/modules/journal/entries` | Browse and manage all journal entries, written and logged. |
 | Calendar | `calendar` | — | `/modules/journal/calendar` | See your journal entries on a calendar. |
 | Saved Locations | `saved-locations` | — | `/modules/journal/saved-locations` | Your saved places, and the entries written at each one. |
-| Views | `views` | — | `/modules/journal/views` | Custom views of your journal data. |
+| Topics | `topics` | — | `/modules/journal/topics` | Pick a subject and see the entries about it, and how they connect. |
 | Report | `report` | — | `/modules/journal/report` | Summaries and reports from your journal. |
 | CSV Import | `import` | Data Management | `/modules/journal/import` | Import a CSV file, reset the journal, and bulk-correct entries. |
 | Calendar Import | `calendar-import` | Data Management | `/modules/journal/calendar-import` | Import events from a Google Calendar .ics export. |
