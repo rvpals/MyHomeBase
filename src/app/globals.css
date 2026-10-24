@@ -4640,3 +4640,109 @@ html[data-shell="tree"][data-viewport="compact"] .nav-progress-track {
     opacity: 0.6;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Clip content (migration 0155)
+
+   The stored markup of a clip, rendered both in the editor and in the viewer by
+   `RichTextEditor`. These rules exist because the sanitizer DROPS every inline
+   `style` a pasted email carries: without them a pasted table renders as
+   unstyled rows with no borders, and a list loses its markers entirely.
+
+   Scoped to `.clip-content` rather than set globally — this is the one place in
+   the app where markup arrives from outside and has to be made to look like it
+   belongs. Theme tokens only, so a pasted email follows the reader's theme
+   rather than the sender's.
+   --------------------------------------------------------------------------- */
+.clip-content > * + * {
+  margin-top: 0.75em;
+}
+
+.clip-content h1,
+.clip-content h2,
+.clip-content h3,
+.clip-content h4 {
+  font-family: var(--font-display), serif;
+  color: var(--ink);
+  line-height: 1.25;
+}
+
+.clip-content h1 { font-size: 1.5rem; }
+.clip-content h2 { font-size: 1.25rem; }
+.clip-content h3 { font-size: 1.125rem; }
+.clip-content h4 { font-size: 1rem; }
+
+.clip-content ul,
+.clip-content ol {
+  padding-left: 1.5rem;
+}
+
+.clip-content ul { list-style: disc; }
+.clip-content ol { list-style: decimal; }
+.clip-content li { margin-top: 0.25em; }
+
+.clip-content a {
+  color: var(--brass-dark);
+  text-decoration: underline;
+}
+
+.clip-content blockquote {
+  border-left: 3px solid var(--line);
+  padding-left: 0.75rem;
+  color: var(--muted);
+}
+
+.clip-content pre {
+  overflow-x: auto;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  background: var(--paper);
+  font-size: 0.8125rem;
+}
+
+.clip-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875em;
+}
+
+/* A pasted table is the main thing worth keeping, and also the main thing that
+   breaks a phone layout: an email's table is often laid out for a 700px desktop
+   column. `display: block` + `overflow-x: auto` on the wrapper lets it scroll
+   inside itself rather than forcing the whole page wide, which is the rule
+   design.md sets for any wide content. */
+.clip-content table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.clip-content th,
+.clip-content td {
+  border: 1px solid var(--line);
+  padding: 0.375rem 0.625rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.clip-content th {
+  background: var(--paper);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Never wider than its column, and never stretched: a pasted image carries its
+   own width/height attributes, and `height: auto` stops those distorting it
+   once the width is capped. */
+.clip-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+}
+
+.clip-content hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+}

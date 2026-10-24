@@ -56,6 +56,12 @@ import {
   householdSectionHref,
 } from "./modules/[slug]/household-sections";
 import {
+  CLIPS_SECTIONS,
+  CLIPS_SECTION_ICONS,
+  CLIPS_SECTION_INFO,
+  clipsSectionHref,
+} from "./modules/[slug]/clips-sections";
+import {
   JOURNAL_CONFIGURATION_SECTIONS,
   JOURNAL_DATA_MANAGEMENT_SECTIONS,
   JOURNAL_SECTIONS,
@@ -188,6 +194,10 @@ const SECTION_BUILDERS: Record<string, () => TreeSection[]> = {
       householdSectionHref,
       HOUSEHOLD_GROUP_LABELS,
     ),
+  // Flat: four sections, under the ~6 threshold where nesting starts to earn its
+  // keep, so there are no group labels to flatten.
+  clips: () =>
+    toSections(CLIPS_SECTIONS, CLIPS_SECTION_INFO, CLIPS_SECTION_ICONS, clipsSectionHref),
 };
 
 /**

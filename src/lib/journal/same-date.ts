@@ -24,7 +24,7 @@
 
 import { z } from "zod";
 import { excerptWords } from "./duplicates";
-import { displayEntryTitle } from "./encryption";
+import { displayTitle } from "@/lib/shared/encryption";
 import { isLogEntry } from "./journal";
 import type { JournalRepository } from "./ports";
 import type { JournalEntry } from "./types";
@@ -171,7 +171,7 @@ export function findSameDateGroups(
         id: entry.id,
         date: entry.date,
         time: entry.time,
-        title: displayEntryTitle(entry.title, entry.isEncrypted),
+        title: displayTitle(entry.title, entry.isEncrypted),
         // No excerpt for an encrypted entry: its content column is blank, so
         // this would be an empty string presented as "the first 100 words".
         excerpt: entry.isEncrypted ? "" : excerptWords(entry.content, SAME_DATE_EXCERPT_WORDS),

@@ -163,6 +163,9 @@ describe("sectionSlotId", () => {
       // The two `-group` ids are the tree's group headings (Recipes, HSA Tracker),
       // which `SectionPanel` derives a slot for exactly as it does for a real row.
       household: ["main", "recipes", "recipes-import", "hsa", "configuration", "recipes-group", "hsa-group"],
+      // `clips_linked_badge` is deliberately absent: it is not a section, so
+      // `sectionSlotId` does not derive it. It is asserted on its own below.
+      clips: ["main", "all", "metadata", "configuration"],
       admin: [
         "configuration", "configuration-modules", "configuration-application",
         // Under the Display Settings group, but the ids stayed `configuration-*` so
@@ -185,6 +188,14 @@ describe("sectionSlotId", () => {
         expect(getIconSlot(id), `${namespace}/${slug} -> ${id}`).toBeDefined();
       }
     }
+  });
+
+  it("registers the Clips attachment badge, which is not a section", () => {
+    // Named rather than derived: the badge renders on a *journal* entry, so no
+    // section slug produces it and the loop above cannot cover it. Asserted here so
+    // the id stays as load-bearing as the section ones — it is persisted in any
+    // uploaded override exactly the same way.
+    expect(getIconSlot("clips_linked_badge")).toBeDefined();
   });
 });
 

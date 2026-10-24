@@ -74,6 +74,10 @@ import {
   deleteJournalEntriesAction,
   type BulkRefreshScope,
 } from "./journal-bulk-actions";
+// Clips on a journal screen. The dialog lives in the Clips file group because
+// Clips owns the concept — the Journal only has to know how to open it, and
+// `src/lib/journal` still knows nothing about clips.
+import { EntryClipsDialog } from "./clips-entry-clips-dialog";
 import { JournalEntriesBulkEdit } from "./journal-entries-bulk-edit";
 import { JournalEntriesBulkOverwrite } from "./journal-entries-bulk-overwrite";
 import { JournalFilterBuilder } from "./journal-filter-builder";
@@ -87,6 +91,57 @@ const FILTERS_SLOT = getIconSlot("journal_card_entry_filters")!;
 const LOG_SLOT = getIconSlot("journal_section_log")!;
 // Migration 0131. The lock badge on an encrypted row's Title cell.
 const ENCRYPTED_SLOT = getIconSlot("journal_entry_encrypted")!;
+// Migration 0155. The paperclip on a row whose entry has clips attached. Owned by
+// the Clips module's slot group, because it marks a clip wherever it appears.
+const CLIP_SLOT = getIconSlot("clips_linked_badge")!;
+
+/**
+ * The shared columns, with a paperclip appended to the Title cell of any entry
+ * carrying clips.
+ *
+ * A wrapper rather than a column in `COLUMNS` because the counts arrive as a prop
+ * and the arrays are module-scope constants. Only the Title column is replaced, so
+ * the two sets cannot drift — a new column added below is picked up here for free.
+ */
+function withClipBadge(
+  columns: DataGridColumn<JournalEntry>[],
+  clipCounts: Record<number, number>,
+  onOpenClips: (entryId: number) => void,
+): DataGridColumn<JournalEntry>[] {
+  return columns.map((column) =>
+    column.key === "title"
+      ? {
+          ...column,
+          render: (entry: JournalEntry) => {
+            const count = clipCounts[entry.id] ?? 0;
+            return (
+              <span className="inline-flex items-center gap-1.5">
+                {column.render?.(entry)}
+                {count > 0 && (
+                  <button
+                    type="button"
+                    // `stopPropagation` because the row has its own click (it opens
+                    // the entry): without it the paperclip would open the entry
+                    // behind the dialog it just raised.
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenClips(entry.id);
+                    }}
+                    className="inline-flex items-center gap-0.5 text-muted hover:text-ink"
+                    title={`${count} clip${count === 1 ? "" : "s"} attached — open`}
+                    aria-label={`Open the ${count} clip${count === 1 ? "" : "s"} on this entry`}
+                  >
+                    <SlotIcon slot={CLIP_SLOT} className="h-3.5 w-3.5" />
+                    {count > 1 && <span className="text-xs">{count}</span>}
+                  </button>
+                )}
+              </span>
+            );
+          },
+        }
+      : column,
+  );
+}
 
 const COLUMNS: DataGridColumn<JournalEntry>[] = [
   { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
@@ -212,6 +267,7 @@ export function JournalEntriesView({
   logEntries,
   categoryIcons,
   tagIcons,
+  clipCounts = {},
 }: JournalEntriesViewProps) {
   return (
     <div className="flex flex-col gap-6">
@@ -261,6 +317,7 @@ export function JournalEntriesView({
                 key="unlocked"
                 lockScope="unlocked"
                 bodyScope="all"
+                clipCounts={clipCounts}
                 initialEntries={initialUnlockedEntries}
                 initialSql={initialUnlockedSql}
                 canRunSql={canRunSql}
@@ -286,6 +343,7 @@ export function JournalEntriesView({
                 key="substantial"
                 lockScope="all"
                 bodyScope="substantial"
+                clipCounts={clipCounts}
                 initialEntries={initialSubstantialEntries}
                 initialSql={initialSubstantialSql}
                 canRunSql={canRunSql}
@@ -311,6 +369,7 @@ export function JournalEntriesView({
                 key="all"
                 lockScope="all"
                 bodyScope="all"
+                clipCounts={clipCounts}
                 initialEntries={initialEntries}
                 initialSql={initialSql}
                 canRunSql={canRunSql}
@@ -428,6 +487,16 @@ export interface JournalEntriesViewProps {
   /** Category/tag name → icon URL, for the Log tab's viewer modal. */
   categoryIcons: Record<string, string>;
   tagIcons: Record<string, string>;
+  /**
+   * Entry id → how many clips are attached to it (migration 0155), for the
+   * paperclip on the Title cell. An id with none is absent rather than zero, so a
+   * reader of this map tests with `?? 0`.
+   *
+   * Optional, and defaulted to `{}`: this view is embedded in several places, and
+   * one that has not been taught to count clips should render without them rather
+   * than fail to compile.
+   */
+  clipCounts?: Record<number, number>;
 }
 
 /**
@@ -450,6 +519,7 @@ export interface JournalEntriesViewProps {
 function EntriesTab({
   lockScope,
   bodyScope,
+  clipCounts,
   initialEntries,
   initialSql,
   canRunSql = false,
@@ -477,6 +547,11 @@ function EntriesTab({
   lockScope: JournalLockScope;
   /** `"substantial"` for the Substantial Entries tab, `"all"` for the others. */
   bodyScope: JournalBodyScope;
+  /**
+   * Clips attached per entry id, for the Title cell's paperclip. Absent ids have
+   * none — the count query omits them rather than returning zeros.
+   */
+  clipCounts: Record<number, number>;
 }) {
   const router = useRouter();
   const [filters, setFilters] = useState(initialFilters);
@@ -512,6 +587,9 @@ function EntriesTab({
   const [error, setError] = useState<string | undefined>(queryError);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [editing, setEditing] = useState<SavedJournalFilter | undefined>(undefined);
+  // Which entry's clips the paperclip opened, or undefined when none. Migration
+  // 0155 — the dialog lists them and opens the one the reader picks.
+  const [clipsForEntry, setClipsForEntry] = useState<number | undefined>(undefined);
   // Dropped as soon as the reader picks something else — the caller's query
   // describes the rows they were handed, not whatever is on screen now.
   const [showAppliedQuery, setShowAppliedQuery] = useState(Boolean(appliedQuery));
@@ -1105,8 +1183,13 @@ function EntriesTab({
         ) : (
           <DataGrid
             // The Substantial tab swaps Place for Body Length; the other two keep
-            // the shared set untouched.
-            columns={isSubstantial ? SUBSTANTIAL_COLUMNS : COLUMNS}
+            // the shared set untouched. Both get the clip badge on their Title
+            // column, which is what `withClipBadge` adds.
+            columns={withClipBadge(
+              isSubstantial ? SUBSTANTIAL_COLUMNS : COLUMNS,
+              clipCounts,
+              setClipsForEntry,
+            )}
             rows={entries}
             getRowKey={(entry) => entry.id}
             emptyMessage={
@@ -1342,6 +1425,15 @@ function EntriesTab({
             setEditing(undefined);
           }}
           onSave={handleSave}
+        />
+      )}
+
+      {/* Migration 0155. Raised by the paperclip on a Title cell: lists that
+          entry's clips, or opens the clip directly when there is only one. */}
+      {clipsForEntry !== undefined && (
+        <EntryClipsDialog
+          entryId={clipsForEntry}
+          onClose={() => setClipsForEntry(undefined)}
         />
       )}
     </div>

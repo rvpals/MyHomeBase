@@ -35,6 +35,9 @@ import {
   withLogCondition,
   type JournalFilter,
 } from "@/lib/journal";
+// Clips is read here, in the presentation layer, so `src/lib/journal` never has to
+// import `src/lib/clips`. See the note at the `clipCounts` read below.
+import { countClipsForTargets } from "@/lib/clips";
 import { deps } from "@/lib/wiring";
 // The bulk-edit dialog's "From your saved places" tab filters by these. They are
 // the *place* taxonomy from the application-wide library, unrelated to the entry
@@ -185,6 +188,22 @@ export function JournalEntriesPanel({
   const categories = listCategories(deps.journalRepo);
   const tags = listTags(deps.journalRepo);
 
+  // How many clips are attached to each entry on screen, for the paperclip badge.
+  //
+  // Composed HERE, in the presentation layer, and deliberately not in
+  // `src/lib/journal`: Clips knows about the Journal, and the Journal must not know
+  // about Clips, or the two library modules would import each other — the cycle
+  // ARCHITECTURE.md forbids. A server component may read both, which is what makes
+  // this the right seam.
+  //
+  // One query for the whole page, not one per row: `countClipsForTargets` groups in
+  // SQL, and ids with no clips are simply absent from the map.
+  const clipCounts = countClipsForTargets(
+    deps.clipsRepo,
+    "journal",
+    [...new Set([...entries, ...unlockedEntries, ...substantialEntries].map((entry) => entry.id))],
+  );
+
   return (
     <JournalEntriesView
       initialEntries={entries}
@@ -210,6 +229,9 @@ export function JournalEntriesPanel({
       logEntries={listLogEntries(deps.journalRepo, ENTRIES_LIMIT)}
       categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
       tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
+      // A plain object rather than the Map: a client component's props have to be
+      // serialisable across the server/client boundary, and a Map is not.
+      clipCounts={Object.fromEntries(clipCounts)}
     />
   );
 }

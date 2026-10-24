@@ -34,6 +34,8 @@ import {
   SqliteNoteCategoryRepository,
   SqliteScratchpadRepository,
 } from "@/lib/scratchpad";
+import { SqliteClipsRepository } from "./clips/repository";
+import { SharpClipImageProcessor } from "./clips/image-processor";
 import { SqliteGamesRepository } from "./games/repository";
 import { SqliteHouseholdRepository } from "./household/repository";
 import { SqliteHsaRepository } from "./household/hsa-repository";
@@ -269,6 +271,13 @@ export const deps = {
   // repository for the games themselves — the catalogue is code, in
   // src/lib/games/catalogue.ts.
   gamesRepo: new SqliteGamesRepository(db),
+  // The Clips module (migrations/0155): rich-text notes, their taxonomy, their
+  // pasted images and their links into other modules.
+  clipsRepo: new SqliteClipsRepository(db),
+  // Resizes a pasted image before it is stored. Behind a port and lazily loading
+  // `sharp`, for the reason the carousel and icon processors both record: this file
+  // loads on every page, so a top-level native import would run on every render.
+  clipImageProcessor: new SharpClipImageProcessor(),
   // The Household module's recipe box (migrations/0118).
   householdRepo: new SqliteHouseholdRepository(db),
   // The Household module's HSA Tracker (migrations/0128). Its own repository: the

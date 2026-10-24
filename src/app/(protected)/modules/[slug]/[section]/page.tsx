@@ -23,6 +23,8 @@ import { StockSection } from "../stock-section";
 import { isStockSection } from "../stock-sections";
 import { ToolsSection } from "../tools-section";
 import { isToolsSection } from "../tools-sections";
+import { ClipsSection } from "../clips-section";
+import { isClipsSection } from "../clips-sections";
 import { HouseholdSection } from "../household-section";
 import { isHouseholdSection } from "../household-sections";
 
@@ -42,6 +44,7 @@ const PICTURE_GALLERY_MODULE_SLUG = "picture-gallery";
 const INVESTMENTS_MODULE_SLUG = "investments";
 const TOOLS_MODULE_SLUG = "tools";
 const HOUSEHOLD_MODULE_SLUG = "household";
+const CLIPS_MODULE_SLUG = "clips";
 
 /**
  * A module's sub-section, e.g. /modules/expense/transactions or
@@ -149,6 +152,21 @@ function renderSection(
       <HouseholdSection
         section={section}
         isAdmin={isAdmin}
+        search={recipeSearch}
+        category={recipeCategory}
+        tag={recipeTag}
+      />
+    );
+  }
+  // Reuses the `search`/`category`/`tag` params the Household branch above reads:
+  // both modules filter a list by the same three things, and a second set of names
+  // for the same idea would only make a URL harder to read. Clips parses them with
+  // its own `clipFilterSchema`, so a stale value narrows the list to nothing rather
+  // than 404ing.
+  if (slug === CLIPS_MODULE_SLUG && isClipsSection(section)) {
+    return (
+      <ClipsSection
+        section={section}
         search={recipeSearch}
         category={recipeCategory}
         tag={recipeTag}

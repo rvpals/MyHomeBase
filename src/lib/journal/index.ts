@@ -459,15 +459,22 @@ export type {
 // action can tell "that password is wrong" from a genuine failure and show the
 // reader the right message; the encrypt/decrypt primitives are exported for the
 // CLI, which drives the same use-cases as the web app.
+//
+// The implementation now lives in `@/lib/shared/encryption` — it was promoted out
+// of this module when Clips needed the same sealing, and the move dropped the
+// "entry" vocabulary from three of the names. They are re-exported here under
+// their original names because ~8 journal screens import them from this barrel,
+// and renaming across those files would be churn with no reader-visible payoff.
+// New callers outside the Journal should import from `@/lib/shared/encryption`.
 export {
   ENCRYPTED_TITLE_PLACEHOLDER,
   MalformedCipherTextError,
   WrongPasswordError,
-  decryptEntryText,
-  displayEntryTitle,
-  encryptEntryText,
+  decryptText as decryptEntryText,
+  displayTitle as displayEntryTitle,
+  encryptText as encryptEntryText,
   isEncryptedBlob,
-} from "./encryption";
+} from "@/lib/shared/encryption";
 
 // The Journal home screen's per-reader card layout (Configuration -> Home screen layout).
 export {

@@ -12,7 +12,7 @@
 // Date from it would shift the day for anyone west of UTC and put an entry in
 // the wrong cell. `Date.UTC` in, `toISOString().slice(0, 10)` out.
 
-import { ENCRYPTED_TITLE_PLACEHOLDER } from "./encryption";
+import { ENCRYPTED_TITLE_PLACEHOLDER } from "@/lib/shared/encryption";
 
 /** Which of the three grids the screen is showing. */
 export type JournalCalendarScope = "month" | "week" | "year";

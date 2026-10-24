@@ -61,6 +61,7 @@ import { hsaCommand } from "./hsa";
 import { recipesCommand } from "./recipes";
 import { examsCommand } from "./exams";
 import { takeAttendanceCommand } from "./take-attendance";
+import { clipsCommand } from "./clips";
 import { todoCommand } from "./todo";
 import { taxLotsCommand } from "./tax-lots";
 import { simulateTickerCommand } from "./simulate-ticker";
@@ -123,6 +124,7 @@ const commands: Record<string, Command> = {
   scratchpad: scratchpadCommand,
   recipes: recipesCommand,
   hsa: hsaCommand,
+  clips: clipsCommand,
   todo: todoCommand,
   "take-attendance": takeAttendanceCommand,
   exams: examsCommand,

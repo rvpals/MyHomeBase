@@ -100,6 +100,7 @@ alongside its row here.
 | [`recipes`](#recipes) | read (writes with `--add`/`--made`/`--delete`) | no |
 | [`hsa`](#hsa) | read (writes with `--add`/`--reimburse`/`--delete`/the card flags) | no |
 | [`todo`](#todo) | read (writes with `--add`/`--done`/`--delete`/the list flags) | no |
+| [`clips`](#clips) | read (writes with `add`/`link`/`delete`) | no |
 | [`menu-items`](#menu-items) | read (writes with `set`/`reset`) | no |
 | [`toolbars`](#toolbars) | read (writes with `add`/`set`/`delete`/the item flags) | no |
 
@@ -1285,6 +1286,47 @@ one question per line.
 
 **Exit code** — 1 for an unknown class, a non-numeric `--exam`, or an exam id that
 does not exist.
+
+## `clips`
+
+Reads and writes the Clips module from the terminal — the same use-cases the web
+app calls, through the same `index.ts` and the same `deps`.
+
+```
+npm run cli -- clips list
+npm run cli -- clips list --tag flight --category Travel
+npm run cli -- clips list --search JFK
+npm run cli -- clips show --id 3
+npm run cli -- clips show --id 3 --password "correct horse"
+npm run cli -- clips add --title "Flight confirmation" --content "<p>BA117</p>" --tags "flight,travel"
+npm run cli -- clips link --id 3 --entry 42
+npm run cli -- clips delete --id 3
+```
+
+**Input** — `list` takes `--search`, `--category` and `--tag` (each optional;
+category and tag are comma-separated and AND together). `show --id <n>` needs
+`--password` when the clip is sealed. `add` takes `--title`, `--content` (HTML),
+`--categories` and `--tags`. `link --id <n> --entry <n>` attaches a clip to a
+journal entry. `delete --id <n>` is irreversible — there is no recycle bin here.
+
+`--content` is **sanitized exactly as a browser paste is**, by the same
+`sanitizeClipHtml` the use-case runs. That is the point of routing both through
+the library rather than the view.
+
+Images are deliberately unreachable here: pasting one is a browser gesture, and a
+flag taking a base64 blob on argv would be unusable.
+
+**Calls** — `listClips`, `getClip`, `openClip`, `createClip`, `linkClip`,
+`deleteClip`, `clipHtmlToText` on `deps.clipsRepo`.
+
+**Output** — `list` prints one line per clip (id, title, and bracketed marks for
+`locked`, image and link counts), with the excerpt and taxonomy indented beneath.
+`show` prints the title, taxonomy, then the body **as plain text** — a terminal
+cannot render the markup, and raw tags would bury the useful part. `add` reports
+the new id and any formatting the sanitizer removed.
+**Exit** — 0; 1 on an unknown subcommand or a missing required flag. A wrong
+password throws `WrongPasswordError`, the same failure the web app shows.
+Source: [src/cli/clips.ts](src/cli/clips.ts)
 
 ## `take-attendance`
 

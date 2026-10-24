@@ -1123,6 +1123,66 @@ export const ICON_SLOTS: IconSlot[] = [
   },
 
   /* ---------------------------------------------------------------------------------
+     Clips — the module's four sections, plus the badge the Journal draws.
+
+     The badge is the only slot here that does NOT live in this module's own nav: it
+     renders on a journal entry to say "there is a clip attached". It is registered
+     under Clips rather than Journal because Clips owns the concept — the Journal
+     screen only draws what the presentation layer composed for it, and a reader
+     replacing the glyph is replacing the *clip* mark, wherever it appears.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "clips_section_main",
+    label: "Clips home",
+    group: "Clips sections",
+    where: "Clips → section panel → Home screen.",
+    defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "clips_section_all",
+    label: "All Clips",
+    group: "Clips sections",
+    where: "Clips → section panel → All Clips.",
+    // `note` (a page of text) rather than `clip`: this row is the list of written
+    // things, and `clip` is spent on the attachment badge below, where the mark has
+    // to read as "something is attached here" rather than "notes live here".
+    defaultConcept: "note",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "clips_section_metadata",
+    label: "Categories & Tags",
+    group: "Clips sections",
+    where: "Clips → section panel → Categories & Tags.",
+    defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "clips_section_configuration",
+    label: "Configuration",
+    group: "Clips sections",
+    where: "Clips → section panel → Configuration.",
+    defaultConcept: "gear",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "clips_linked_badge",
+    label: "Linked clip",
+    group: "Clips sections",
+    where: "Journal → an entry carrying one or more attached clips — the badge that opens the clip viewer.",
+    // `clip` itself, the one place the paperclip reads exactly right: it marks an
+    // attachment on someone else's record rather than naming a destination.
+    defaultConcept: "clip",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* ---------------------------------------------------------------------------------
      Games — the six Arcade cards.
 
      Ids are derived from the catalogue key by `gameSlotId`, not named per call site:

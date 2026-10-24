@@ -18,7 +18,8 @@ import type { ModuleSeed } from "./types";
 // migrations/0098_seed_tools_module.sql, and
 // migrations/0119_seed_household_module.sql, and
 // migrations/0143_rename_attendance_to_classroom.sql (which renamed the Attendance
-// module to Classroom, folding Attendance into it as a section group).
+// module to Classroom, folding Attendance into it as a section group), and
+// migrations/0156_seed_clips_module.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: ModuleSeed[] = [
   {
@@ -114,5 +115,18 @@ export const DEFAULT_MODULES: ModuleSeed[] = [
     sequence: 11,
     isVisible: true,
     icon: "household",
+  },
+  {
+    // `folder` rather than a `clip` glyph: adding a name to MODULE_ICON_NAMES means
+    // drawing it in all twelve generated icon sets, which is its own job with its own
+    // migration — the same way Music Library and Picture Gallery each borrowed a glyph
+    // until 0055 and 0085 gave them real ones. See migrations/0156_seed_clips_module.md.
+    slug: "clips",
+    shortName: "Clips",
+    longName: "Clips",
+    description: "Rich-text notes with tags and pasted images, linkable to a journal entry.",
+    sequence: 12,
+    isVisible: true,
+    icon: "folder",
   },
 ];

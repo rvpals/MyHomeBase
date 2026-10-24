@@ -97,6 +97,7 @@ pattern instead of inventing one.
 | [`IconSelect`](#iconselect) | A dropdown whose options carry an image | [src/components/icon-select.tsx](src/components/icon-select.tsx) | yes |
 | [`ShortcutPicker`](#shortcutpicker) | **Pick a destination** — a web address, or any module/page in the app — plus its name and glyph | [src/components/shortcut-picker.tsx](src/components/shortcut-picker.tsx) | yes |
 | [`TokenPicker`](#tokenpicker) | **Several names on one record** — removable chips + a combobox that filters and creates | [src/components/token-picker.tsx](src/components/token-picker.tsx) | yes |
+| [`RichTextEditor`](#richtexteditor) | **Formatted text a reader writes or pastes** — toolbar, `contentEditable` body, and a paste handler that keeps tables and extracts images | [src/components/rich-text-editor.tsx](src/components/rich-text-editor.tsx) | yes |
 | [`ColorField`](#colorfield) | **One color** — a swatch that opens the OS picker + the hex typed out | [src/components/color-field.tsx](src/components/color-field.tsx) | yes |
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
@@ -3128,6 +3129,50 @@ the URL rules live in the zod schema the action calls, and this only guards agai
 submitting an obviously incomplete form.
 
 ---
+
+## RichTextEditor
+
+Formatted text a reader writes or pastes: a small toolbar over a `contentEditable`
+body, plus the paste handler that is the real reason it exists. **Reach for it when
+a field holds formatting the reader did not type** — an email pasted in with its
+headings, lists and tables intact.
+
+Built on `contentEditable` with no editor dependency, which fixes one real limit:
+it **preserves** tables but cannot **edit** them. A pasted table renders and its
+cell text can be changed; rows and columns cannot be added, removed or merged, and
+there is no way to build a table from nothing. That was the deciding trade — for
+archival content (the Clips module's case) the table arrives already made. If a
+caller needs to author tables, replace this with TipTap rather than growing it; the
+props are shaped so that swap does not touch any call site.
+
+**It sanitizes nothing itself.** `onSanitize` hands pasted HTML to the caller and
+inserts whatever comes back, and with no handler a paste degrades to plain text —
+never raw markup. That is deliberate: the sanitizer belongs in `lib` so the same
+pass runs for the CLI and the browser, and the server runs it again on save
+regardless. `src/lib/clips/sanitize-html.ts` is the one to pass.
+
+Images work the same way: `onPasteImages` hands the caller the pasted files and
+inserts `<img>` tags pointing at the URLs it returns. Returning fewer URLs than
+files is fine — a refused image is simply not inserted. Bytes never travel inside
+the stored HTML.
+
+- **Source:** [src/components/rich-text-editor.tsx](src/components/rich-text-editor.tsx)
+- **Import:** `import { RichTextEditor } from "@/components/rich-text-editor";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `value` | `string` | The HTML. Written into the DOM only when it differs from what is there, so typing never resets the caret. |
+| `onChange` | `(html: string) => void` | Raised on input, blur and paste. |
+| `onPasteImages?` | `(files: File[]) => Promise<string[]>` | Store the files, return each one's URL in order. Without it, pasted image files are dropped. |
+| `onSanitize?` | `(html: string) => string` | Clean a pasted fragment. Without it, HTML pastes land as plain text. |
+| `placeholder?` | `string` | Shown while the body is empty of text, images and tables. |
+| `readOnly?` | `boolean` | Renders the markup with no toolbar — what a viewer uses. |
+| `className?` | `string` | Merged last. |
+
+**Narrow:** the toolbar wraps to a second row rather than scrolling sideways, and
+the body's minimum height drops. A toolbar you have to scroll to reach "bold" in is
+not a toolbar.
 
 ## TokenPicker
 

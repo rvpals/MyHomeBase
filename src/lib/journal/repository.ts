@@ -15,7 +15,7 @@ import {
   journalTagSchema,
 } from "./schema";
 import type { DecodedImage } from "@/lib/shared/image-upload";
-import { displayEntryTitle } from "./encryption";
+import { displayTitle } from "@/lib/shared/encryption";
 import type { JournalBodyScope } from "./body-length";
 import { buildEntriesSql, describeEntriesSql } from "./entries-sql";
 import { LOG_CATEGORY_NAME } from "./journal";
@@ -566,7 +566,7 @@ export class SqliteJournalRepository implements JournalRepository {
     }): JournalEntryRef => ({
       id: row.id,
       date: row.entry_date,
-      title: displayEntryTitle(row.title, row.is_encrypted === 1),
+      title: displayTitle(row.title, row.is_encrypted === 1),
     });
 
     return {

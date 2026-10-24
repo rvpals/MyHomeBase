@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bulkEncryptEntries, describeBulkEncryptResult } from "./bulk-encrypt";
-import { decryptEntryText, isEncryptedBlob } from "./encryption";
+import { decryptText, isEncryptedBlob } from "@/lib/shared/encryption";
 import type { BulkEncryptOutcome, BulkEncryptRequest, JournalRepository } from "./index";
 
 interface Row {
@@ -93,8 +93,8 @@ describe("bulkEncryptEntries", () => {
     expect(row.title).toBe("");
     expect(row.content).toBe("");
     expect(isEncryptedBlob(row.titleEncrypted)).toBe(true);
-    expect(decryptEntryText(row.titleEncrypted, "correct horse")).toBe("Monday");
-    expect(decryptEntryText(row.contentEncrypted, "correct horse")).toBe("Rained all day.");
+    expect(decryptText(row.titleEncrypted, "correct horse")).toBe("Monday");
+    expect(decryptText(row.contentEncrypted, "correct horse")).toBe("Rained all day.");
   });
 
   it("gives every entry its own salt and IV, even under one password", () => {
@@ -176,7 +176,7 @@ describe("bulkEncryptEntries", () => {
     const result = bulkEncryptEntries(repo, [1, 1, 1], "pw");
 
     expect(result.encryptedCount).toBe(1);
-    expect(decryptEntryText(stored.get(1)!.titleEncrypted, "pw")).toBe("Monday");
+    expect(decryptText(stored.get(1)!.titleEncrypted, "pw")).toBe("Monday");
   });
 });
 

@@ -12,7 +12,7 @@
 //
 //   - **One password for the whole batch.** Prompting per entry would defeat
 //     the point. Each entry is still sealed independently with its own fresh
-//     salt and IV (`encryptEntryText` generates both per call), so sharing a
+//     salt and IV (`encryptText` generates both per call), so sharing a
 //     password costs nothing cryptographically — it is the *recovery* story
 //     that is shared, and the dialog says so.
 //   - **All or nothing.** The whole batch runs in one repository transaction.
@@ -32,7 +32,7 @@
 // division as recycle.ts, bulk-edit.ts and bulk-lock.ts.
 
 import { z } from "zod";
-import { encryptEntryText } from "./encryption";
+import { encryptText } from "@/lib/shared/encryption";
 import type { JournalRepository } from "./ports";
 
 /** Non-empty and de-duped, for the reasons given in recycle.ts. */
@@ -82,8 +82,8 @@ export function bulkEncryptEntries(
     // blobs for title and content — never one key over two plaintexts with a
     // shared IV.
     seal: (title: string, content: string) => ({
-      titleEncrypted: encryptEntryText(title, password),
-      contentEncrypted: encryptEntryText(content, password),
+      titleEncrypted: encryptText(title, password),
+      contentEncrypted: encryptText(content, password),
     }),
     hint,
   });

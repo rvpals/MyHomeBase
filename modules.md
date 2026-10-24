@@ -40,6 +40,7 @@ are the `snake_case` equivalents.
 | `picture-gallery` | Picture Gallery | My Picture Gallery | Browse the photo archive and the pictures you have kept. | 9 | `photo` | `pho_` |
 | `tools` | Tools | Tools & Utilities | This module list all the utilities and tools | 10 | `tool` | `tol_` |
 | `household` | Household | Household | Recipes, receipts and the HSA — the household's paperwork. | 11 | `household` | `hsh_` |
+| `clips` | Clips | Clips | Rich-text notes with tags and pasted images, linkable to a journal entry. | 12 | `folder` | `clp_` |
 
 Sequence 1 is deliberately vacant: it belonged to the Real Estate module, retired
 in `migrations/0026_drop_real_estate_module`. Its `rei_` prefix is retired with
@@ -2409,6 +2410,66 @@ Narrow: sections in the shared bottom bar, nothing custom. The filter row stacks
 editor's one remaining two-column grid (Category/Rating/Source/Tags) collapses to one
 (`max-lg:grid-cols-1`), and the grid goes compact at 1024px carrying selection and both
 bulk actions with it.
+
+**Clips** (`clips`) — rich-text notes that stand on their own: paste an email, keep
+a reference, jot something down. Four sections (Home screen, All Clips, Categories &
+Tags, Configuration), one library module `src/lib/clips`, seven `clp_` tables from
+migration 0155. Driveable as `npm run cli -- clips <list|show|add|link|delete>`.
+
+Five decisions worth knowing, because each was a trap:
+
+- **A clip is never deleted by anything but a reader deleting it.** `clp_clip_links`
+  points *at* a journal entry and nothing points back, so deleting the entry leaves
+  an orphaned link rather than removing the supporting email someone pasted. That is
+  the module's central promise and the reason the link is a table rather than a
+  column on `jrn_entries`. A deleted-and-restored entry normally reconnects by
+  itself: `restoreRecycledEntries` reinserts at the **original** id precisely so
+  existing references survive, falling back to a fresh one only when that id is
+  taken.
+- **The direction is one-way, and that is what keeps the layering legal.** Clips
+  knows about the Journal; `src/lib/journal` has no idea Clips exists. Every
+  cross-module read is composed in the **presentation** layer — the badge counts in
+  [journal-entries-panel.tsx](src/app/(protected)/modules/[slug]/journal-entries-panel.tsx)
+  (a server component), and the entry picker and link resolution in
+  [clips-actions.ts](src/app/(protected)/modules/[slug]/clips-actions.ts) (server
+  actions, which are presentation too). Putting any of those reads in `lib/clips` or
+  `lib/journal` would be the import cycle `ARCHITECTURE.md` forbids.
+
+  Three screens carry the feature:
+  **a clip's "Attached to" block**
+  ([clips-link-panel.tsx](src/app/(protected)/modules/[slug]/clips-link-panel.tsx))
+  lists its entries and attaches or detaches one; **the paperclip on an entry's
+  Title cell** opens
+  [clips-entry-clips-dialog.tsx](src/app/(protected)/modules/[slug]/clips-entry-clips-dialog.tsx),
+  which lists that entry's clips (or skips straight to the viewer when there is only
+  one); and the **clip viewer** hosts the first of those. A sealed clip hides its
+  attachments until the password is entered — which entries a private note supports
+  is itself worth not leaking.
+- **Pasted markup is reduced by an allowlist, not a blocklist.** A clip is pasted
+  from an email, so the sender chose the content — a genuine hostile-input boundary,
+  unlike [journal-reports/sanitize.ts](src/lib/journal-reports/sanitize.ts), which
+  says plainly it is defence in depth over an author's own template. Use
+  `src/lib/clips/sanitize-html.ts`. `style` attributes are dropped, which is why a
+  pasted email renders in this app's theme rather than the sender's.
+- **Images are BLOB rows with a serving route, never base64 in the body.** The
+  lesson migration 0079 recorded when it dropped `jrn_entry_images`. The route checks
+  module access, not merely a session: a clip can hold a private email.
+- **Encryption is shared, and there is no recovery.** The columns and the blob format
+  are the Journal's (migration 0131), and the implementation is literally shared —
+  `encryption.ts` was promoted to `src/lib/shared/` for this. The difference is
+  ownership: a journal entry is one person's, a clip is the household's, so a
+  forgotten password loses that clip **for everyone**. Taxonomy stays plaintext so a
+  sealed clip is still findable; its text is not searchable while sealed.
+
+The editor is `contentEditable` with no third-party dependency, which fixes one
+real limit: it **preserves** pasted tables but cannot **edit** them. That was the
+deciding trade for archival content. Authoring tables means replacing
+`RichTextEditor` with TipTap, not growing it.
+
+Narrow: sections in the shared bottom bar, nothing custom. The toolbar wraps to a
+second row, the clip list is one column below `lg`, the viewer becomes a full-screen
+sheet, and a table inside a clip scrolls in its own container rather than forcing the
+page wide.
 
 ### Icons
 

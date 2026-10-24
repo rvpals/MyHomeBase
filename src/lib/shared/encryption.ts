@@ -1,14 +1,35 @@
-// Per-entry encryption for journal entries.
+// Password-based encryption for a single piece of text, shared by every module
+// that seals content behind a password its reader supplies.
 //
 // Pure functions over strings — no repository, no I/O, no React. One password
-// per entry, supplied by the reader each time; the same password may be reused
-// across entries, but every entry is sealed independently with its own salt and
-// its own IV.
+// per sealed item, supplied by the reader each time; the same password may be
+// reused across items, but every item is sealed independently with its own salt
+// and its own IV.
 //
 // **There is no recovery path and that is the feature.** Nothing here stores the
 // password, a hash of it, or any value derived from it other than the ciphertext
-// itself. A forgotten password means the entry is gone — no admin override, no
+// itself. A forgotten password means the content is gone — no admin override, no
 // reset, no backdoor. Callers must say so plainly before encrypting.
+//
+// ## How this differs from its two neighbours in `shared/`
+//
+// Three files here touch secrets and they are not interchangeable:
+//
+//   * `password.ts` — **hashes** a login password for storage. One way, by
+//     design: nothing ever recovers the original.
+//   * `secret.ts` — the app's own stored credentials.
+//   * this file — **reversible** encryption of user content. The point is to get
+//     the plaintext back, which is exactly what `password.ts` must never do.
+//
+// Reach for this one only when the content has to be readable again.
+//
+// ## History
+//
+// Written for journal entries (migration 0131) as `lib/journal/encryption.ts`,
+// promoted here when Clips needed the same sealing. The move renamed
+// `encryptEntryText`/`decryptEntryText`/`displayEntryTitle` to drop the "entry"
+// vocabulary; the format and the behaviour are unchanged, so blobs written
+// before the move still decrypt.
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 
@@ -40,12 +61,12 @@ const KEY_BYTES = 32;
  */
 export class WrongPasswordError extends Error {
   constructor() {
-    super("That password does not open this entry.");
+    super("That password does not open this.");
     this.name = "WrongPasswordError";
   }
 }
 
-/** Thrown when a stored blob is not in the shape `encryptEntryText` writes. */
+/** Thrown when a stored blob is not in the shape `encryptText` writes. */
 export class MalformedCipherTextError extends Error {
   constructor() {
     super("The stored encrypted text is not in a readable format.");
@@ -54,7 +75,7 @@ export class MalformedCipherTextError extends Error {
 }
 
 /**
- * Encrypts one piece of entry text.
+ * Encrypts one piece of text.
  *
  * Returns `v1:salt:iv:tag:ciphertext`, every field hex. Salt and IV are freshly
  * random on **every call** — never derived, never counted, never reused. Two
@@ -63,11 +84,11 @@ export class MalformedCipherTextError extends Error {
  * the two plaintexts and undermines the authentication tag.
  *
  * An empty string encrypts like any other value rather than short-circuiting to
- * `""`, so an entry with no title is indistinguishable on disk from one whose
+ * `""`, so an item with no title is indistinguishable on disk from one whose
  * title happens to be short.
  */
-export function encryptEntryText(plain: string, password: string): string {
-  if (password === "") throw new Error("A password is required to encrypt an entry.");
+export function encryptText(plain: string, password: string): string {
+  if (password === "") throw new Error("A password is required to encrypt.");
 
   const salt = randomBytes(SALT_BYTES);
   const iv = randomBytes(IV_BYTES);
@@ -87,7 +108,7 @@ export function encryptEntryText(plain: string, password: string): string {
 }
 
 /**
- * Decrypts a blob written by `encryptEntryText`.
+ * Decrypts a blob written by `encryptText`.
  *
  * The GCM authentication tag **is** the password check — there is no separate
  * verifier stored anywhere, because a wrong key makes `final()` throw. That is
@@ -97,7 +118,7 @@ export function encryptEntryText(plain: string, password: string): string {
  * @throws {MalformedCipherTextError} the blob is not in the expected shape
  * @throws {WrongPasswordError} the password is wrong, or the bytes were altered
  */
-export function decryptEntryText(blob: string, password: string): string {
+export function decryptText(blob: string, password: string): string {
   const parts = blob.split(":");
   if (parts.length !== 5) throw new MalformedCipherTextError();
 
@@ -130,7 +151,7 @@ export function decryptEntryText(blob: string, password: string): string {
 }
 
 /**
- * What stands in for an encrypted entry's title anywhere a list, the calendar,
+ * What stands in for an encrypted item's title anywhere a list, the calendar,
  * the neighbour strip or a merge heading would have shown the real one.
  *
  * One constant rather than a literal per call site, so every screen says the
@@ -139,22 +160,22 @@ export function decryptEntryText(blob: string, password: string): string {
 export const ENCRYPTED_TITLE_PLACEHOLDER = "(encrypted)";
 
 /**
- * The title to display for an entry, given whether it is encrypted.
+ * The title to display for an item, given whether it is encrypted.
  *
- * Takes the two fields rather than a `JournalEntry` so the narrow projections —
- * `CalendarEntryLike` and the neighbour refs — can call it without being widened
- * into full entries.
+ * Takes the two fields rather than a whole record so the narrow projections —
+ * `CalendarEntryLike`, the neighbour refs, a clip summary — can call it without
+ * being widened into full records.
  */
-export function displayEntryTitle(title: string, isEncrypted: boolean): string {
+export function displayTitle(title: string, isEncrypted: boolean): string {
   return isEncrypted ? ENCRYPTED_TITLE_PLACEHOLDER : title;
 }
 
 /**
- * Whether `blob` looks like something `encryptEntryText` wrote.
+ * Whether `blob` looks like something `encryptText` wrote.
  *
  * A shape check only — it says nothing about whether any particular password
- * opens it. Used by the repository to tell a real blob from a blank column on a
- * row written before migration 0131.
+ * opens it. Used by a repository to tell a real blob from a blank column on a
+ * row written before its module's encryption migration.
  */
 export function isEncryptedBlob(blob: string): boolean {
   const parts = blob.split(":");

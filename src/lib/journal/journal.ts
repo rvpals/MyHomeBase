@@ -4,7 +4,7 @@ import {
   type ImageUploadInput,
 } from "@/lib/shared/image-upload";
 import type { JournalBodyScope } from "./body-length";
-import { decryptEntryText, encryptEntryText } from "./encryption";
+import { decryptText, encryptText } from "@/lib/shared/encryption";
 import { isSafeGeneratedIconSvg } from "./generated-icons";
 import { fetchIconSvg } from "./icon-fetch";
 import type { JournalRepository } from "./ports";
@@ -585,8 +585,8 @@ export function encryptEntry(
     isEncrypted: true,
     // Separate blobs, each with its own salt and IV — never one key over two
     // plaintexts with a shared IV.
-    titleEncrypted: encryptEntryText(existing.title, password),
-    contentEncrypted: encryptEntryText(existing.content, password),
+    titleEncrypted: encryptText(existing.title, password),
+    contentEncrypted: encryptText(existing.content, password),
     passwordHint: hint,
   });
 }
@@ -622,8 +622,8 @@ export function createEncryptedEntry(
     title: "",
     content: "",
     isEncrypted: true,
-    titleEncrypted: encryptEntryText(validated.title, password),
-    contentEncrypted: encryptEntryText(validated.content, password),
+    titleEncrypted: encryptText(validated.title, password),
+    contentEncrypted: encryptText(validated.content, password),
     passwordHint: hint,
   });
 }
@@ -631,7 +631,7 @@ export function createEncryptedEntry(
 /**
  * Opens an entry for reading. **Writes nothing.**
  *
- * Throws `WrongPasswordError` from `./encryption` when the password is wrong —
+ * Throws `WrongPasswordError` from `@/lib/shared/encryption` when the password is wrong —
  * which is also what a tampered blob produces, since GCM cannot tell the two
  * apart and inventing a distinction would mean trusting something other than the
  * authentication tag.
@@ -646,8 +646,8 @@ export function decryptEntry(
   if (!existing.isEncrypted) throw new Error(`Journal entry ${id} is not encrypted.`);
 
   return {
-    title: decryptEntryText(existing.titleEncrypted, password),
-    content: decryptEntryText(existing.contentEncrypted, password),
+    title: decryptText(existing.titleEncrypted, password),
+    content: decryptText(existing.contentEncrypted, password),
   };
 }
 
@@ -675,15 +675,15 @@ export function editEncryptedEntry(
   if (!existing.isEncrypted) throw new Error(`Journal entry ${id} is not encrypted.`);
 
   // Proves the password opens this entry. Throws before any write if it doesn't.
-  decryptEntryText(existing.titleEncrypted, password);
+  decryptText(existing.titleEncrypted, password);
 
   return repo.updateEntry(id, {
     ...toWriteData(existing),
     title: "",
     content: "",
     isEncrypted: true,
-    titleEncrypted: encryptEntryText(text.title, password),
-    contentEncrypted: encryptEntryText(text.content, password),
+    titleEncrypted: encryptText(text.title, password),
+    contentEncrypted: encryptText(text.content, password),
     passwordHint: existing.passwordHint,
   });
 }
@@ -709,8 +709,8 @@ export function removeEntryEncryption(
 
   // Both blobs are opened before anything is written: a half-restored entry
   // would be worse than one that stays sealed.
-  const title = decryptEntryText(existing.titleEncrypted, password);
-  const content = decryptEntryText(existing.contentEncrypted, password);
+  const title = decryptText(existing.titleEncrypted, password);
+  const content = decryptText(existing.contentEncrypted, password);
 
   return repo.updateEntry(id, {
     ...toWriteData(existing),

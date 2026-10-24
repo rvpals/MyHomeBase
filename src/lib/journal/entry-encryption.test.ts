@@ -17,7 +17,7 @@ import {
   setLocked,
   updateEntry,
 } from "./journal";
-import { WrongPasswordError } from "./encryption";
+import { WrongPasswordError } from "@/lib/shared/encryption";
 import type { JournalRepository } from "./ports";
 import type { EntryWriteData } from "./schema";
 import type { EntryLocation, JournalEntry } from "./types";

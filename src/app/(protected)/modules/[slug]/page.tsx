@@ -13,6 +13,7 @@ import { GamesSection } from "./games-section";
 import { JournalSection } from "./journal-section";
 import { MusicSection } from "./music-section";
 import { StockSection } from "./stock-section";
+import { ClipsSection } from "./clips-section";
 import { HouseholdSection } from "./household-section";
 import { ToolsSection } from "./tools-section";
 
@@ -32,6 +33,7 @@ const GAMES_MODULE_SLUG = "games";
 const PICTURE_GALLERY_MODULE_SLUG = "picture-gallery";
 const TOOLS_MODULE_SLUG = "tools";
 const HOUSEHOLD_MODULE_SLUG = "household";
+const CLIPS_MODULE_SLUG = "clips";
 
 function ModuleBody({
   slug,
@@ -83,6 +85,10 @@ function ModuleBody({
 
   if (slug === HOUSEHOLD_MODULE_SLUG) {
     return <HouseholdSection section="main" isAdmin={isCurrentUserAdmin} />;
+  }
+
+  if (slug === CLIPS_MODULE_SLUG) {
+    return <ClipsSection section="main" />;
   }
 
   return (
