@@ -20,7 +20,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import type { SavedLocationWithUsage } from "@/lib/sys-locations";
 import type { JournalLocationInput } from "./journal-actions";
-import { searchSysLocationsAction } from "./journal-actions";
+import { locationTaxonomyIconsAction, searchSysLocationsAction } from "./journal-actions";
 import { formatCoords } from "@/app/(protected)/admin/locations/filter-chip";
 import { LocationFilterChips } from "@/components/location-filter-chips";
 
@@ -47,6 +47,30 @@ export function JournalLocationLibraryPicker({
   const [places, setPlaces] = useState<SavedLocationWithUsage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  // Name -> uploaded icon URL, fetched once on mount. Empty until it arrives,
+  // which just means a tile draws its monogram for that first moment.
+  const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>({});
+  const [tagIcons, setTagIcons] = useState<Record<string, string>>({});
+
+  // Its own effect, not folded into the search below: the icons depend on
+  // nothing the user types, so re-reading them on every keystroke would be a
+  // database round trip per character for an answer that never changes.
+  //
+  // A failure here is deliberately silent -- the tiles fall back to monograms,
+  // a cosmetic loss, and an error line about icons above a working list of
+  // places would be noise in the middle of writing an entry.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await locationTaxonomyIconsAction();
+      if (cancelled || !result.ok) return;
+      setCategoryIcons(result.categoryIcons ?? {});
+      setTagIcons(result.tagIcons ?? {});
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Loads on mount and on every change, debounced. Unlike the manager's list
   // this has no server-rendered starting set — the entry form doesn't read the
@@ -108,15 +132,19 @@ export function JournalLocationLibraryPicker({
         className={INPUT_CLASS}
       />
 
-      {/* No icons passed, unlike the admin screens: this list sits inside the
-          entry form, where a column of uploaded glyphs would compete with the
-          form's own controls for attention. The rows below stay hand-rolled —
-          each is a *pick* button, a different job from the admin screens'
-          read-and-edit rows, and bending `SavedLocationRow` to cover it would
-          grow it props it has no other use for. */}
+      {/* The same uploaded icons the admin screens show. They were left out
+          here at first, on the theory that a grid of glyphs would compete with
+          the entry form's own controls -- in practice the monograms made every
+          tile in a list look alike, and the icon is the fastest way to find the
+          one you want. The rows below stay hand-rolled -- each is a *pick*
+          button, a different job from the admin screens' read-and-edit rows,
+          and bending `SavedLocationRow` to cover it would grow it props it has
+          no other use for. */}
       <LocationFilterChips
         categoryOptions={categoryOptions}
         tagOptions={tagOptions}
+        categoryIcons={categoryIcons}
+        tagIcons={tagIcons}
         activeCategories={activeCategories}
         activeTags={activeTags}
         onCategoriesChange={setActiveCategories}
@@ -130,9 +158,21 @@ export function JournalLocationLibraryPicker({
           {isLoading ? "Searching…" : "No saved places match. Add some under Administration → Locations → Location Manager."}
         </p>
       ) : (
-        <ul className="flex max-h-72 flex-col overflow-y-auto rounded-md border border-line">
+        /* Two columns on a desktop, one on a phone: at PICKER_LIMIT of 25 a
+           single column asks for a lot of scrolling in a box this short, and
+           these rows are narrow enough to pair. `max-lg:grid-cols-1` keeps the
+           phone exactly as it was -- the rows already truncate addresses at
+           full width, so halving them there would help nothing. */
+        <ul className="grid max-h-72 grid-cols-2 gap-x-px overflow-y-auto rounded-md border border-line max-lg:grid-cols-1">
           {places.map((place) => (
-            <li key={place.id} className="border-b border-line last:border-b-0">
+            // The divider is per-cell rather than per-row: in a two-column grid
+            // a `last:` rule would only clear the final cell, leaving the one
+            // beside it with a dangling border, so every cell carries a top
+            // border instead and the first row of cells suppresses it.
+            <li
+              key={place.id}
+              className="min-w-0 border-t border-line [&:nth-child(-n+2)]:border-t-0 [&:nth-child(even)]:border-l max-lg:[&:nth-child(2)]:border-t max-lg:[&:nth-child(even)]:border-l-0"
+            >
               <button
                 type="button"
                 onClick={() => handlePick(place)}

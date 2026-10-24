@@ -1,0 +1,46 @@
+-- A quote can be taken out of circulation without being deleted.
+--
+-- WHAT THIS ADDS. Today every row in this table is a candidate for the home-screen
+-- widget: `getRandomQuote` is `ORDER BY RANDOM() LIMIT 1` over the whole table, so the
+-- only way to stop a quote appearing is to delete it. That is a destructive answer to a
+-- reversible question -- a quote that reads badly, or that belongs to a season that has
+-- passed, is usually worth keeping and not worth showing. This column separates "is in
+-- the library" from "is in rotation".
+--
+-- WHY THE COLUMN IS POSITIVE (`is_enabled`) WHILE THE SCREEN SAYS "Disabled". Every
+-- other flag in this database is stored positive and defaults to on -- `is_visible` on
+-- sys_modules and sys_toolbars, `is_active` on the attendance tables. Storing the
+-- negative here would make this the one table where `0` means "normal", which is the
+-- kind of inconsistency that is read wrong once and then written wrong forever.
+--
+-- Positive storage also means this migration needs no backfill and no UPDATE: the
+-- DEFAULT 1 below is already the right answer for every row that exists, so a household
+-- upgrading sees exactly the rotation it had yesterday.
+--
+-- The admin screen still says "Disabled", because that is the exception the reader
+-- cares about naming -- nobody enables a quote that is already enabled. The inversion
+-- happens once, in the view layer, and never in the table.
+--
+-- WHY ALTER TABLE AND NOT THE COPY-RENAME-DROP PATTERN. Same reason migration 0028 gave
+-- when it added `source` to this table: this is a simple additive column with a
+-- default, which needs no rebuild. The rebuild pattern `coding-guide.md` prescribes is
+-- for changing an existing column or a CHECK constraint, and neither is happening here.
+--
+-- A rebuild would also be actively worse here, because it would drop the
+-- `daily_quotes_set_updated_at` trigger that migration 0025 attached to this table and
+-- oblige this file to recreate it correctly. ALTER TABLE leaves it in place.
+--
+-- NOTE THAT TOGGLING A QUOTE BUMPS `updated_at`. That trigger fires on any UPDATE to
+-- this table, so disabling a quote touches its timestamp exactly as editing its text
+-- does. That is intended and not worked around: the admin list sorts by `created_at`,
+-- the widget does not read `updated_at` at all, and "when did this row last change"
+-- is a true answer to a question nothing currently asks.
+--
+-- NO INDEX. The widget's read becomes `WHERE is_enabled = 1 ORDER BY RANDOM() LIMIT 1`,
+-- which is a full scan either way -- `ORDER BY RANDOM()` has to visit every candidate
+-- row to shuffle it, so an index on the filter saves nothing it could otherwise skip.
+-- This table holds tens of rows, not millions. An index here would be cost with no read
+-- to serve.
+--
+-- No new table, no new 3-letter prefix, no DEFAULT_MODULES change.
+ALTER TABLE sys_daily_quotes ADD COLUMN is_enabled INTEGER NOT NULL DEFAULT 1;

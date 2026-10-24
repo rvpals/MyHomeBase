@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   createQuote,
   deleteQuote,
+  setQuoteEnabled,
   updateQuote,
   type CreateQuoteInput,
   type UpdateQuoteInput,
@@ -38,6 +39,26 @@ export async function updateQuoteAction(id: number, input: UpdateQuoteInput): Pr
     updateQuote(deps.dailyQuoteRepo, id, input);
   } catch (error) {
     return toErrorResult(error, "Failed to update quote.");
+  }
+  revalidatePath("/admin/daily-quote");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/**
+ * Puts a quote in or out of the home-screen rotation. Revalidates "/" as well as
+ * the admin list, because disabling the quote currently on screen has to stop it
+ * being served.
+ */
+export async function setQuoteEnabledAction(
+  id: number,
+  isEnabled: boolean,
+): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    setQuoteEnabled(deps.dailyQuoteRepo, id, isEnabled);
+  } catch (error) {
+    return toErrorResult(error, "Failed to change this quote's status.");
   }
   revalidatePath("/admin/daily-quote");
   revalidatePath("/");

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import type { CreateQuoteInput, DailyQuote, QuoteCategory } from "@/lib/daily-quote";
-import { deleteQuoteAction, updateQuoteAction } from "./actions";
+import { deleteQuoteAction, setQuoteEnabledAction, updateQuoteAction } from "./actions";
 import { QuoteForm } from "./quote-form";
 import { PAGE_CONTAINER } from "../../page-container";
 
@@ -16,6 +16,18 @@ export interface DailyQuoteViewProps {
 export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
   const router = useRouter();
   const [editing, setEditing] = useState<DailyQuote | null>(null);
+
+  async function handleSetEnabled(row: DailyQuote) {
+    const result = await setQuoteEnabledAction(row.id, !row.isEnabled);
+    if (!result.ok) {
+      window.alert(result.error);
+      return;
+    }
+    // An open editor holds a stale copy of the row it was seeded from; saving it
+    // afterwards would write the old flag straight back over this toggle.
+    if (editing?.id === row.id) setEditing(null);
+    router.refresh();
+  }
 
   async function handleUpdate(id: number, input: CreateQuoteInput): Promise<string | undefined> {
     const result = await updateQuoteAction(id, input);
@@ -30,7 +42,9 @@ export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
       key: "quote",
       header: "Quote",
       value: (row) => row.quote,
-      render: (row) => <span className="text-ink">{row.quote}</span>,
+      render: (row) => (
+        <span className={row.isEnabled ? "text-ink" : "text-muted line-through"}>{row.quote}</span>
+      ),
     },
     {
       key: "author",
@@ -55,6 +69,23 @@ export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
       ),
     },
     {
+      key: "status",
+      header: "Status",
+      // Sorts and exports as the word on screen, so a CSV of this grid reads the
+      // same as the grid does.
+      value: (row) => (row.isEnabled ? "Enabled" : "Disabled"),
+      render: (row) =>
+        row.isEnabled ? (
+          <span className="rounded-full bg-paper px-2 py-0.5 text-xs font-semibold text-muted">
+            Enabled
+          </span>
+        ) : (
+          <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-400">
+            Disabled
+          </span>
+        ),
+    },
+    {
       key: "actions",
       header: "Actions",
       excludeFromRecordView: true,
@@ -66,6 +97,13 @@ export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
             className="text-xs font-medium text-brass-dark hover:underline"
           >
             Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSetEnabled(row)}
+            className="text-xs font-medium text-brass-dark hover:underline"
+          >
+            {row.isEnabled ? "Disable" : "Enable"}
           </button>
           <button
             type="button"
@@ -96,7 +134,8 @@ export function DailyQuoteView({ quotes, categories }: DailyQuoteViewProps) {
       <h1 className="mt-2 font-display text-3xl font-semibold text-ink">Daily Quote</h1>
       <p className="mt-2 text-sm text-muted">
         Manage the inspirational quotes shown on the home screen. A random quote is picked on
-        every visit to the home page.
+        every visit to the home page. Disabled quotes stay in this list but are never picked —
+        if every quote is disabled, the home screen shows no quote at all.
       </p>
 
       {/* Adding moved to its own screen (Daily Quote → Add Quote); editing stays

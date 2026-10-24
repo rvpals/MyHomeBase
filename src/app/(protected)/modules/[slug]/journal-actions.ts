@@ -6,6 +6,7 @@ import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { todayIsoLocal } from "@/lib/shared/date";
 import { reverseGeocode, searchPlaces, type GeoPlace } from "@/lib/geocoding";
 import { executeReadOnlyQuery } from "@/lib/sql-explorer";
+import { locationTaxonomyIconMap } from "@/app/(protected)/admin/locations/icon-map";
 import { isAdmin } from "@/lib/user";
 import {
   clearCategoryIcon,
@@ -256,7 +257,7 @@ export async function setEntryLockAction(id: number, isLocked: boolean): Promise
 //
 // One password per entry, supplied on every operation and held nowhere. The
 // password crosses the wire to these actions and is used to derive a key in
-// `src/lib/journal/encryption.ts`; it is never written to the database, never
+// `src/lib/shared/encryption.ts`; it is never written to the database, never
 // logged, and never returned in an `ActionResult`.
 //
 // None of these revalidate with the decrypted text in hand — `revalidatePath`
@@ -1016,6 +1017,40 @@ export async function searchSysLocationsAction(
     return { ok: true, locations: searchSavedLocations(deps.sysLocationRepo, input) };
   } catch (error) {
     return toErrorResult(error, "Failed to search saved locations.");
+  }
+}
+
+export interface LocationTaxonomyIconsResult extends ActionResult {
+  /** Category name -> icon URL. Names with no uploaded icon are absent. */
+  categoryIcons?: Record<string, string>;
+  /** Tag name -> icon URL, same shape. */
+  tagIcons?: Record<string, string>;
+}
+
+/**
+ * The uploaded category and tag icons, for the entry form's library picker.
+ *
+ * An action rather than a prop: the picker is a client component four levels
+ * below the pages that already pass it `categoryOptions`, and threading two
+ * more maps through every one of those (the entries view, the log, the review
+ * panel, both bulk editors and the entry screen) would touch a dozen files to
+ * carry data only the picker reads. It already calls the server on mount, so
+ * one more call there is the cheaper wiring.
+ *
+ * `locationTaxonomyIconMap` reads the database through `deps`, which is why it
+ * is reached from here and never imported by the picker itself -- see the
+ * warning in `icon-map.ts`.
+ */
+export async function locationTaxonomyIconsAction(): Promise<LocationTaxonomyIconsResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    return {
+      ok: true,
+      categoryIcons: locationTaxonomyIconMap("category"),
+      tagIcons: locationTaxonomyIconMap("tag"),
+    };
+  } catch (error) {
+    return toErrorResult(error, "Failed to load location icons.");
   }
 }
 

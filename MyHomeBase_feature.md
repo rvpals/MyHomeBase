@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (200 commits, 2026-07-12 to 2026-10-23) and `CHANGE_HISTORY.md`.
+project's git history (202 commits, 2026-07-12 to 2026-10-23) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -154,7 +154,8 @@ Tabs for **Unlocked Entries**, **Substantial Entries** (body past ten words),
 a description. **Bulk tools** — Bulk edit (add, remove or replace categories, tags, place and
 locations), **Bulk overwrite** (replace those fields outright, with a confirmation when a field would be
 cleared), Lock / Unlock / Encrypt, delete, merge — and a grid
-status bar. Administrators get **Show SQL** on each grid: the real statement behind the
+status bar. An entry that has **clips** attached shows a paperclip, with a count, on its Title
+cell; it opens those clips. Administrators get **Show SQL** on each grid: the real statement behind the
 rows, which can be edited and re-run.
 
 ### Locations
@@ -163,7 +164,8 @@ rows, which can be edited and re-run.
   that open popups, and an external-map link.
 - A **location library built out of the journal you already wrote**, with real-distance
   duplicate detection.
-- Categories and tags that carry icons.
+- Categories and tags that carry icons — shown in the entry form's saved-place picker too,
+  whose places list in two columns on a desktop.
 
 ### Topics
 
@@ -274,6 +276,28 @@ against three bots), **Pac-Man** and **Bridge**.
 - **Receipts** — multi-file HSA receipts.
 - **HSA Tracker**.
 
+## Clips
+
+Rich-text notes that stand on their own — paste an email, keep a reference, jot something
+down.
+
+- **Home screen** — how many clips are kept and the most recent few.
+- **All Clips** — a filtering card (text, category, tag, carried in the URL so a filtered
+  list survives a refresh), a write/edit panel and the clip cards. Writing keeps headings,
+  lists, links and **tables** from a paste and drops the sender's fonts and colours so a clip
+  reads in the app's theme, telling you what it removed. Pasted images are stored separately
+  and resized. Tables are preserved but their rows and columns cannot be edited.
+- **Categories & Tags** — two managed lists, as the Journal has, creatable inline while
+  writing, each with an uploadable icon.
+- **Encryption** — any clip can be sealed behind a password with a hint, using the same
+  scheme as a journal entry. Clips are shared, so anyone with the password opens one and
+  **forgetting it loses the clip for everyone**. Categories and tags stay readable on a
+  sealed clip; its text is not searchable.
+- **Attach a clip to a journal entry** from the clip's *Attached to* block, which searches the
+  journal; the entry then carries a paperclip that opens its clips. A clip exists independently
+  — deleting an entry never deletes it. An encrypted entry can carry an unencrypted clip.
+- A `clips` CLI: list, show, add, link and delete.
+
 ## Admin
 
 - **Configuration** — module and application configuration (including the photo-culling
@@ -283,7 +307,8 @@ against three bots), **Pac-Man** and **Bridge**.
   Border Weight, Chrome Style, Scratchpad Categories.
 - **User Management** — admin-only, including setting another user's avatar and editing
   anyone's preferences.
-- **Daily Quote** — all quotes, add a quote, import from a newsletter.
+- **Daily Quote** — all quotes, add a quote, import from a newsletter. A quote can be
+  **disabled** — kept, dimmed in the list, and never drawn for the home widget — and enabled again.
 - **Locations** — Location Manager with Venn and Graph views, bulk location edit, and
   location metadata.
 - **Security** — Login and Visit tabs, IP blacklist.

@@ -10,6 +10,7 @@ interface DailyQuoteRow {
   author: string;
   category: string;
   source: string;
+  is_enabled: number;
   created_at: string;
   updated_at: string;
 }
@@ -21,6 +22,7 @@ function toDomain(row: DailyQuoteRow): DailyQuote {
     author: row.author,
     category: row.category,
     source: row.source,
+    isEnabled: row.is_enabled === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -44,9 +46,12 @@ export class SqliteDailyQuoteRepository implements DailyQuoteRepository {
     return row ? toDomain(row) : undefined;
   }
 
+  // The widget's read, and the only filtered one. `listQuotes` above stays
+  // unfiltered on purpose: the admin grid shows the whole table, disabled rows
+  // included, so a quote taken out of rotation is still where the admin left it.
   getRandomQuote(): DailyQuote | undefined {
     const row = this.db
-      .prepare("SELECT * FROM sys_daily_quotes ORDER BY RANDOM() LIMIT 1")
+      .prepare("SELECT * FROM sys_daily_quotes WHERE is_enabled = 1 ORDER BY RANDOM() LIMIT 1")
       .get() as DailyQuoteRow | undefined;
     return row ? toDomain(row) : undefined;
   }
@@ -54,10 +59,10 @@ export class SqliteDailyQuoteRepository implements DailyQuoteRepository {
   createQuote(input: QuoteWriteData): DailyQuote {
     const result = this.db
       .prepare(
-        `INSERT INTO sys_daily_quotes (quote, author, category, source)
-         VALUES (@quote, @author, @category, @source)`,
+        `INSERT INTO sys_daily_quotes (quote, author, category, source, is_enabled)
+         VALUES (@quote, @author, @category, @source, @isEnabled)`,
       )
-      .run(input);
+      .run({ ...input, isEnabled: input.isEnabled ? 1 : 0 });
 
     const created = this.getQuoteById(Number(result.lastInsertRowid));
     if (!created) throw new Error("Failed to read back newly created quote.");
@@ -68,13 +73,24 @@ export class SqliteDailyQuoteRepository implements DailyQuoteRepository {
     this.db
       .prepare(
         `UPDATE sys_daily_quotes
-         SET quote = @quote, author = @author, category = @category, source = @source
+         SET quote = @quote, author = @author, category = @category, source = @source,
+             is_enabled = @isEnabled
          WHERE id = @id`,
       )
-      .run({ ...input, id });
+      .run({ ...input, isEnabled: input.isEnabled ? 1 : 0, id });
 
     const updated = this.getQuoteById(id);
     if (!updated) throw new Error(`Failed to read back updated quote ${id}.`);
+    return updated;
+  }
+
+  setQuoteEnabled(id: number, isEnabled: boolean): DailyQuote {
+    this.db
+      .prepare("UPDATE sys_daily_quotes SET is_enabled = ? WHERE id = ?")
+      .run(isEnabled ? 1 : 0, id);
+
+    const updated = this.getQuoteById(id);
+    if (!updated) throw new Error(`Failed to read back quote ${id}.`);
     return updated;
   }
 

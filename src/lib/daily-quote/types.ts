@@ -20,6 +20,14 @@ export interface DailyQuote {
   category: QuoteCategory;
   /** Where the quote came from (book, letter, talk…). Empty when unrecorded. */
   source: string;
+  /**
+   * Whether this quote is in rotation for the home-screen widget. Stored
+   * positive (`is_enabled`, defaulting to on) to match every other flag in the
+   * database; the admin screen inverts it to a "Disabled" label, because that is
+   * the exception worth naming. A disabled quote is kept in full and still
+   * listed in Administration → Daily Quote — it is simply never drawn.
+   */
+  isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }

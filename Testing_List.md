@@ -146,6 +146,36 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-23 — Release (Clips module, Daily Quote disable, location icons in the entry picker)
+
+**Needs migrations 0154, 0155 and 0156 applied on the NAS.** Clips is visible to admins only until it is
+granted to a user in User Management. Item 12 is phone-only.
+
+- [ ] **1.** Clips: the module appears on the home grid and in the nav with Home screen, All Clips, Categories & Tags and Configuration
+- [ ] **2.** Clips: write a clip with a title, a category and a tag created on the spot; it appears under All Clips with its chips
+- [ ] **3.** Clips: paste an email from Outlook — headings, lists and the table survive, and a note says what styling was removed
+- [ ] **4.** Clips: paste a screenshot — the image appears in the body, and reopening the clip still shows it
+- [ ] **5.** Clips: a pasted Outlook inline image is dropped rather than left as a broken-image icon
+- [ ] **6.** Clips: a clip containing a wide table scrolls the table sideways instead of widening the page
+- [ ] **7.** Clips: Edit a clip, change the text and a tag, save — the list reflects it
+- [ ] **8.** Clips: filter All Clips by search text, then by a category, then by a tag; the URL carries the filter and survives a refresh
+- [ ] **9.** Clips: encrypt a clip with a password and hint — the list shows "(encrypted)" and no excerpt, its chips stay visible, and the wrong password is refused
+- [ ] **10.** Clips: open the encrypted clip with the right password; Edit is not offered on a sealed clip
+- [ ] **11.** Clips: Categories & Tags — add and delete a category and a tag; deleting one in use warns with the count
+- [ ] **12.** Clips: on a phone the viewer fills the screen and the toolbar wraps instead of scrolling
+- [ ] **13.** Clips: open a clip → Attach to an entry → a blank search lists recent entries; pick one and it shows under *Attached to*
+- [ ] **14.** Clips: attach the same clip to the same entry twice — nothing breaks and it is listed once
+- [ ] **15.** Clips: Detach removes the link and the clip itself remains
+- [ ] **16.** Journal → Entries: an entry with a clip shows a paperclip on its Title cell; with two clips it shows a count
+- [ ] **17.** Journal → Entries: clicking the paperclip opens that entry's clip (or a list of them) and does **not** also open the entry behind it
+- [ ] **18.** Clips: delete a journal entry that has a clip attached — the clip is still there and its link reads "The linked entry is gone"
+- [ ] **19.** Clips: an encrypted journal entry can have a clip attached; the clip stays readable without the entry's password
+- [ ] **20.** Journal: encrypting an entry, decrypting it and the bulk Encrypt still work (the encryption code moved to a shared module)
+- [ ] **21.** Admin → Daily Quote: Disable a quote — its row dims with a Disabled pill and the button becomes Enable
+- [ ] **22.** Admin → Daily Quote: a disabled quote never appears on the home screen, including after pressing refresh
+- [ ] **23.** Admin → Daily Quote: editing a quote has a *Disabled* checkbox, and saving it after toggling Enable in the list does not undo the toggle
+- [ ] **24.** Journal → New Entry → saved-place picker: category and tag chips show their uploaded icons, and places list in two columns (one column on a phone)
+
 ## 2026-10-23 — Release (Journal Bulk overwrite, configurable Top Words, zoomable topic graph)
 
 No migration. Phone-only checks: items 7 and 13. The earlier items for Top Words and the graph were written in earlier sessions and have never been seen on screen.

@@ -1,5 +1,53 @@
 # Change History
 
+## 2026-10-23 — Clips module, Daily Quote disable, location icons in the entry picker
+
+**Three migrations — 0154, 0155, 0156 — all must be applied on the NAS** (`node --env-file-if-exists=.env
+migrate.cjs`), or Clips and the Daily Quote admin screen fail with "no such table / no such column".
+The NAS database and its WAL/SHM files were backed up before this release (`npm run backup:nas`,
+stamp `2026-10-23T22-28-08`). **None of this release has been typechecked, linted, tested or seen in
+a browser** — the gates are run separately.
+
+### Clips (new module, slug `clips`, prefix `clp_`)
+
+- **Rich-text notes that stand on their own.** Write a clip, or paste an email: headings, lists,
+  bold/italic, links and **tables** come across; the sender's fonts, colours and widths are dropped so
+  the clip reads in the app's theme, and the editor lists what it removed. Pasted images are stored as
+  separate rows (resized to 1600px, 5 MB and 20 per clip) and served by a route — never base64 in the
+  body. A pasted Outlook `cid:` image cannot be captured and is dropped rather than left broken.
+- **Categories and tags**, two lists as the Journal has, each creatable inline while writing and
+  manageable under *Categories & Tags*, with per-name icons. Filtering by search, category and tag is
+  carried in the URL, so a filtered list survives a refresh.
+- **Per-clip encryption with a password hint.** Same format and implementation as a journal entry —
+  `encryption.ts` was promoted to `src/lib/shared/` so both use one copy — but a clip is **shared**:
+  anyone with the password opens it, and **forgetting it loses that clip for everyone**. Categories
+  and tags stay readable on a sealed clip; its text is not searchable while sealed.
+- **Attach a clip to a journal entry.** A clip's *Attached to* block searches the journal (recent
+  entries on a blank search) and attaches or detaches; on Journal → Entries a **paperclip with a count**
+  on the Title cell opens that entry's clips (straight to the clip when there is one). **Deleting an
+  entry never deletes a clip** — a link to a deleted entry reads "The linked entry is gone". An
+  encrypted entry may carry an unencrypted clip.
+- **Not built yet:** attaching from the Journal side (the single-entry viewer has no *Attached clips*
+  block), and the paperclip only appears on the Entries grid — not on Calendar, Search or Review.
+- **Editor limit:** `contentEditable` with no dependency, so a pasted table is preserved but its rows
+  and columns cannot be edited. CLI: `npm run cli -- clips <list|show|add|link|delete>`.
+- Library `src/lib/clips` (colocated tests for the use-cases and the HTML allowlist sanitizer); new
+  reusable `RichTextEditor`; icon slots `clips_section_{main,all,metadata,configuration}` and
+  `clips_linked_badge`. Module icon is `folder` until a `clip` glyph is drawn in all twelve icon sets.
+  **Grant the module to non-admin users** in User Management — it is visible to admins only until then.
+
+### Daily Quote: take a quote out of rotation (migration 0154)
+
+- **Disable a quote without deleting it.** New `is_enabled` column; the admin grid gains a Status
+  column (disabled rows dimmed and struck through), a Disable/Enable action beside Edit and Delete,
+  and a *Disabled* checkbox on the edit form. Only `getRandomQuote` filters on it, so the home widget
+  and its refresh button agree and the admin list still shows everything.
+
+### Journal: uploaded icons in the entry's saved-place picker
+
+- The location library picker now shows each category's and tag's **uploaded icon** (it showed
+  monograms), and lists places in **two columns on a desktop**, one on a phone.
+
 ## 2026-10-23 — Journal Bulk overwrite, configurable Top Words, zoomable topic graph
 
 **No migration in this release** (0153 is still the last). The new `top_word_limit` preference is a

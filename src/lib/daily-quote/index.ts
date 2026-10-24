@@ -21,5 +21,6 @@ export {
   getRandomQuote,
   createQuote,
   updateQuote,
+  setQuoteEnabled,
   deleteQuote,
 } from "./daily-quote";
