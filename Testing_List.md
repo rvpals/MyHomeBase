@@ -146,6 +146,31 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-24 — Release (Top-tabs desktop navigation, clips on the journal entry screen and form)
+
+**No migration needed.** Items 1–11 and 13 are desktop-only; item 12 is phone-only. Items 14–17 need
+the Clips module (visible to admins until granted to a user), and 16 and 17 need a clip to exist.
+
+- [ ] **1.** Account → Desktop navigation: two cards, Side tree and Top tabs, each with a small diagram; Side tree is selected for an account that never chose
+- [ ] **2.** Account: pick Top tabs and press **Save preferences** — the side column disappears and a tab row appears across the top, with the page using the full width
+- [ ] **3.** Top tabs: the module you are in is underlined, and Home is the leading icon tab
+- [ ] **4.** Top tabs: narrow the window — tabs fold into **More ▾** one by one, and the module you are in never disappears into it
+- [ ] **5.** Top tabs: open **More ▾**, pick a module — you navigate there, the menu closes, and that module is now on the row
+- [ ] **6.** Top tabs → Journal: the strip shows Home screen, New Entry, Entries, Calendar, Saved Locations, Topics, Report, then **Data Management ▾** and **Configuration ▾**
+- [ ] **7.** Top tabs → Journal: open **Configuration ▾**, pick Templates — you navigate there and the Configuration chip stays highlighted
+- [ ] **8.** Top tabs → Clips (or Games, Music, CSV Analysis): no section strip is drawn, only the tab row
+- [ ] **9.** Top tabs: the bell and the avatar sit at the right end of the tab row, and the avatar menu still offers My account and Log out
+- [ ] **10.** Top tabs: there is no breadcrumb bar above the page, on Journal and on a module with no sections
+- [ ] **11.** Top tabs → Administration: it appears as a tab and its pages show their section strip
+- [ ] **12.** Phone (or a window pinned to the compact layout) with Top tabs saved: the two-tier bottom bar and the top bar with breadcrumb are exactly as before, with no tab row
+- [ ] **13.** Account: switch back to Side tree and save — the column returns, with the collapsed or expanded state you left it in
+- [ ] **14.** Journal → New Entry: **+ Clip** writes a new clip or attaches an existing one; after Save, the entry shows the clip
+- [ ] **15.** Journal entry → Edit → **+ Clip**: attach and detach take effect straight away, and cancelling the edit does not undo them
+- [ ] **16.** Journal entry screen: an entry with clips shows an "N clips" button (hidden on a printed page); with one clip it opens the clip, with several it lists them
+- [ ] **17.** Clip viewer: Escape closes it, the header can be dragged on a wide screen, and on a phone it fills the screen
+- [ ] **18.** Journal → Entries filter `date >= 2026-03-01 and date <= 2026-03-31`: an entry dated the 1st and one dated the 31st are both included
+- [ ] **19.** Terminal: `user-preferences --user <name> --desktop-nav-style horizontal` saves, and an invalid value is refused with an error
+
 ## 2026-10-23 — Release (Clips module, Daily Quote disable, location icons in the entry picker)
 
 **Needs migrations 0154, 0155 and 0156 applied on the NAS.** Clips is visible to admins only until it is

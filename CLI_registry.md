@@ -1432,6 +1432,7 @@ npm run cli -- user-preferences --user min                                # show
 npm run cli -- user-preferences --user min --favorite journal --startup yes
 npm run cli -- user-preferences --user min --favorite ""                  # clear favorite
 npm run cli -- user-preferences --user min --nav-style segmented
+npm run cli -- user-preferences --user min --desktop-nav-style horizontal
 npm run cli -- user-preferences --user min --clock-face analog --clock-weather no
 npm run cli -- user-preferences --user min --floating clock --floating-state open
 ```
@@ -1445,6 +1446,7 @@ restating the others. Supplying none is a read.
 | `--favorite` | slug or `""` | the favorite module; `""` clears it |
 | `--startup` | `yes` \| `no` | whether logging in opens the favorite |
 | `--nav-style` | `drill-in` \| `segmented` | the compact navigation arrangement |
+| `--desktop-nav-style` | `tree` \| `horizontal` | the full layout's navigation shape: the side tree or the top tab row |
 | `--clock-face` | `digital` \| `analog` | the Clock's face, on the home card *and* the floating clock |
 | `--clock-date` / `--clock-weather` / `--clock-weekday` | `yes` \| `no` | what the Clock shows around the time |
 | `--floating` + `--floating-state` | id + `closed`\|`minimized`\|`open` | one floating component's shape. **Both together**, and written by their own use-case rather than with the form |

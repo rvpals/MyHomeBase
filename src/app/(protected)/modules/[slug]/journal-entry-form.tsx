@@ -37,6 +37,11 @@ import {
   type JournalLocationInput,
 } from "./journal-actions";
 import { JournalLocationPicker } from "./journal-location-picker";
+// Clips on the entry form. Imported here, in presentation, so `src/lib/journal`
+// still knows nothing about clips — the layering note in migration 0155.
+import type { ClipSummary } from "@/lib/clips";
+import { linkClipAction } from "./clips-actions";
+import { JournalEntryClipsField } from "./journal-entry-clips-field";
 
 // The lock toggle's two faces. Inline stroked SVGs rather than an emoji padlock:
 // an emoji renders in the font's own colours and sizing, so it can't follow the
@@ -322,6 +327,12 @@ export function JournalEntryForm({
   const [locations, setLocations] = useState<JournalLocationInput[]>(() => [
     ...(initialLocations ?? []),
   ]);
+  // Clips chosen for this entry (migration 0155). Pending until the entry is
+  // saved: on a new entry there is no row to link to, so `handleSave` writes the
+  // links once it has an id. Not seeded from `initialValues` — cloning an entry
+  // copies what the writer wrote, and the clips attached to the original support
+  // *that* entry, not a new one that happens to start from the same text.
+  const [clips, setClips] = useState<ClipSummary[]>([]);
   // Weather is held as three strings, not an EntryWeatherInput, because these
   // are text inputs: a half-typed temperature ("-", "1.") is not a number yet
   // and the field still has to let the writer get there. `typedWeather` below
@@ -395,6 +406,11 @@ export function JournalEntryForm({
     // part of the clone that is most tedious to re-pick by hand. Matches how
     // `seededForm` above treats the text fields.
     setLocations([...(initialLocations ?? [])]);
+    // To none, unlike the pins above: clips are never seeded (cloning an entry
+    // does not copy them — see the state declaration), so "none" *is* this
+    // field's starting value. Clearing here also stops a failed attach leaving
+    // the picks on screen to be silently re-attached to the next entry written.
+    setClips([]);
     setWeatherTemp("");
     setWeatherUnit("");
     setWeatherDescription("");
@@ -529,6 +545,30 @@ export function JournalEntryForm({
           code: 0,
         };
 
+  /**
+   * Links the clips picked on the form to the entry that was just written.
+   *
+   * Deliberately does not fail the save. The entry is already on disk by the time
+   * this runs, and throwing away a written entry because a link could not be made
+   * would be the worse outcome — the reader is told, and can attach it again from
+   * the clip's own viewer.
+   */
+  async function attachPendingClips(entryId: number | undefined) {
+    if (entryId === undefined || clips.length === 0) return;
+
+    const failed: string[] = [];
+    for (const clip of clips) {
+      const result = await linkClipAction(clip.id, entryId);
+      if (!result.ok) failed.push(clip.title || "(untitled)");
+    }
+
+    if (failed.length > 0) {
+      setError(`The entry was saved, but these clips were not attached: ${failed.join(", ")}.`);
+    } else {
+      setClips([]);
+    }
+  }
+
   async function handleSave() {
     if (!isTempValid) {
       setError("Temperature must be a number, or empty to record no weather.");
@@ -549,6 +589,12 @@ export function JournalEntryForm({
         setError(result.error);
         return;
       }
+      // The clips picked on the form are linked now, because only now does the
+      // entry have a row to link to. Failures are reported but do not fail the
+      // save: the entry is written, and losing the typed entry over a link that
+      // can be re-made by hand would be the worse trade.
+      await attachPendingClips(result.entryId);
+
       // A caller that supplied `onSaved` owns what happens next — the merge
       // dialog closes itself and reloads its list. Without one, the form clears
       // and is ready for the next entry, which is what New Entry wants.
@@ -593,6 +639,9 @@ export function JournalEntryForm({
         return;
       }
       setIsEncryptPromptOpen(false);
+      // The clips go on a sealed entry too: a link records what supports what and
+      // reveals nothing about the entry's contents.
+      await attachPendingClips(result.entryId);
       // Same contract as handleSave: a caller that supplied `onSaved` owns what
       // happens next, otherwise the form clears for the next entry.
       if (onSaved) {
@@ -804,6 +853,16 @@ export function JournalEntryForm({
           />
         </div>
       </CollapsibleCard>
+
+      {/* Below the writing, because a clip is what supports what you just wrote.
+          On a new entry the picks are held until Save — the field says so — since
+          there is no entry row to link them to until then. */}
+      <JournalEntryClipsField
+        value={clips}
+        onChange={setClips}
+        categoryOptions={categoryOptions}
+        tagOptions={tagOptions}
+      />
     </div>
   );
 

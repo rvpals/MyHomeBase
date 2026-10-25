@@ -32,6 +32,9 @@ import type { EntryLocation, JournalEntry } from "@/lib/journal";
 const ENCRYPTED_SLOT = getIconSlot("journal_entry_encrypted")!;
 const ENCRYPT_ACTION_SLOT = getIconSlot("journal_encrypt_action")!;
 const CLONE_ACTION_SLOT = getIconSlot("journal_clone_action")!;
+// Migration 0155. The paperclip on the "N clips" button — the same slot the
+// entries grid marks an entry with, so one glyph means "clips" everywhere.
+const CLIP_SLOT = getIconSlot("clips_linked_badge")!;
 
 export interface JournalViewerProps {
   entry: JournalEntry;
@@ -96,6 +99,18 @@ export interface JournalViewerProps {
    * data so this component stays free of any journal-lib import — the caller
    * builds the URLs.
    */
+  /**
+   * How many clips are attached to this entry (migration 0155).
+   *
+   * A count, not the clips themselves: this viewer only has to say *that* there
+   * are some. What they are is the modal's job, and reading it here would make a
+   * shared presentational component fetch — the rule that also keeps
+   * `categoryIcons` a prop. 0 or omitted draws nothing, so the callers that know
+   * nothing about clips render exactly as they did before.
+   */
+  clipCount?: number;
+  /** Opens the clips modal. Without it the button is not drawn — there is nowhere to go. */
+  onOpenClips?: () => void;
   categoryIcons?: Record<string, string>;
   /** Same deal as categoryIcons, for the entry's tags. */
   tagIcons?: Record<string, string>;
@@ -319,6 +334,8 @@ export function JournalViewer({
   previousDate,
   nextHref,
   nextDate,
+  clipCount = 0,
+  onOpenClips,
   categoryIcons,
   tagIcons,
   categoryHref,
@@ -509,6 +526,26 @@ export function JournalViewer({
             </Button>
           )}
         </CollapsibleCard>
+      )}
+
+      {/* Clips (migration 0155) — supporting material someone attached to this
+          entry: a pasted email, a reference.
+
+          Deliberately just a button with a count, not a list. This viewer's job is
+          to say *that* there are clips; what they are belongs in the modal the
+          caller opens, which can also show a sealed clip's password prompt — a
+          thing an inline list has nowhere to put. `no-print` because a button is
+          not something a printed page can offer. */}
+      {clipCount > 0 && onOpenClips && (
+        <button
+          type="button"
+          onClick={onOpenClips}
+          className="no-print my-4 inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-sm text-ink hover:border-brass"
+          title={`${clipCount} clip${clipCount === 1 ? "" : "s"} attached — open`}
+        >
+          <SlotIcon slot={CLIP_SLOT} className="h-4 w-4" />
+          {clipCount} clip{clipCount === 1 ? "" : "s"}
+        </button>
       )}
 
       {/* A sealed entry says so where its text would be. Without this the body

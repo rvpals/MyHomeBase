@@ -123,11 +123,20 @@ function resolveField(raw: string): JournalFilterField {
  * operator the field can't take is rejected rather than compiled into something
  * that would silently never match.
  */
-/** Query comparator -> tree operator, for the plain single-value fields. */
+/**
+ * Query comparator -> tree operator, for the plain single-value fields.
+ *
+ * `>=` and `<=` are **not** `after`/`before`: those compile to a strict `>` / `<`,
+ * which silently drops the boundary value. `date >= 2026-03-01 and date <= 2026-03-31`
+ * would then exclude the 1st and the 31st — a month link that looks dead whenever its
+ * entries happen to sit on those days. They map to `between` instead, the one operator
+ * that compiles inclusively (`>= @from` / `<= @to`), with the bound it was given;
+ * `buildCondition` fills in whichever end the comparator names.
+ */
 const TEXT_OPERATOR_BY_COMPARATOR: Record<QueryComparator, JournalFilterOperator> = {
-  gte: "after",
+  gte: "between",
   gt: "after",
-  lte: "before",
+  lte: "between",
   lt: "before",
   eq: "equals",
   // Text has no "not equals" in the tree — the builder offers "does not contain"
@@ -191,6 +200,12 @@ function buildCondition(
     );
   }
   if (value === "") throw new FilterQueryError(`"${spelling}" needs a value.`);
+  // A one-sided `between`: `>=` is a lower bound, `<=` an upper one. The compiler
+  // treats a half-filled range as "narrow in the direction it can", so each emits
+  // the single inclusive comparison the token actually means.
+  if (mapped === "between") {
+    return comparator === "lte" ? { field, operator: mapped, valueTo: value } : { field, operator: mapped, value };
+  }
   return { field, operator: mapped, value };
 }
 

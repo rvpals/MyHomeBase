@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
+import { Modal } from "@/components/modal";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { getClipAction, openClipAction } from "./clips-actions";
 import { ClipsLinkPanel } from "./clips-link-panel";
@@ -70,21 +71,30 @@ export function ClipsViewer({ clipId, onClose }: { clipId: number; onClose: () =
   }
 
   return (
-    // A dialog on a wide screen, a full-screen sheet below 1024px: a pasted email
-    // with a table needs the whole width on a phone, and a centred card would waste
-    // most of it on margins.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 max-lg:p-0">
-      <div className="max-h-full w-full max-w-3xl overflow-auto rounded-xl border border-line bg-paper-raised p-4 max-lg:max-w-none max-lg:rounded-none">
-        <div className="mb-3 flex items-start justify-between gap-2">
-          <h2 className="font-display text-xl text-ink">
-            {loading ? "Loading…" : title || "(untitled)"}
-          </h2>
-          <Button variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-
-        {error && <p className="mb-3 text-sm text-danger">{error}</p>}
+    // `Modal size="window"` rather than the hand-rolled `fixed inset-0` overlay this
+    // used to be. That overlay was a parallel implementation of a solved problem:
+    // the shared Modal already carries Escape, the focus trap, the scroll lock, the
+    // maximize button and — the reason for the swap — a header drag on every
+    // non-`full` size above 1024px, so the viewer is now movable without a line of
+    // pointer handling here.
+    //
+    // `window` sizes to its content (capped at 56rem / 85vh) instead of the fixed
+    // `max-w-3xl` box it had. A two-line clip no longer opens as an acre of empty
+    // panel, and a pasted email can still grow to the cap and then scroll. Below
+    // 1024px Modal forks to a full-screen sheet on its own, which is the behaviour
+    // the old `max-lg:` classes were hand-writing.
+    <Modal
+      title={loading ? "Loading…" : title || "(untitled)"}
+      onClose={onClose}
+      size="window"
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <div className="space-y-3">
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         {isEncrypted && !unlocked ? (
           <div className="space-y-3">
@@ -123,6 +133,6 @@ export function ClipsViewer({ clipId, onClose }: { clipId: number; onClose: () =
           </>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

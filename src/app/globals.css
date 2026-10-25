@@ -211,6 +211,22 @@ html[data-shell="tree"][data-viewport="compact"] .app-main {
   padding-left: var(--app-gutter, 0px);
 }
 
+/* The horizontal shape reserves NO side column: `NavTabs` and `SectionStrip` are
+   in-flow bands at the top of the content column, not fixed surfaces, so they take
+   their own height and need no reservation at all. The gutter is all that's left.
+
+   A third `data-shell` value rather than reusing "tree" with a modifier, for the
+   same reason "tree" is not a variant of "two-tier": the reservations are mutually
+   exclusive, and a rule that fell through to the tree's 260px would indent every
+   page past a column that is not drawn.
+
+   No compact override is needed here — `TwoTierShell` only ever writes this value
+   on the full layout (`isHorizontal` folds in `!isCompact`), so a phone is already
+   on "tree" or "two-tier" and picks up their rules above. */
+html[data-shell="horizontal"] .app-main {
+  padding-left: var(--app-gutter, 0px);
+}
+
 /* The tree column itself. Same fixed-column treatment and z-band as `.shell-rail`
    and `.shell-panel`, because it occupies the space both of them used to. */
 .shell-tree {

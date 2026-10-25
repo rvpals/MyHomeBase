@@ -1,5 +1,68 @@
 # Change History
 
+## 2026-10-24 — Top-tabs desktop navigation, clips on the journal entry screen and form
+
+**No migration.** The new preference is a key/value row in `sys_user_preferences`, which needs no
+schema change. The NAS database and its WAL/SHM files were backed up before this release
+(`npm run backup:nas`, stamp `2026-10-24T22-14-55`). The desktop navigation was loaded and used on
+screen before this release; **the clips and journal items below were not exercised in a browser this
+session**, and none of it has been linted or unit-tested by the session that wrote it — the gates are
+run separately.
+
+### Desktop navigation: Side tree or Top tabs (Account → Desktop navigation)
+
+- **A second shape for the desktop, chosen per reader.** *Side tree* is the existing 260px column and
+  stays the default, so nothing changes until it is switched. *Top tabs* removes the side column
+  entirely: modules become a tab row, the current module's sections become a chip strip beneath it, and
+  the page gets the full window width (260px back, for about 90px of height). Saved with **Save
+  preferences**; also `npm run cli -- user-preferences --user <name> --desktop-nav-style tree|horizontal`.
+- **The tab row measures itself.** Twelve modules never fit one row, so a `ResizeObserver` works out how
+  many tabs fit and the rest go behind **More ▾**. The deciding rule is a pure function
+  (`splitTabs`, `src/lib/navigation/tab-overflow.ts`): order is the module `sequence`, and **the active
+  module is always on the row** — swapped into the last slot, never prepended, so tabs don't shift as
+  you navigate. The widths it assumes (`CHROME_RESERVE_PX` 190, `ASSUMED_TAB_WIDTH_PX` 132) are
+  estimates in `nav-tabs.tsx`; tune them if **More ▾** appears too early or late.
+- **Sections as chips; groups as dropdowns.** Journal's *Data Management* and *Configuration* (and
+  Classroom's groups) each fold into one dropdown, which is what makes 23 sections fit one row. A
+  dropdown holding the current page keeps the active styling. Sectionless modules (Clips, Games, Music,
+  CSV Analysis) draw no strip.
+- **The top bar is dropped under Top tabs** — the active tab and chip already name the module and
+  section. The bell and the profile menu move to the right end of the tab row, so logout is never lost.
+- **Phones and pinned-compact windows are untouched.** The shell reads `useIsCompact()`, not a media
+  query, so a compact layout keeps its two-tier bottom bar and its header whatever is stored.
+- **`data-shell` has a third value, `horizontal`**, which reserves no side column. The tree's collapse
+  state is left alone so switching back restores it.
+- **No icon slots added** — tabs reuse each module's own icon and chips reuse the existing section
+  slots. The slot-namespace table (`investments→stock` and three others) moved to
+  `src/components/nav-slot-namespaces.ts` so the tree and the strip share one copy.
+- New reusable `NavTabs`, `SectionStrip`, `DesktopNavStylePreview`; `design.md` gains *The full layout's
+  two shapes*. Library: `src/lib/user-preferences/desktop-nav-style.ts` and `tab-overflow.ts`, with
+  colocated tests.
+
+### Clips from the journal side
+
+- **"+ Clip" on the journal entry form**, for a new entry and an existing one. Write a clip for the
+  entry or search and attach an existing one. On a **new** entry the links wait for Save and are written
+  once the entry has an id; on an **existing** entry a pick links immediately and a removal detaches
+  immediately, so cancelling the edit does not undo them. Sealed clips can be attached (a link, not a
+  read). This closes the *Not built yet* gap from the Clips release.
+- **An "N clips" button on the single-entry screen** opens that entry's clips — straight to the clip
+  when there is one. It reuses the `clips_linked_badge` slot, is hidden when printing, and re-reads its
+  count after an edit or after the dialog closes.
+- `createJournalEntryAction` and `createEncryptedJournalEntryAction` now return the new `entryId`
+  (additive; existing callers ignore it). New `searchClipsForEntryAction`; `ClipsEditor` gains an
+  optional `onSavedClip`.
+- **The clip viewer is now the shared `Modal` (`size="window"`)** instead of a hand-rolled overlay: it
+  gains Escape, the focus trap, scroll lock, maximize and a draggable header on a wide screen, sizes to
+  its content (capped), and still fills the screen below 1024px.
+
+### Journal filters: `>=` and `<=` are now inclusive
+
+- `date >= 2026-03-01 and date <= 2026-03-31` compiled to a strict `>` / `<`, which silently dropped
+  entries on the 1st and the 31st — a month link that looked dead whenever its entries sat on those
+  days. Both now map to `between` and emit an inclusive one-sided comparison. `>` and `<` stay strict.
+  Covered in `filter-query.test.ts`.
+
 ## 2026-10-23 — Clips module, Daily Quote disable, location icons in the entry picker
 
 **Three migrations — 0154, 0155, 0156 — all must be applied on the NAS** (`node --env-file-if-exists=.env

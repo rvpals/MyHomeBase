@@ -1,5 +1,6 @@
 export type {
   CompactNavStyle,
+  DesktopNavStyle,
   UserPreference,
   UserPreferences,
   WeatherLocation,
@@ -11,6 +12,13 @@ export {
   resolveCompactNavStyle,
   type CompactNavStyleInfo,
 } from "./nav-style";
+export {
+  DESKTOP_NAV_STYLES,
+  DEFAULT_DESKTOP_NAV_STYLE,
+  getDesktopNavStyle,
+  resolveDesktopNavStyle,
+  type DesktopNavStyleInfo,
+} from "./desktop-nav-style";
 export {
   userPreferenceSchema,
   userPreferencesUpdateSchema,

@@ -11,6 +11,10 @@ import {
   type JournalLocationInput,
 } from "../../journal-actions";
 import { JournalLocationPicker } from "../../journal-location-picker";
+// Clips on the edit form. Imported here, in presentation, so `src/lib/journal`
+// still knows nothing about clips — the layering note in migration 0155.
+import type { ClipSummary } from "@/lib/clips";
+import { JournalEntryClipsField } from "../../journal-entry-clips-field";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -53,6 +57,10 @@ export function JournalEntryEditForm({
   onCancel: () => void;
   onSaved: () => void;
 }) {
+  // The clips attached to this entry (migration 0155). Loaded by the field itself
+  // from `entryId`, and not part of this form's save: attaching and detaching take
+  // effect as they are made, so there is nothing here for `handleSave` to submit.
+  const [clips, setClips] = useState<ClipSummary[]>([]);
   const [date, setDate] = useState(entry.date);
   const [time, setTime] = useState(entry.time);
   const [title, setTitle] = useState(entry.title);
@@ -277,6 +285,18 @@ export function JournalEntryEditForm({
         onChange={setLocations}
         libraryCategoryOptions={locationCategoryOptions}
         libraryTagOptions={locationTagOptions}
+      />
+
+      {/* The entry exists, so `entryId` is passed and attaching or removing a clip
+          takes effect immediately — it is not part of this form's save, and Cancel
+          below does not undo it. Attaching a clip is its own act, not a pending
+          edit to the entry's text. */}
+      <JournalEntryClipsField
+        value={clips}
+        onChange={setClips}
+        entryId={entry.id}
+        categoryOptions={categoryOptions}
+        tagOptions={tagOptions}
       />
 
       <div className="flex gap-2">

@@ -272,6 +272,26 @@ export async function listClipLinksAction(clipId: number): Promise<ClipLinksResu
   }
 }
 
+/**
+ * Clips to attach to an entry, for the entry form's picker.
+ *
+ * A blank term lists the most recent clips rather than nothing — the mirror of
+ * `searchJournalEntriesForClipAction`, and for the same reason: the clip someone
+ * wants to attach is usually one they just wrote.
+ *
+ * Sealed clips are listed. Their titles read "(encrypted)" and they carry no
+ * excerpt, but attaching one is a link, not a read: there is no reason to need the
+ * password to say "this supports that entry".
+ */
+export async function searchClipsForEntryAction(term: string): Promise<ClipListResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    return { ok: true, clips: listClips(deps.clipsRepo, { search: term }).slice(0, 20) };
+  } catch (error) {
+    return toErrorResult(error, "Could not search the clips.");
+  }
+}
+
 /** Every clip attached to one journal entry — what the entry's badge opens. */
 export async function listClipsForEntryAction(entryId: number): Promise<ClipListResult> {
   try {

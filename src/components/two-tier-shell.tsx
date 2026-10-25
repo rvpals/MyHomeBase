@@ -27,11 +27,13 @@ import { ModuleMenu, UserMenu, type NavLink } from "./nav-menus";
 import { AppHeader, type Breadcrumb } from "./app-header";
 import { ModuleRail } from "./module-rail";
 import { NavPendingProvider, NavProgressBar } from "./nav-pending";
+import { NavTabs } from "./nav-tabs";
 import { NavTree } from "./nav-tree";
+import { SectionStrip } from "./section-strip";
 import { SectionPanel, type SectionNode } from "./section-panel";
-import type { NavigationTree, TreeModule } from "@/lib/navigation";
+import { findActiveModule, type NavigationTree, type TreeModule } from "@/lib/navigation";
 import type { ResolvedNavTexture } from "@/lib/nav-texture";
-import { useCompactNavStyle } from "./nav-style-context";
+import { useCompactNavStyle, useDesktopNavStyle } from "./nav-style-context";
 import { useIsCompact } from "./viewport-context";
 
 const PANEL_KEY = "myhomebase:section-panel";
@@ -144,6 +146,13 @@ export function TwoTierShell({
   // preference so the first paint is already the bar they picked. Meaningless on
   // full, where both styles are the same 240px panel.
   const navStyle = useCompactNavStyle();
+  // The reader's full-layout shape, resolved the same way and for the same
+  // reason. **`isCompact` is folded in here deliberately**: every use below is a
+  // full-layout question, and a phone must keep its bottom bar whatever is
+  // stored — a 1400px *pinned-compact* window included, which is exactly why
+  // this reads `useIsCompact()` rather than a `lg:` media query.
+  const desktopNavStyle = useDesktopNavStyle();
+  const isHorizontal = desktopNavStyle === "horizontal" && !isCompact;
   const [panelOpen, setPanelOpen] = useState(true);
 
   useEffect(() => {
@@ -169,20 +178,26 @@ export function TwoTierShell({
     // Two values rather than one, because the reservations are mutually exclusive:
     // the tree *replaces* both columns, so a shell that reserved rail + panel +
     // tree would indent the content by all three.
-    root.dataset.shell = tree && !isCompact ? "tree" : "two-tier";
+    // Three values now: `horizontal` reserves no side column at all, so it must
+    // not fall through to `tree`'s 260px padding — the page would be indented
+    // past a column that isn't drawn.
+    root.dataset.shell = isHorizontal ? "horizontal" : tree && !isCompact ? "tree" : "two-tier";
     root.dataset.sectionpanel =
       panelOpen && !isCompact && !tree && sections.length > 0 ? "open" : "closed";
     // The tree's own collapse, on the same `panelOpen` state the section panel
     // used — one preference, because a reader who collapsed navigation on a
     // module page means it collapsed, not "collapsed until the shape changes".
-    if (tree && !isCompact) root.dataset.navtree = panelOpen ? "open" : "closed";
+    // Not set under `horizontal`: there is no column to collapse, and leaving the
+    // attribute off keeps the reader's stored collapse intact for when they
+    // switch back to the tree.
+    if (tree && !isCompact && !isHorizontal) root.dataset.navtree = panelOpen ? "open" : "closed";
     else delete root.dataset.navtree;
     return () => {
       delete root.dataset.shell;
       delete root.dataset.sectionpanel;
       delete root.dataset.navtree;
     };
-  }, [panelOpen, isCompact, sections.length, tree]);
+  }, [panelOpen, isCompact, sections.length, tree, isHorizontal]);
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -192,6 +207,19 @@ export function TwoTierShell({
   const activeSection = sections
     .flatMap((section) => [section, ...(section.children ?? [])])
     .find((section) => section.href === pathname);
+
+  // Which module the tab row should highlight, and whose sections the strip draws.
+  // Resolved from the tree by path rather than taken from `module`, because
+  // Administration has no row in `sys_modules` and would otherwise match nothing.
+  // Resolved from the tree by path rather than taken from `module`, because
+  // Administration has no row in `sys_modules` and so appears in no tree module.
+  // Matched on its own href for the same reason — `module.slug` is undefined on
+  // the admin shell, and Home (`/`) deliberately matches neither, so the strip
+  // draws nothing there.
+  const activeModule = tree ? findActiveModule(tree, pathname) : undefined;
+  const onAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  const stripModule =
+    activeModule ?? (showAdmin && onAdminRoute ? adminTreeModule : undefined);
 
   // Shared by the two places the menu can render — the header and, on the home
   // screen's full layout, the rail. One object so the two can never disagree
@@ -226,7 +254,10 @@ export function TwoTierShell({
           carries both questions in one column, which is why neither renders below
           when this does. Full layout only: the `!isCompact` guard is what keeps the
           phone on its two-tier bottom bar. */}
-      {tree && !isCompact && (
+      {/* ...unless the reader chose the horizontal shape, which replaces the
+          column with a tab row and a section strip in the content band below.
+          Both are full-layout-only; `isHorizontal` already folds in `!isCompact`. */}
+      {tree && !isCompact && !isHorizontal && (
         <NavTree
           tree={tree}
           activeHref={pathname}
@@ -235,6 +266,30 @@ export function TwoTierShell({
           adminModule={showAdmin ? adminTreeModule : undefined}
           isOpen={panelOpen}
           onOpenChange={setPanelOpen}
+          texture={navTexture}
+        />
+      )}
+
+      {/* The horizontal shape's tier 1. Carries the utility cluster itself: this
+          shape drops tier 3 on the full layout, so the bell and the profile menu
+          would otherwise have nowhere to live — design.md rule 6, the same
+          accounting `hideHeader` owes on the home screen. */}
+      {isHorizontal && tree && (
+        <NavTabs
+          modules={tree.modules}
+          home={tree.home}
+          activeHref={pathname}
+          // `stripModule`, not `module.slug`: it already resolves Administration
+          // by path, and leaves Home matching no tab at all, which is correct —
+          // Home is its own leading tab and highlights via `activeHref`.
+          activeModuleSlug={stripModule?.slug}
+          adminModule={showAdmin ? adminTreeModule : undefined}
+          utility={
+            <>
+              {headerActions}
+              <UserMenu {...userMenuProps} />
+            </>
+          }
           texture={navTexture}
         />
       )}
@@ -251,6 +306,17 @@ export function TwoTierShell({
           // surface rehomes what was on it — losing the unread badge on the home
           // screen would hide it exactly where a reader starts.
           utility={hideHeader ? headerActions : undefined}
+        />
+      )}
+
+      {/* The horizontal shape's tier 2. Renders nothing for a module with no
+          sections (Clips, Games, Music, CSV Analysis), rather than drawing an
+          empty band — the tab row above already names where you are. */}
+      {isHorizontal && stripModule && (
+        <SectionStrip
+          moduleSlug={stripModule.slug}
+          sections={stripModule.sections}
+          activeHref={pathname}
         />
       )}
 
@@ -297,7 +363,13 @@ export function TwoTierShell({
           flag here would leave the home screen with no way to log out. Enforced in
           the shell rather than asked of each caller, because a caller that forgot
           would produce a dead end rather than a visible bug. */}
-      {(isCompact || tree || !hideHeader) && (
+      {/* `!isHorizontal` last, and it is the only clause that can drop the bar on
+          the full layout when a `tree` is present. Safe for exactly the reason the
+          comment above says the tree's case was not: `NavTabs` *does* take the
+          utility cluster, so the bell and the profile menu — and therefore logout
+          — are rehomed rather than lost. `isHorizontal` already folds in
+          `!isCompact`, so the compact guard in front still wins on a phone. */}
+      {(isCompact || ((tree || !hideHeader) && !isHorizontal)) && (
         <AppHeader
           crumbs={crumbs}
           // Never on compact: the bottom bar owns the module list on *every*

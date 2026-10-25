@@ -6,6 +6,7 @@ import { Avatar } from "@/components/avatar";
 import { Button } from "@/components/button";
 import { IconSelect, type IconSelectOption } from "@/components/icon-select";
 import { NavStylePreview } from "@/components/nav-style-preview";
+import { DesktopNavStylePreview } from "@/components/desktop-nav-style-preview";
 import { CLOCK_FACE_OPTIONS, type ClockFace, type ClockFaceOptions } from "@/lib/clock";
 import {
   FLOATING_COMPONENTS,
@@ -19,7 +20,9 @@ import {
 import type { User } from "@/lib/user";
 import {
   COMPACT_NAV_STYLES,
+  DESKTOP_NAV_STYLES,
   type CompactNavStyle,
+  type DesktopNavStyle,
   type FloatingCornerUpdate,
   type FloatingStateUpdate,
   type UserPreferences,
@@ -244,6 +247,9 @@ function PreferencesSection({
   );
   const [openOnStartup, setOpenOnStartup] = useState(preferences.openFavoriteModuleOnStartup);
   const [navStyle, setNavStyle] = useState<CompactNavStyle>(preferences.compactNavStyle);
+  const [desktopNavStyle, setDesktopNavStyle] = useState<DesktopNavStyle>(
+    preferences.desktopNavStyle,
+  );
   // `?? null` because the field's "nothing chosen" is null, while the resolved
   // preference expresses it as undefined — see `saveUserPreferences`, which collapses
   // the two again on the way back in.
@@ -278,6 +284,7 @@ function PreferencesSection({
         favoriteModuleSlug,
         openFavoriteModuleOnStartup: openOnStartup,
         compactNavStyle: navStyle,
+        desktopNavStyle,
         // Carried through unchanged, like the weather and clock fields below:
         // every key is written on every save, so omitting this would collapse
         // the reader's navigation tree the next time they changed a theme here.
@@ -362,6 +369,11 @@ function PreferencesSection({
           </p>
         )}
 
+        <DesktopNavStyleField
+          value={desktopNavStyle}
+          onChange={setDesktopNavStyle}
+          disabled={isSaving}
+        />
         <NavStyleField value={navStyle} onChange={setNavStyle} disabled={isSaving} />
 
         <WeatherLocationField
@@ -462,6 +474,76 @@ function NavStyleField({
                 <div
                   className={`text-sm font-medium ${selected ? "text-brass-dark" : "text-ink"}`}
                 >
+                  {style.label}
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-muted">{style.description}</p>
+                <p className="mt-1.5 text-xs leading-relaxed text-muted">{style.tradeoff}</p>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+/**
+ * The full layout's navigation shape picker.
+ *
+ * Same radio-cards-with-a-diagram shape as `NavStyleField` above, and for the
+ * same reason: the point is comparing two pictures, which a `<select>` would
+ * hide. The two fields sit next to each other on the account screen because they
+ * are the same kind of choice on the two layouts — but they are independent
+ * axes, and the copy below says so, since "desktop" and "phone" are the obvious
+ * wrong mental model for a reader who pins the compact layout on a wide window.
+ */
+function DesktopNavStyleField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: DesktopNavStyle;
+  onChange: (style: DesktopNavStyle) => void;
+  disabled: boolean;
+}) {
+  return (
+    <fieldset className="mt-6 border-0 p-0" disabled={disabled}>
+      <legend className="mb-1 text-sm font-medium text-ink">Desktop navigation</legend>
+      <p className="mb-3 text-xs text-muted">
+        Where navigation sits on a wide screen. The side tree keeps every module and section in
+        one column; the top tabs give the page the full width and put the modules that don&rsquo;t
+        fit behind a menu. This has no effect on a narrow screen, which keeps its bottom bar
+        either way.
+      </p>
+
+      <div className="grid grid-cols-2 gap-3 max-lg:grid-cols-1">
+        {DESKTOP_NAV_STYLES.map((style) => {
+          const selected = style.id === value;
+          return (
+            <label
+              key={style.id}
+              className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${
+                selected
+                  ? "border-brass-dark bg-brass-soft/40"
+                  : "border-line bg-paper hover:border-muted"
+              } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+            >
+              <input
+                type="radio"
+                name="desktop-nav-style"
+                value={style.id}
+                checked={selected}
+                onChange={() => onChange(style.id)}
+                disabled={disabled}
+                className="peer sr-only"
+              />
+              <DesktopNavStylePreview
+                style={style.id}
+                selected={selected}
+                className="peer-focus-visible:ring-2 peer-focus-visible:ring-brass"
+              />
+              <div className="min-w-0">
+                <div className={`text-sm font-medium ${selected ? "text-brass-dark" : "text-ink"}`}>
                   {style.label}
                 </div>
                 <p className="mt-1 text-xs leading-relaxed text-muted">{style.description}</p>

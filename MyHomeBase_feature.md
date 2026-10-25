@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (202 commits, 2026-07-12 to 2026-10-23) and `CHANGE_HISTORY.md`.
+project's git history (203 commits, 2026-07-12 to 2026-10-24) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -16,13 +16,20 @@ The shell, the chrome and the services every module sits on.
 - **One 260px tree on the desktop** (`NavTree`) carrying Home, every module and every
   section, above a filter box that searches across all modules at once. Groups expand
   and collapse, with expand-all / collapse-all, and the whole tree can fold to a strip.
+- **Or top tabs on the desktop** (`NavTabs` and `SectionStrip`), chosen per reader under
+  Account → Desktop navigation. Modules become a tab row that fits as many as the window
+  allows and folds the rest into **More ▾** — the module you are in is always on the row.
+  The current module's sections become a chip strip beneath it, with grouped sections
+  (Data Management, Configuration) as dropdowns. There is no side column, so the page gets
+  the full width; the bell and profile menu sit at the end of the tab row.
 - **A two-tier bottom bar on a phone** (`SectionPanel`) — modules on one tier, the
   current module's sections on the other. The two layouts are deliberately different
   shapes rather than one responsive compromise.
 - **One layout boundary at 1024px**, decided on the server so the first paint is right.
 - **Breadcrumbs**, section groups whose heading is a page in its own right, and a
   section panel that reads as cards.
-- Per-user **compact navigation styles** — the reader picks which one they get.
+- Per-user **compact navigation styles** — the reader picks which one they get — and a
+  per-user **desktop navigation style** that never affects a phone.
 
 ### Home screen
 
@@ -133,6 +140,9 @@ The largest module — fifteen sections.
 - **Entry authoring** with GPS and weather captured at write time, a template
   suggestion dated by the local calendar, and photographs attached to an entry.
 - **Pin** an entry; **lock** it; **encrypt** it.
+- **Attach clips while writing** — a **+ Clip** control on the entry form writes a new clip
+  or attaches an existing one, for a new entry and an existing one alike. The single-entry
+  screen shows an **N clips** button that opens them.
 - **Clone an entry** into a new one from the entry screen, copying its title, place,
   categories, tags and locations across, and leaving the date, time and writing to fill
   in. For anything that recurs — a weekly swimming practice, a class — the next entry is
@@ -294,8 +304,9 @@ down.
   **forgetting it loses the clip for everyone**. Categories and tags stay readable on a
   sealed clip; its text is not searchable.
 - **Attach a clip to a journal entry** from the clip's *Attached to* block, which searches the
-  journal; the entry then carries a paperclip that opens its clips. A clip exists independently
-  — deleting an entry never deletes it. An encrypted entry can carry an unencrypted clip.
+  journal, or from the journal side with **+ Clip** on the entry form; the entry then carries a
+  paperclip that opens its clips. A clip exists independently — deleting an entry never
+  deletes it. An encrypted entry can carry an unencrypted clip.
 - A `clips` CLI: list, show, add, link and delete.
 
 ## Admin

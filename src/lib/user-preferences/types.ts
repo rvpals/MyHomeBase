@@ -22,6 +22,16 @@ export interface UserPreference {
 export type CompactNavStyle = "drill-in" | "segmented";
 
 /**
+ * How the full layout lays out navigation. See `desktop-nav-style.ts` for what
+ * each one does and `design.md` for why both exist.
+ *
+ * The full-layout counterpart of `CompactNavStyle`, and a separate axis from it:
+ * this decides only what a *full* layout draws, so a reader on a pinned-compact
+ * window gets the bottom bar whichever shape is stored here.
+ */
+export type DesktopNavStyle = "tree" | "horizontal";
+
+/**
  * Where a user wants their weather from.
  *
  * All three fields travel together or not at all — coordinates without a name would
@@ -53,6 +63,14 @@ export interface UserPreferences {
    * navigation has to render whatever is stored.
    */
   compactNavStyle: CompactNavStyle;
+  /**
+   * The full layout's navigation shape. Always a known shape — a missing or
+   * unrecognised row resolves to the default, for the same reason
+   * `compactNavStyle` does: navigation has to render whatever is stored.
+   *
+   * Full layout only, like `expandedModules` — the compact bar has no tab row.
+   */
+  desktopNavStyle: DesktopNavStyle;
   /**
    * Module slugs expanded in the full layout's navigation tree. Always an array —
    * nothing expanded is `[]`, never `undefined` — so the tree never branches on

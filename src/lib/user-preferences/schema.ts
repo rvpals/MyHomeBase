@@ -38,6 +38,8 @@ export const userPreferencesUpdateSchema = z.object({
   // so an unrecognised value from an older client is corrected to the default
   // instead of rejecting the whole save and losing the other fields with it.
   compactNavStyle: z.enum(["drill-in", "segmented"]).catch("drill-in"),
+  // Same contract as the line above, for the full layout's shape.
+  desktopNavStyle: z.enum(["tree", "horizontal"]).catch("tree"),
   // Not validated against the module list, deliberately — see `expandedModules` on
   // `UserPreferences`. The cap is a sanity bound on a hand-written payload, not a
   // count of modules: it is well above any plausible module list. `.catch` and

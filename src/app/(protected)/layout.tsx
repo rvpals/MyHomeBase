@@ -5,7 +5,10 @@ import { CollapsibleCardScope } from "@/components/collapsible-card-scope";
 import { MusicPlayerBar } from "@/components/music-player-bar";
 import { MusicPlayerProvider } from "@/components/music-player-provider";
 import { ModuleCustomIconProvider } from "@/components/module-icon-context";
-import { CompactNavStyleProvider } from "@/components/nav-style-context";
+import {
+  CompactNavStyleProvider,
+  DesktopNavStyleProvider,
+} from "@/components/nav-style-context";
 import { FloatingHost } from "@/components/floating-host";
 import { PersonalToolbars } from "@/components/personal-toolbar";
 import type { CalculatorActions } from "@/components/floating-calculator";
@@ -147,7 +150,10 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
   // they chose — navigation is the worst place for a visible rearrangement one
   // frame after hydration.
   const preferences = getUserPreferences(deps.userPreferencesRepo, currentUser.id);
-  const { compactNavStyle } = preferences;
+  // Two independent axes: `desktopNavStyle` decides what the FULL layout draws
+  // (the tree column or the tab row), `compactNavStyle` what the bottom bar does.
+  // Neither reaches the other's layout — see `desktop-nav-style.ts`.
+  const { compactNavStyle, desktopNavStyle } = preferences;
 
   // Personal toolbars (migration 0125) — additional shortcut bars docked to a screen
   // edge. **Not navigation**: the tree and the compact bar are untouched, and a reader
@@ -306,6 +312,7 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
           every one of them already knows the slug. See the provider's own note. */}
       <ModuleCustomIconProvider value={moduleCustomIcons}>
         <CompactNavStyleProvider value={compactNavStyle}>
+          <DesktopNavStyleProvider value={desktopNavStyle}>
           <MusicPlayerProvider actions={musicQueueActions}>
             {/* The texture attaches to `.app-main` itself rather than to a nested
                 div: its `::before` is `fixed` so it covers the viewport either
@@ -385,6 +392,7 @@ export default async function ProtectedLayout({ children }: { children: ReactNod
               scratchpadCategoryId={scratchpad.activeCategoryId}
             />
           </MusicPlayerProvider>
+          </DesktopNavStyleProvider>
         </CompactNavStyleProvider>
       </ModuleCustomIconProvider>
     </div>

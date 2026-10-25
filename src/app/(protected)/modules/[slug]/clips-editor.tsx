@@ -17,7 +17,7 @@ import { useState } from "react";
 import { Button } from "@/components/button";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { TokenPicker } from "@/components/token-picker";
-import { sanitizeClipHtml } from "@/lib/clips";
+import { sanitizeClipHtml, toClipSummary, type ClipSummary } from "@/lib/clips";
 import { addClipImageAction, createClipAction, updateClipAction } from "./clips-actions";
 
 const INPUT_CLASS =
@@ -34,6 +34,12 @@ export interface ClipsEditorProps {
   categoryOptions: string[];
   tagOptions: string[];
   onSaved?: () => void;
+  /**
+   * Raised with the saved clip, for a caller that needs the row itself rather
+   * than just "it saved" — the entry form's "+ New clip" adds it straight onto
+   * the entry. Fires alongside `onSaved`, not instead of it.
+   */
+  onSavedClip?: (clip: ClipSummary) => void;
   onCancel?: () => void;
 }
 
@@ -46,6 +52,7 @@ export function ClipsEditor({
   categoryOptions,
   tagOptions,
   onSaved,
+  onSavedClip,
   onCancel,
 }: ClipsEditorProps) {
   const [title, setTitle] = useState(initialTitle);
@@ -112,6 +119,12 @@ export function ClipsEditor({
     // if the markup changed in between. Reported rather than silent.
     if (result.removed && result.removed.length > 0) setNotice(result.removed);
     if (result.clip && id === undefined) setSavedId(result.clip.id);
+    // Built here rather than re-fetched: `toClipSummary` is the same pure
+    // projection the list uses, so a caller gets exactly the row it would have
+    // seen under All Clips. Image and link counts are 0 — correct for a clip
+    // this save just created, and stale only for an edit, which is why the
+    // entry form only uses this on a new one.
+    if (result.clip && onSavedClip) onSavedClip(toClipSummary(result.clip, 0, 0));
     onSaved?.();
   }
 

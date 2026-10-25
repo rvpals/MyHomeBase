@@ -50,6 +50,7 @@ export async function setExpandedModulesAction(slugs: string[]): Promise<void> {
       favoriteModuleSlug: current.favoriteModuleSlug ?? "",
       openFavoriteModuleOnStartup: current.openFavoriteModuleOnStartup,
       compactNavStyle: current.compactNavStyle,
+      desktopNavStyle: current.desktopNavStyle,
       expandedModules: slugs,
       // Carried through like the rest. Harmless to omit — `homeLayout` is optional
       // and absence means "leave it alone" — but passed so this payload keeps

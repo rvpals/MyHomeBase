@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_COMPACT_NAV_STYLE } from "./nav-style";
+import { DEFAULT_DESKTOP_NAV_STYLE } from "./desktop-nav-style";
 import type { UserPreferencesRepository } from "./ports";
 import {
   USER_PREFERENCE_KEYS,
@@ -55,6 +56,7 @@ describe("resolveUserPreferences", () => {
       favoriteModuleSlug: undefined,
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       // One column, and no personal arrangement — an empty order means "follow the
       // household order", not "every card in catalogue order".
@@ -102,6 +104,7 @@ describe("resolveUserPreferences", () => {
       favoriteModuleSlug: "journal",
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       homeLayout: { columns: 1, order: [], hidden: [] },
       weatherLocation: undefined,
@@ -133,6 +136,7 @@ describe("userPreferencesToEntries", () => {
     const entries = userPreferencesToEntries({
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       weatherUnit: "fahrenheit",
       clock: { face: "digital" as const, showDate: true, showWeather: true, showWeekday: true },
@@ -141,6 +145,7 @@ describe("userPreferencesToEntries", () => {
       { key: USER_PREFERENCE_KEYS.favoriteModuleSlug, value: "" },
       { key: USER_PREFERENCE_KEYS.openFavoriteModuleOnStartup, value: "0" },
       { key: USER_PREFERENCE_KEYS.compactNavStyle, value: DEFAULT_COMPACT_NAV_STYLE },
+      { key: USER_PREFERENCE_KEYS.desktopNavStyle, value: DEFAULT_DESKTOP_NAV_STYLE },
       // Nothing expanded serialises to "" for the same reason the favorite does:
       // every key is written on every save, so an omitted row would leave a stale
       // value in place rather than clearing it.
@@ -161,6 +166,7 @@ describe("userPreferencesToEntries", () => {
       favoriteModuleSlug: "expense",
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       // Two slugs, sorted: the serialiser sorts, so a round trip has to come back
       // in this order for the comparison below to mean anything.
       expandedModules: ["expense", "journal"],
@@ -201,6 +207,7 @@ describe("userPreferencesToEntries", () => {
     const entries = userPreferencesToEntries({
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       weatherUnit: "fahrenheit",
       clock: { face: "digital" as const, showDate: true, showWeather: true, showWeekday: true },
@@ -215,6 +222,7 @@ describe("userPreferencesToEntries", () => {
     const entries = userPreferencesToEntries({
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       homeLayout: { columns: 2, order: ["dailyQuote", "carousel"], hidden: ["todo"] },
       weatherUnit: "fahrenheit",
@@ -236,6 +244,7 @@ describe("userPreferencesToEntries", () => {
       favoriteModuleSlug: "expense",
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       homeLayout: {
         columns: 2 as const,
@@ -357,6 +366,7 @@ describe("weather location", () => {
         favoriteModuleSlug: "journal",
         openFavoriteModuleOnStartup: false,
         compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
         weatherLocation: { latitude: 51.5072, longitude: -0.1276, name: "London, England" },
         weatherUnit: "celsius",
       },
@@ -376,6 +386,7 @@ describe("weather location", () => {
       favoriteModuleSlug: "journal",
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       weatherUnit: "fahrenheit" as const,
     };
     saveUserPreferences(
@@ -398,6 +409,7 @@ describe("getUserPreferences", () => {
       favoriteModuleSlug: undefined,
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       homeLayout: { columns: 1, order: [], hidden: [] },
       weatherLocation: undefined,
@@ -421,7 +433,7 @@ describe("getUserPreferences", () => {
     saveUserPreferences(
       repo,
       7,
-      { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+      { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE },
       MODULES,
     );
     expect(getUserPreferences(repo, 8).favoriteModuleSlug).toBeUndefined();
@@ -435,13 +447,14 @@ describe("saveUserPreferences", () => {
     const saved = saveUserPreferences(
       repo,
       7,
-      { favoriteModuleSlug: "investments", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+      { favoriteModuleSlug: "investments", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE },
       MODULES,
     );
     expect(saved).toEqual({
       favoriteModuleSlug: "investments",
       openFavoriteModuleOnStartup: true,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       homeLayout: { columns: 1, order: [], hidden: [] },
       weatherLocation: undefined,
@@ -463,8 +476,8 @@ describe("saveUserPreferences", () => {
 
   it("upserts rather than accumulating rows when saved repeatedly", () => {
     const repo = new FakeUserPreferencesRepository();
-    saveUserPreferences(repo, 7, { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES);
-    saveUserPreferences(repo, 7, { favoriteModuleSlug: "expense", openFavoriteModuleOnStartup: false, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES);
+    saveUserPreferences(repo, 7, { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE }, MODULES);
+    saveUserPreferences(repo, 7, { favoriteModuleSlug: "expense", openFavoriteModuleOnStartup: false, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE }, MODULES);
     // One row per key the FORM writes, however many there are — the point is that a
     // second save overwrites rather than appends. Derived from the serializer rather
     // than from the whole key list, because `USER_PREFERENCE_KEYS` also covers keys
@@ -474,6 +487,7 @@ describe("saveUserPreferences", () => {
       userPreferencesToEntries({
         openFavoriteModuleOnStartup: false,
         compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
         expandedModules: [],
         weatherUnit: "fahrenheit",
         clock: { face: "digital", showDate: true, showWeather: true, showWeekday: true },
@@ -483,6 +497,7 @@ describe("saveUserPreferences", () => {
       favoriteModuleSlug: "expense",
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       homeLayout: { columns: 1, order: [], hidden: [] },
       weatherLocation: undefined,
@@ -503,11 +518,11 @@ describe("saveUserPreferences", () => {
 
   it("clears a favorite when given a blank slug", () => {
     const repo = new FakeUserPreferencesRepository();
-    saveUserPreferences(repo, 7, { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES);
+    saveUserPreferences(repo, 7, { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE }, MODULES);
     const saved = saveUserPreferences(
       repo,
       7,
-      { favoriteModuleSlug: "", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+      { favoriteModuleSlug: "", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE },
       MODULES,
     );
     expect(saved.favoriteModuleSlug).toBeUndefined();
@@ -519,7 +534,7 @@ describe("saveUserPreferences", () => {
       saveUserPreferences(
         repo,
         7,
-        { favoriteModuleSlug: "csv-analysis", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+        { favoriteModuleSlug: "csv-analysis", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE },
         MODULES,
       ),
     ).toThrow(UnknownFavoriteModuleError);
@@ -528,7 +543,7 @@ describe("saveUserPreferences", () => {
   it("stores nothing when the favorite is rejected", () => {
     const repo = new FakeUserPreferencesRepository();
     try {
-      saveUserPreferences(repo, 7, { favoriteModuleSlug: "nope", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE }, MODULES);
+      saveUserPreferences(repo, 7, { favoriteModuleSlug: "nope", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE }, MODULES);
     } catch {
       // expected
     }
@@ -563,6 +578,7 @@ describe("resolveStartupDestination", () => {
     return {
       openFavoriteModuleOnStartup: false,
       compactNavStyle: DEFAULT_COMPACT_NAV_STYLE,
+      desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE,
       expandedModules: [],
       homeLayout: { columns: 1, order: [], hidden: [] },
       weatherUnit: "fahrenheit",
@@ -635,7 +651,7 @@ describe("saveFloatingState", () => {
     saveUserPreferences(
       repo,
       7,
-      { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE },
+      { favoriteModuleSlug: "journal", openFavoriteModuleOnStartup: true, compactNavStyle: DEFAULT_COMPACT_NAV_STYLE, desktopNavStyle: DEFAULT_DESKTOP_NAV_STYLE },
       MODULES,
     );
 

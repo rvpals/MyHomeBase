@@ -13,7 +13,12 @@
 // should branch on it.
 
 import { createContext, useContext, type ReactNode } from "react";
-import { DEFAULT_COMPACT_NAV_STYLE, type CompactNavStyle } from "@/lib/user-preferences";
+import {
+  DEFAULT_COMPACT_NAV_STYLE,
+  DEFAULT_DESKTOP_NAV_STYLE,
+  type CompactNavStyle,
+  type DesktopNavStyle,
+} from "@/lib/user-preferences";
 
 // Defaults to the same style a user with no stored preference resolves to, so a
 // component rendered outside a provider — a test, a harness — matches the app.
@@ -34,4 +39,30 @@ export function CompactNavStyleProvider({
 /** The reader's compact navigation style. Meaningful on compact only. */
 export function useCompactNavStyle(): CompactNavStyle {
   return useContext(CompactNavStyleContext);
+}
+
+// The full layout's counterpart. Separate context rather than one object, so a
+// component that reads only one of the two doesn't re-render when the other
+// changes — and so the pairing with the layout it affects stays obvious.
+//
+// **Only `TwoTierShell` needs this.** It affects the full layout alone; on
+// compact both shapes render the identical bottom bar, so no other component
+// should branch on it.
+const DesktopNavStyleContext = createContext<DesktopNavStyle>(DEFAULT_DESKTOP_NAV_STYLE);
+
+export function DesktopNavStyleProvider({
+  value,
+  children,
+}: {
+  value: DesktopNavStyle;
+  children: ReactNode;
+}) {
+  return (
+    <DesktopNavStyleContext.Provider value={value}>{children}</DesktopNavStyleContext.Provider>
+  );
+}
+
+/** The reader's full-layout navigation shape. Meaningful on the full layout only. */
+export function useDesktopNavStyle(): DesktopNavStyle {
+  return useContext(DesktopNavStyleContext);
 }

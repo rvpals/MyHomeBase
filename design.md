@@ -724,9 +724,13 @@ Do not "fix" the inconsistency by making one look like the other. It was measure
 
 | Layout | Navigation | Component |
 |---|---|---|
-| Desktop (`full`) | one 260px tree: Home, then every module as a collapsible heading with its sections under it, above a filter box. Collapses to a 28px strip | `NavTree` |
+| Desktop (`full`), **Side tree** | one 260px tree: Home, then every module as a collapsible heading with its sections under it, above a filter box. Collapses to a 28px strip | `NavTree` |
+| Desktop (`full`), **Top tabs** | one tab row of modules, a section chip strip beneath it, no side column at all | `NavTabs` + `SectionStrip` |
 | Compact | one bottom bar carrying both tiers, opening a sheet | `SectionPanel` |
-| Both | slim top bar: breadcrumb, actions, profile | `AppHeader` |
+| Both (side tree only) | slim top bar: breadcrumb, actions, profile | `AppHeader` |
+
+**The desktop has two shapes, chosen per reader.** See *The full layout's two shapes*
+below. Compact has exactly one and is unaffected by the choice.
 
 `TwoTierShell` composes them and owns the state. A module shell hands it `links`,
 `sections`, `module` and `tree` — it does **not** place anything itself.
@@ -885,11 +889,60 @@ columns in one, which is what `TreeNav` did and what the two-tier shell was buil
 stop. Don't grow the strip and don't put destinations in it — if navigation is worth
 showing, open the tree.
 
+### The full layout's two shapes
+
+The desktop draws navigation one of two ways, chosen by the reader under **Account →
+Desktop navigation** and stored as `desktop_nav_style`. The catalogue, the default and
+the resolver live in `src/lib/user-preferences/desktop-nav-style.ts`; `TwoTierShell`
+reads it through `useDesktopNavStyle()` and forks.
+
+| | **Side tree** (`tree`, the default) | **Top tabs** (`horizontal`) |
+|---|---|---|
+| Modules | rows in the column | tabs in the row, overflow behind `More ▾` |
+| Sections | indented under their module | chips in a strip, groups as dropdowns |
+| Costs | 260px of width | ~90px of height |
+| Tier 3 (`AppHeader`) | rendered | **dropped** — `NavTabs` takes the bell and profile |
+| Every module one click? | yes | no — only those that fit the row |
+
+**Three rules hold whichever shape is on.**
+
+1. **Compact ignores this entirely.** `isHorizontal` folds in `!isCompact`, so a phone —
+   *and a pinned-compact 1400px window* — keeps the two-tier bottom bar and its header.
+   This is why the shell reads `useIsCompact()` and not a `lg:` media query: a media
+   query would hand a pinned reader the tab row *and* the bottom bar at once.
+2. **`sections` and `tree` are both still required**, unchanged. `sections` feeds the
+   compact bar and the breadcrumb; `tree` feeds whichever desktop shape is drawn. A shell
+   passing only one leaves a layout with no navigation.
+3. **`horizontal` is the one case where tier 3 may be dropped on the full layout**, and
+   only because `NavTabs` rehomes what lived there — rule 6 under *Adding a UI element to
+   the shell*, the same accounting the home screen's `hideHeader` owes. A shape that
+   hides the header without taking the profile menu would strand logout.
+
+**`data-shell` has three values**, not two: `two-tier`, `tree` and `horizontal`. They are
+mutually exclusive reservations — `horizontal` reserves no side column, so it must not
+fall through to the tree's 260px `padding-left` or every page indents past a column that
+isn't drawn.
+
+**The collapse preference is left untouched under `horizontal`.** There is no column to
+collapse, so `data-navtree` is simply not set, and the reader's stored `«` state survives
+for when they switch back.
+
+**Don't "fix" the divergence.** Under `horizontal` the desktop goes horizontal while the
+phone stays vertical-bottom — the two layouts are deliberately different shapes, the same
+rule that already governs the tree and the compact bar. Compact already splits modules
+from sections across two tiers, so this shape arguably agrees with the phone more closely
+than the tree does.
+
 ### Tier 3 — the utility header
 
 Breadcrumb (`[Module] › [Section]`, optionally a third crumb for a record), global actions,
 profile. The breadcrumb is the *only* thing naming the current section in words on desktop
 when the panel is closed, so it is never decorative — don't drop it to make room.
+
+**Under the `horizontal` shape this bar does not render at all** on the full layout: the
+active tab names the module and the active chip names the section, both always visible,
+so the crumb would repeat what is already on screen twice. It still renders on compact
+at every setting — see *The full layout's two shapes*.
 
 ### What compact does differently
 

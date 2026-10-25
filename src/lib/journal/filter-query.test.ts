@@ -29,12 +29,29 @@ describe("parseFilterQuery — single conditions", () => {
   });
 
   it("parses date comparisons", () => {
-    expect(parseFilterQuery("date >= 2026-01-01").groups[0].conditions[0]).toEqual({
+    // `>` / `<` stay strict…
+    expect(parseFilterQuery("date > 2026-01-01").groups[0].conditions[0]).toEqual({
       field: "date",
       operator: "after",
       value: "2026-01-01",
     });
-    expect(parseFilterQuery("date <= 2026-06-30").groups[0].conditions[0].operator).toBe("before");
+    expect(parseFilterQuery("date < 2026-06-30").groups[0].conditions[0].operator).toBe("before");
+  });
+
+  it("keeps >= and <= inclusive of their boundary date", () => {
+    // …while `>=` / `<=` become one-sided `between`s, which compile to `>=` / `<=`.
+    // Mapping them onto after/before dropped the boundary day, so a Count by Years
+    // month link excluded entries written on the 1st or the last of the month.
+    expect(parseFilterQuery("date >= 2026-03-01").groups[0].conditions[0]).toEqual({
+      field: "date",
+      operator: "between",
+      value: "2026-03-01",
+    });
+    expect(parseFilterQuery("date <= 2026-03-31").groups[0].conditions[0]).toEqual({
+      field: "date",
+      operator: "between",
+      valueTo: "2026-03-31",
+    });
   });
 
   it("parses booleans from yes/no/true/false/1/0", () => {

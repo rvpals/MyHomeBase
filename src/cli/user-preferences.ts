@@ -4,11 +4,13 @@ import { CLOCK_FACE_OPTIONS, type ClockFace } from "@/lib/clock";
 import { FLOATING_COMPONENTS, isFloatingId, type FloatingId, type FloatingState } from "@/lib/floating";
 import {
   COMPACT_NAV_STYLES,
+  DESKTOP_NAV_STYLES,
   getUserPreferences,
   resolveStartupDestination,
   saveFloatingState,
   saveUserPreferences,
   type CompactNavStyle,
+  type DesktopNavStyle,
 } from "@/lib/user-preferences";
 import { deps } from "@/lib/wiring";
 import { parseFlags } from "./parse-flags";
@@ -34,6 +36,7 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
   const username = flags.user;
 
   const navStyleIds = COMPACT_NAV_STYLES.map((style) => style.id);
+  const desktopNavStyleIds = DESKTOP_NAV_STYLES.map((style) => style.id);
   const faceIds = CLOCK_FACE_OPTIONS.map((option) => option.value);
   const floatingIds = FLOATING_COMPONENTS.map((component) => component.id);
 
@@ -41,6 +44,7 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
     console.error(
       "Usage: user-preferences --user <username> [--favorite <slug|\"\">] [--startup yes|no]" +
         ` [--nav-style ${navStyleIds.join("|")}]` +
+        ` [--desktop-nav-style ${desktopNavStyleIds.join("|")}]` +
         ` [--clock-face ${faceIds.join("|")}]` +
         " [--clock-date yes|no] [--clock-weather yes|no] [--clock-weekday yes|no]" +
         ` [--floating ${floatingIds.join("|")} --floating-state closed|minimized|open]`,
@@ -64,6 +68,7 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
 
   const current = getUserPreferences(deps.userPreferencesRepo, user.id);
   const navStyleFlag = flags["nav-style"];
+  const desktopNavStyleFlag = flags["desktop-nav-style"];
   const faceFlag = flags["clock-face"];
   const floatingFlag = flags.floating;
   const floatingStateFlag = flags["floating-state"];
@@ -80,6 +85,7 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
     flags.favorite !== undefined ||
     flags.startup !== undefined ||
     navStyleFlag !== undefined ||
+    desktopNavStyleFlag !== undefined ||
     faceFlag !== undefined ||
     toggleFlags.some((toggle) => toggle.value !== undefined);
 
@@ -151,6 +157,18 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
     return;
   }
 
+  // Same contract as the check above, for the full layout's shape.
+  if (
+    desktopNavStyleFlag !== undefined &&
+    !desktopNavStyleIds.includes(desktopNavStyleFlag as DesktopNavStyle)
+  ) {
+    console.error(
+      `--desktop-nav-style takes ${desktopNavStyleIds.join(" or ")}, not "${desktopNavStyleFlag}".`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   try {
     const saved = saveUserPreferences(
       deps.userPreferencesRepo,
@@ -162,6 +180,10 @@ export async function userPreferencesCommand(args: string[]): Promise<void> {
           flags.startup !== undefined ? flags.startup === "yes" : current.openFavoriteModuleOnStartup,
         compactNavStyle:
           navStyleFlag !== undefined ? (navStyleFlag as CompactNavStyle) : current.compactNavStyle,
+        desktopNavStyle:
+          desktopNavStyleFlag !== undefined
+            ? (desktopNavStyleFlag as DesktopNavStyle)
+            : current.desktopNavStyle,
         // Carried through for the same reason as the weather and clock fields:
         // there is no flag for it, and omitting it would collapse the reader's
         // navigation tree on a command about something else entirely.
@@ -212,6 +234,7 @@ function printPreferences(
   console.log(`  favorite module: ${preferences.favoriteModuleSlug ?? "(none)"}`);
   console.log(`  open on startup: ${preferences.openFavoriteModuleOnStartup ? "yes" : "no"}`);
   console.log(`  phone nav style: ${preferences.compactNavStyle}`);
+  console.log(`  desktop nav style: ${preferences.desktopNavStyle}`);
   console.log(
     `  home layout:     ${preferences.homeLayout.columns} column${
       preferences.homeLayout.columns === 1 ? "" : "s"

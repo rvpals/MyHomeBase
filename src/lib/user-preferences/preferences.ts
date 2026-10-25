@@ -9,6 +9,7 @@ import {
 } from "@/lib/home-layout";
 import { parseExpandedModules, serializeExpandedModules } from "@/lib/navigation";
 import { resolveCompactNavStyle } from "./nav-style";
+import { resolveDesktopNavStyle } from "./desktop-nav-style";
 import type { UserPreference, UserPreferences, WeatherLocation } from "./types";
 
 // The keys a preference is stored under. Adding a preference means a key here
@@ -17,6 +18,7 @@ export const USER_PREFERENCE_KEYS = {
   favoriteModuleSlug: "favorite_module_slug",
   openFavoriteModuleOnStartup: "open_favorite_module_on_startup",
   compactNavStyle: "compact_nav_style",
+  desktopNavStyle: "desktop_nav_style",
   // Which modules are expanded in the full layout's navigation tree, as a
   // comma-separated slug list. One key rather than a row per module: the set is
   // small, always read and written whole, and a row per module would need
@@ -108,6 +110,9 @@ export function resolveUserPreferences(preferences: UserPreference[]): UserPrefe
     // Total by construction: a missing row and a garbled one both resolve to the
     // default, because the compact shell has to draw *some* navigation.
     compactNavStyle: resolveCompactNavStyle(byKey.get(USER_PREFERENCE_KEYS.compactNavStyle)),
+    // Same contract as the line above, for the full layout: the desktop shell has
+    // to draw *some* navigation, so this never resolves to undefined.
+    desktopNavStyle: resolveDesktopNavStyle(byKey.get(USER_PREFERENCE_KEYS.desktopNavStyle)),
     // Sorted so the resolved object is stable for a given stored value — the
     // serialiser writes sorted, and resolving to a different order would make
     // a round trip look like a change.
@@ -228,6 +233,10 @@ export function userPreferencesToEntries(
     {
       key: USER_PREFERENCE_KEYS.compactNavStyle,
       value: preferences.compactNavStyle,
+    },
+    {
+      key: USER_PREFERENCE_KEYS.desktopNavStyle,
+      value: preferences.desktopNavStyle,
     },
     {
       key: USER_PREFERENCE_KEYS.expandedModules,

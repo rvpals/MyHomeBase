@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
@@ -15,6 +15,10 @@ import {
   setEntryLockAction,
 } from "../../journal-actions";
 import { journalEntriesFilterHref } from "../../journal-shared";
+// Clips, read here because `JournalViewer` is a shared component and may not
+// fetch. `src/lib/journal` still knows nothing about clips — see migration 0155.
+import { listClipsForEntryAction } from "../../clips-actions";
+import { EntryClipsDialog } from "../../clips-entry-clips-dialog";
 import { JournalEntryEditForm } from "./entry-edit-form";
 import { JournalPhotosCard } from "./journal-photos-card";
 
@@ -99,7 +103,36 @@ export function JournalEntryScreen({
   const [isBusy, setIsBusy] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [mapView, setMapView] = useState<MapView | undefined>(undefined);
+  // How many clips are attached (migration 0155), and whether the modal is open.
+  //
+  // Only the count is held here: the viewer's button just says "there are clips",
+  // and `EntryClipsDialog` reads the clips themselves when it opens. Counting here
+  // rather than in `JournalViewer` because that is a registered shared component
+  // and may not fetch.
+  const [clipCount, setClipCount] = useState(0);
+  const [isClipsOpen, setIsClipsOpen] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+
+  // Re-read whenever the edit form closes as well as on mount, because the edit
+  // form attaches and detaches clips immediately — without `isEditing` in the deps
+  // the button would still show the count from before the edit. Also re-read when
+  // the modal closes, since a clip can be detached from inside it.
+  useEffect(() => {
+    if (isEditing || isClipsOpen) return;
+    let cancelled = false;
+
+    void listClipsForEntryAction(entry.id).then((result) => {
+      if (cancelled) return;
+      // A failure is left silent: the button simply does not draw. An error line
+      // about clips above a perfectly readable entry would be noise, and the clips
+      // are reachable from the Clips module regardless.
+      if (result.ok && result.clips) setClipCount(result.clips.length);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [entry.id, isEditing, isClipsOpen]);
 
   // --- encryption (migration 0131) -------------------------------------------
   //
@@ -354,6 +387,8 @@ export function JournalEntryScreen({
           previousDate={neighbors.previous?.date}
           nextHref={nextHref}
           nextDate={neighbors.next?.date}
+          clipCount={clipCount}
+          onOpenClips={() => setIsClipsOpen(true)}
           categoryIcons={categoryIcons}
           tagIcons={tagIcons}
           categoryHref={(name) => taxonomyFilterHref("category", name)}
@@ -497,6 +532,14 @@ export function JournalEntryScreen({
             </table>
           </div>
         </div>
+      )}
+
+      {/* Opened by the viewer's clip button. The dialog lists this entry's clips
+          and opens the one picked — straight through when there is only one. A
+          sealed clip's password is the clip viewer's business; this screen's
+          unlock is for the *entry* and has nothing to do with it. */}
+      {isClipsOpen && (
+        <EntryClipsDialog entryId={entry.id} onClose={() => setIsClipsOpen(false)} />
       )}
     </div>
   );

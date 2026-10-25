@@ -71,7 +71,10 @@ pattern instead of inventing one.
 | [`TwoTierShell`](#twotiershell) | **The navigation shell** — tree on desktop, two-tier bar on compact, plus header | [src/components/two-tier-shell.tsx](src/components/two-tier-shell.tsx) | yes |
 | [`NavTree`](#navtree) | **Desktop navigation** — the 260px tree: Home, every module, every section, filtered | [src/components/nav-tree.tsx](src/components/nav-tree.tsx) | yes |
 | [`ModuleRail`](#modulerail) | ~~Tier 1 — the 48px module icon rail~~ **no call site; pending deletion** | [src/components/module-rail.tsx](src/components/module-rail.tsx) | yes |
-| [`SectionPanel`](#sectionpanel) | Compact navigation — the bottom bar and its sheet (desktop column replaced by `NavTree`) | [src/components/section-panel.tsx](src/components/section-panel.tsx) | yes |
+| [`NavTabs`](#navtabs) | **Desktop navigation, horizontal shape** — modules as a tab row, with the overflow menu and the utility cluster | [src/components/nav-tabs.tsx](src/components/nav-tabs.tsx) | yes |
+| [`SectionStrip`](#sectionstrip) | **Desktop navigation, horizontal shape** — the current module's sections as chips, grouped runs as dropdowns | [src/components/section-strip.tsx](src/components/section-strip.tsx) | yes |
+| [`DesktopNavStylePreview`](#desktopnavstylepreview) | Thumbnail diagram of a full-layout navigation shape, for the account screen's picker | [src/components/desktop-nav-style-preview.tsx](src/components/desktop-nav-style-preview.tsx) | no |
+| [`SectionPanel`](#sectionpanel) | Compact navigation — the bottom bar and its sheet (desktop column replaced by `NavTree` or `NavTabs`) | [src/components/section-panel.tsx](src/components/section-panel.tsx) | yes |
 | [`NavPending`](#navpending) | **Navigation feedback** — wait cursor, row spinner and the loading bar between a nav click and the new screen | [src/components/nav-pending.tsx](src/components/nav-pending.tsx) | yes |
 | [`AppHeader`](#appheader) | Tier 3 — the utility bar: breadcrumb, global actions, profile | [src/components/app-header.tsx](src/components/app-header.tsx) | yes |
 | [`NavMenus`](#navmenus) | The shared module switcher and profile dropdowns | [src/components/nav-menus.tsx](src/components/nav-menus.tsx) | yes |
@@ -1983,6 +1986,97 @@ replaceable. Four modules' slot namespaces differ from their slug (`investments`
 `csv-analysis`→`csv`, `music-library`→`music`, `picture-gallery`→`gallery`) — the
 `SLOT_NAMESPACES` table in this file is the other half of the `iconNamespace` prop each
 `*-shell.tsx` passes, and the two must agree or uploaded icons vanish in one of them.
+**That table now lives in [src/components/nav-slot-namespaces.ts](src/components/nav-slot-namespaces.ts)**,
+shared with [`SectionStrip`](#sectionstrip); `nav-tree.tsx` keeps a local alias so the
+rest of the component reads unchanged. Two copies would drift silently — a wrong
+namespace derives an unregistered id and falls back to the generic glyph rather than
+erroring.
+
+## NavTabs
+
+**Desktop navigation, horizontal shape.** One band across the top carrying Home, the
+modules as tabs, a `More ▾` overflow menu and — at the trailing edge — the bell and the
+profile menu. The full-layout alternative to [`NavTree`](#navtree), chosen per reader by
+the **Desktop navigation** preference; see design.md, *The full layout's two shapes*.
+
+Renders on the `full` layout only, and only when that preference is `horizontal`.
+`TwoTierShell` guards both. Compact never draws it: the bottom bar already owns the
+module list there, and a second switcher at the opposite edge is the split the two-tier
+shell exists to remove.
+
+- **Source:** [src/components/nav-tabs.tsx](src/components/nav-tabs.tsx)
+- **Import:** `import { NavTabs } from "@/components/nav-tabs";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `modules` | `TreeModule[]` | Every module the reader can reach, in registry order (`sequence`). Nothing here re-sorts. |
+| `home` | `TreeSection` | The Home leaf, drawn as the leading icon-only tab. |
+| `activeHref` | `string` | The current path. Also closes the overflow menu on navigation. |
+| `activeModuleSlug` | `string?` | The highlighted tab — and the one `splitTabs` guarantees is never hidden in the menu. |
+| `adminModule` | `TreeModule?` | Administration as a final tab. `TwoTierShell` passes it only when `showAdmin`. |
+| `utility` | `ReactNode?` | The bell and the profile menu. **Required in practice:** this shape drops tier 3, so omitting it strands logout. |
+| `texture` | `ResolvedNavTexture?` | The same app-wide background picture the tree and the compact bar take. |
+
+**The row measures itself.** Twelve modules do not fit one row at any realistic width,
+and how many do depends on the window *and* on how long the admin made the module names.
+So a `ResizeObserver` measures a rendered tab, divides the usable width by it, and hands
+the capacity to `splitTabs` in [src/lib/navigation/tab-overflow.ts](src/lib/navigation/tab-overflow.ts).
+**The decision is that pure function, not this component** — which is what makes "the
+active module is never in the overflow menu" a tested rule rather than a rendering
+accident. The first measure runs in `useLayoutEffect` so the row never paints wide and
+then visibly collapses.
+
+**The active tab is swapped into the last slot**, never prepended. Prepending would shift
+every other tab sideways as the reader navigates, so tabs would never sit still.
+
+## SectionStrip
+
+**Desktop navigation, horizontal shape — tier 2.** The current module's sections as a row
+of chips beneath [`NavTabs`](#navtabs). Ungrouped sections are chips; each run sharing a
+`group` collapses into one dropdown, which is what makes Journal's 23 sections and
+Classroom's 19 fit a single row at all.
+
+Renders nothing when the module has no sections — Clips, Games, Music Library and CSV
+Analysis are all sectionless, and an empty band is a rule across the page that says
+nothing. Full layout only, same guards as `NavTabs`.
+
+- **Source:** [src/components/section-strip.tsx](src/components/section-strip.tsx)
+- **Import:** `import { SectionStrip } from "@/components/section-strip";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `moduleSlug` | `string` | The module these sections belong to, for resolving their icon slots. |
+| `sections` | `TreeSection[]` | In declaration order. **Sections of one group must be adjacent** — adjacency is what defines a run, exactly as in `NavTree`. |
+| `activeHref` | `string` | The current path. A dropdown whose menu holds it keeps the active styling, so navigating into a group never leaves the strip with nothing marked. |
+
+**Icon slots** resolve through `sectionSlotId` and the shared
+[`SLOT_NAMESPACES`](src/components/nav-slot-namespaces.ts) table, identically to the tree —
+the same uploaded override shows in both shapes.
+
+## DesktopNavStylePreview
+
+A thumbnail diagram of one full-layout navigation shape, for the radio cards on the
+account screen's **Desktop navigation** picker. The full-layout counterpart of
+`NavStylePreview`, and deliberately a separate component: that one is a portrait phone
+thumbnail whose interesting part is the bottom bar, this one is landscape and shows
+*where navigation lives*.
+
+Drawn with divs and theme tokens rather than shipped as an image, for the same three
+reasons as its compact twin: it follows the reader's theme, stays legible at any zoom,
+and costs no upload — and therefore no icon slot, since nothing in it is a glyph standing
+for a place. It is a **diagram**, not a live render of `NavTree` or `NavTabs`.
+
+- **Source:** [src/components/desktop-nav-style-preview.tsx](src/components/desktop-nav-style-preview.tsx)
+- **Import:** `import { DesktopNavStylePreview } from "@/components/desktop-nav-style-preview";`
+- **Client component:** no
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `style` | `DesktopNavStyle` | Which shape to draw — `tree` or `horizontal`. |
+| `selected` | `boolean?` | Tints the navigation surface brass, so the picture itself shows the active option. |
+| `className` | `string?` | Merged last. |
 
 ## ModuleRail
 
@@ -4103,6 +4197,8 @@ print/export view share it.
 | `previousHref?` / `previousDate?` | `string` | Adds a Previous button, left of the date/time, linking to the older neighbour. `previousDate` fills the caption below it. Omit both to hide the button. The caller computes the href — this component stays free of routing knowledge. |
 | `nextHref?` / `nextDate?` | `string` | Same, for the newer neighbour. |
 | `categoryIcons?` / `tagIcons?` | `Record<string, string>` | Name → icon URL for the icons shown at the right of the date/time row. Only names *with* an uploaded icon need an entry; anything missing is skipped. **Plain objects, not a `Map`** — this is a client component, and the page that fetches the icons is a server one. The caller builds the URLs, so the component takes no journal-lib dependency. |
+| `clipCount?` | `number` | How many clips are attached to this entry (migration 0155). Draws one **"N clips"** button below Locations — a count, not a list: *what* they are belongs in the modal `onOpenClips` opens, which also has somewhere to put a sealed clip's password prompt. **Counted by the caller, not fetched here** — same rule as the icons above. 0 or omitted draws nothing, so the four callers that know nothing about clips render exactly as before. |
+| `onOpenClips?` | `() => void` | Opens the caller's clips modal — [`EntryClipsDialog`](src/app/(protected)/modules/[slug]/clips-entry-clips-dialog.tsx) is the one to use. Without it the button is not drawn at all, since there would be nowhere to go. |
 | `categoryHref?` / `tagHref?` | `(name: string) => string \| undefined` | Makes each category/tag clickable — both the header icon and the Misc Info chip link to whatever the caller returns (in the journal, a pre-filtered Entries list). Same arrangement as `previousHref`: the caller owns the URL. Return `undefined` for a name that can't be linked, and that one stays a plain label. Omit the prop and none of them are links. |
 | `photosSlot?` | `ReactNode` | Rendered between Content and Misc Info, inside a `no-print` wrapper. A **slot, not photo props** — the viewer stays free of any filesystem or archive types, and the caller supplies whatever card it likes. The journal entry screen passes its "Pictures of this date" card here. Omit it and the viewer is unchanged. |
 | `calendarHref?` | `string` | Adds a running-shoe icon immediately right of the date that links to the journal Calendar opened on this entry's date — the caller builds `?anchor=`/`?date=` so the grid lands on the right month with the day selected. Same arrangement as `previousHref`: the caller owns the URL. Omit to hide the icon. |

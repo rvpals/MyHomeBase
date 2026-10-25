@@ -186,10 +186,19 @@ export interface NewJournalEntryInput {
   isLocked?: boolean;
 }
 
-export async function createJournalEntryAction(input: NewJournalEntryInput): Promise<ActionResult> {
+/** `ActionResult` plus the id of the entry just written, for a caller that has to
+ *  attach something to it — the entry form's "+ Clip" needs a row to link to. */
+export interface CreateJournalEntryResult extends ActionResult {
+  entryId?: number;
+}
+
+export async function createJournalEntryAction(
+  input: NewJournalEntryInput,
+): Promise<CreateJournalEntryResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  let created;
   try {
-    createEntry(deps.journalRepo, {
+    created = createEntry(deps.journalRepo, {
       date: input.date,
       time: input.time,
       title: input.title,
@@ -206,7 +215,8 @@ export async function createJournalEntryAction(input: NewJournalEntryInput): Pro
     return toErrorResult(error, "Failed to save entry.");
   }
   revalidatePath(JOURNAL_MODULE_PATH);
-  return { ok: true };
+  // The id is additive: every existing caller reads `ok` and ignores it.
+  return { ok: true, entryId: created.id };
 }
 
 /**
@@ -277,10 +287,11 @@ export async function createEncryptedJournalEntryAction(
   input: NewJournalEntryInput,
   password: string,
   hint: string,
-): Promise<ActionResult> {
+): Promise<CreateJournalEntryResult> {
   await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  let created;
   try {
-    createEncryptedEntry(
+    created = createEncryptedEntry(
       deps.journalRepo,
       {
         date: input.date,
@@ -301,7 +312,10 @@ export async function createEncryptedJournalEntryAction(
     return toErrorResult(error, "Failed to save the encrypted entry.");
   }
   revalidatePath(JOURNAL_MODULE_PATH);
-  return { ok: true };
+  // Additive, as on `createJournalEntryAction`. A clip attached to a sealed entry
+  // is itself unencrypted — the link says what supports what, and says nothing
+  // about the entry's contents.
+  return { ok: true, entryId: created.id };
 }
 
 /** What `decryptJournalEntryAction` hands back on success. */

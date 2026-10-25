@@ -42,6 +42,7 @@ import {
 import { getIconSlot, sectionSlotId } from "@/lib/icons";
 import { navTextureVars, type ResolvedNavTexture } from "@/lib/nav-texture";
 import { ModuleIcon } from "./module-icons";
+import { SLOT_NAMESPACES as SHARED_SLOT_NAMESPACES } from "./nav-slot-namespaces";
 import { NavLinkRow, NavRowPending } from "./nav-pending";
 import { SlotIcon } from "./slot-icon";
 import { TreeIcon } from "./tree-icons";
@@ -131,12 +132,10 @@ export interface NavTreeProps {
  * the other half of this fact, and a module whose namespace changes here but not
  * there silently loses its uploaded icons in one of the two places.
  */
-const SLOT_NAMESPACES: Record<string, string> = {
-  investments: "stock",
-  "csv-analysis": "csv",
-  "music-library": "music",
-  "picture-gallery": "gallery",
-};
+// Moved to `nav-slot-namespaces.ts` when `SectionStrip` needed the same mapping —
+// see that file. Re-exported here as nothing more than a local alias, so the rest
+// of this component reads exactly as it did.
+const SLOT_NAMESPACES = SHARED_SLOT_NAMESPACES;
 
 /** A section's icon, as an override-aware slot when its module has a namespace. */
 function SectionIcon({

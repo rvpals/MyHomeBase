@@ -12,6 +12,7 @@ export {
   toggleExpandedModule,
 } from "./collapse";
 export { filterTree, groupHitsByModule, type FilterHit } from "./filter";
+export { splitTabs, type TabCandidate, type TabSplit } from "./tab-overflow";
 export type { SectionSource } from "./ports";
 export {
   buildNavigationTree,
