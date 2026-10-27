@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { BusyOverlay } from "@/components/busy-overlay";
 import { Button } from "@/components/button";
 import { CSV_MAPPING_OPTION_INPUT_CLASS, CsvMappingTable } from "@/components/csv-mapping-table";
 import { FileDropzone } from "@/components/file-dropzone";
@@ -50,6 +51,9 @@ export function ExpenseImportView({
   const [summary, setSummary] = useState<ExpenseImportSummary | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
+  // Separate from `isBusy`, which also covers parsing a dropped file: the overlay
+  // should only claim the screen for the import itself.
+  const [isImporting, setIsImporting] = useState(false);
 
   async function handleFile(file: File) {
     setIsBusy(true);
@@ -127,7 +131,11 @@ export function ExpenseImportView({
       return;
     }
     setIsBusy(true);
+    setIsImporting(true);
     setError(undefined);
+    // Drop the previous run's result, so a slow import never shows a stale
+    // "N transactions imported successfully!" beside the spinner.
+    setSummary(undefined);
     try {
       const result = await runExpenseImportAction(fileText, mapping, fieldOptions, {
         transactionAccountId: accountId,
@@ -143,11 +151,19 @@ export function ExpenseImportView({
       router.refresh();
     } finally {
       setIsBusy(false);
+      setIsImporting(false);
     }
   }
 
   return (
     <div className="flex flex-col gap-4">
+      <BusyOverlay
+        isBusy={isImporting}
+        message="Importing transactions…"
+        detail="Reading the statement and matching rules. Please wait."
+        progress="indeterminate"
+      />
+
       <p className="text-sm text-muted">
         Each card company formats its export differently, so map the columns once and save it under
         that company&apos;s name — next time, just pick it from the dropdown.
@@ -317,11 +333,21 @@ export function ExpenseImportView({
           </div>
 
           {summary && (
-            <div className="rounded-md border border-line bg-paper p-3 text-sm">
-              <p className="font-medium text-ink">
-                Imported {summary.importedCount}, skipped {summary.skippedCount} (
-                {summary.duplicateCount} already imported), auto-categorised{" "}
-                {summary.categorisedCount}.
+            <div
+              className="rounded-md border border-line bg-paper p-3 text-sm"
+              role="status"
+              aria-live="polite"
+            >
+              <p className="font-semibold text-ink">
+                {summary.importedCount === 0
+                  ? "No transactions were imported."
+                  : `${summary.importedCount} transaction${
+                      summary.importedCount === 1 ? "" : "s"
+                    } imported successfully!`}
+              </p>
+              <p className="mt-1 text-muted">
+                Skipped {summary.skippedCount} ({summary.duplicateCount} already imported),
+                auto-categorised {summary.categorisedCount}.
               </p>
               {summary.skippedCount > 0 && (
                 <ul className="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto text-xs text-muted">

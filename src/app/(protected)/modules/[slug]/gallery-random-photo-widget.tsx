@@ -15,6 +15,7 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
+import { CULLING_CONFIG } from "@/lib/culling/config";
 import type { FavPhoto } from "@/lib/fav-photos";
 import { getIconSlot } from "@/lib/icons";
 // From the leaf file, not the `@/lib/journal-photos` barrel: that barrel also
@@ -199,6 +200,80 @@ function measurementRows(
       value: `${photo.width} × ${photo.height}`,
       // From `analyzeImage`, which rotates before measuring.
       note: "Pixel size of the original after any EXIF rotation, so a portrait shot reads as taller than it is wide.",
+    },
+  ];
+}
+
+/**
+ * The reference rows of the "What these numbers mean" panel.
+ *
+ * Separate from `measurementRows` on purpose. Those notes explain the number a reader
+ * is looking at and stop short of saying whether it is good; these rows answer the next
+ * question -- "is 412 normal?" -- which needs figures that do not belong beside a value.
+ *
+ * ## Where the ranges come from, and how far to trust them
+ *
+ * Two different kinds of number live here, and the panel keeps them visibly apart.
+ *
+ * `threshold` is read from `CULLING_CONFIG` and is a FACT: the culler really does count
+ * a pixel at or below 5 as crushed, and really does call over 2% of them underexposed.
+ * These are stated flatly because the code states them.
+ *
+ * `typical` is an ESTIMATE and is labelled as one everywhere it appears. There is no
+ * absolute cutoff for sharpness or contrast anywhere in this codebase -- `score.ts`
+ * ranks a set against itself precisely because none exists -- so these are offered as
+ * "what you will usually see", never as a pass mark. The sharpness figures are only
+ * quotable at all because `analyze.ts` downsamples every frame to a 1024px long edge
+ * before measuring (`analysisMaxEdge`): the Laplacian variance of a raw 48-megapixel
+ * file would be on a completely different scale, and the fixed analysis size is what
+ * makes one photograph's reading comparable to another's at all.
+ *
+ * Brightness and the two clipping rows have real anchors (0-255, 0-100%), so their
+ * `typical` says where a well-exposed frame tends to sit rather than guessing a spread.
+ */
+function legendRows(
+  photo: InspectedGalleryPhoto,
+): { label: string; typical: string; threshold?: string }[] {
+  const tolerance = percent(photo.clipTolerance);
+
+  return [
+    {
+      label: "Sharpness",
+      typical:
+        "Roughly 20–2,000 on these 1024px measurements. Under about 20 is usually genuinely out of focus; a few hundred is an ordinary sharp snapshot; over 1,000 means dense fine detail — foliage, text, brickwork. A clean photo of a plain wall or a misty sky scores low with nothing wrong with it.",
+    },
+    {
+      label: "Centre sharpness",
+      typical:
+        "Same scale. Compare it against the figure above rather than reading it alone: within about half to double is an evenly sharp frame, several times higher is a sharp subject against a blurred background, and much lower means the thing in the middle missed focus.",
+    },
+    {
+      label: "Brightness",
+      typical:
+        "0 is black and 255 is white. Most well-exposed photographs land somewhere around 90–170. Below about 60 reads dark and above about 200 washed out — though a night shot or a snow field honestly belongs outside that band.",
+      threshold: "The culler scores distance from 128, the midpoint.",
+    },
+    {
+      label: "Contrast",
+      typical:
+        "Typically about 30–80. Under roughly 25 is a flat or hazy frame; over about 80 is a punchy, high-contrast one. Like sharpness it has no pass mark — fog and silhouettes sit at opposite ends and both can be the picture you wanted.",
+    },
+    {
+      label: "Shadow clipping",
+      typical:
+        "A few per cent is normal — any real shadow clips something. Climbing into double figures means large areas have gone solid black.",
+      threshold: `Pixels at or below ${CULLING_CONFIG.exposure.shadowLevel} of 255 count as crushed. Over ${tolerance} is called underexposed.`,
+    },
+    {
+      label: "Highlight clipping",
+      typical:
+        "Usually under a few per cent. A bright sky, a lamp or a window will clip on its own without spoiling the frame.",
+      threshold: `Pixels at or above ${CULLING_CONFIG.exposure.highlightLevel} of 255 count as blown. Over ${tolerance} is called overexposed, and blown highlights cannot be recovered.`,
+    },
+    {
+      label: "Dimensions",
+      typical:
+        "The original file's size, which is not part of any judgement — every measurement above is taken on a copy shrunk to a 1024px long edge, so a 48MP file and an 8MP one are scored on equal terms.",
     },
   ];
 }
@@ -661,6 +736,62 @@ export function RandomPhotoWidget({
                   </div>
                 ))}
               </dl>
+
+              {/* The reference panel: what each criterion is and what a normal reading
+                  looks like. COLLAPSED by default and nested one level inside this card,
+                  which is the single level of nesting `components.md` sanctions -- it is
+                  a subset of the subject the parent names, and a reader who already
+                  knows what a Laplacian variance is should not have to scroll past a
+                  screen of prose to reach the next photograph.
+
+                  Uncontrolled, so `CollapsibleCardScope` remembers per route whether
+                  this reader keeps it open -- someone learning the numbers leaves it
+                  expanded, someone who knows them collapses it once and never sees it
+                  again. */}
+              <CollapsibleCard
+                title="What these numbers mean"
+                className="mt-3 border-t border-line pt-3"
+              >
+                {/* Stated before the rows, because it governs how every figure below
+                    should be read: these are not pass marks. */}
+                <p className="text-xs leading-snug text-muted">
+                  The culler ranks a set of photographs against each other, so most of
+                  these measurements have no pass mark — there is no sharpness value that
+                  is &ldquo;sharp enough&rdquo; for every camera and every scene. The
+                  ranges below are rough guides to what you will usually see, not
+                  thresholds. Where a real cutoff does exist in the code it is marked{" "}
+                  <span className="font-semibold text-ink">Rule</span>.
+                </p>
+
+                <dl className="mt-3 flex flex-col gap-3">
+                  {legendRows(inspected).map((row) => (
+                    <div key={row.label}>
+                      <dt className="text-sm font-semibold text-ink">{row.label}</dt>
+                      <dd className="mt-0.5 text-xs leading-snug text-muted">
+                        <span className="italic">Usually:</span> {row.typical}
+                        {/* The figures the code genuinely enforces, kept visually
+                            apart from the estimate above them so the two are never
+                            read as equally firm. */}
+                        {row.threshold && (
+                          <span className="mt-1 block text-ink/80">
+                            <span className="font-semibold text-ink">Rule:</span>{" "}
+                            {row.threshold}
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+
+                <p className="mt-3 text-xs leading-snug text-muted">
+                  All measurements except Dimensions are taken on a copy of the
+                  photograph shrunk to a {CULLING_CONFIG.analysisMaxEdge}px long edge, so
+                  a large file and a small one are judged on the same scale. When the
+                  culler does score a set, it weighs centre sharpness heaviest, then
+                  overall sharpness, then contrast, then how near the middle the exposure
+                  sits.
+                </p>
+              </CollapsibleCard>
 
               {/* Said plainly rather than left for the reader to infer. Culling ranks a
                   set against itself; one photograph has no set, so there is deliberately

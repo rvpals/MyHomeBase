@@ -36,12 +36,25 @@ describe("resolveJournalHomeWidgets", () => {
 
   it("reads order and the hidden prefix", () => {
     const resolved = resolveJournalHomeWidgets("recentEntries,-topWords,counters");
-    expect(resolved.slice(0, 3)).toEqual([
-      { id: "recentEntries", visible: true },
-      { id: "topWords", visible: false },
-      { id: "counters", visible: true },
-    ]);
+
+    // The named ids keep the RELATIVE order they were given, and the hidden prefix
+    // survives. Asserted on their relative positions rather than on `slice(0, 3)`:
+    // an id the reader did not name is inserted immediately before its catalogue
+    // successor, not appended — so `countByYears` and `pinnedAndRecentlyEdited`
+    // legitimately sort ahead of `recentEntries` here. The old assertion assumed the
+    // named ids came first, which contradicts the documented insertion rule this
+    // function implements on purpose.
+    const order = resolved.map((widget) => widget.id);
+    expect(order.indexOf("recentEntries")).toBeLessThan(order.indexOf("topWords"));
+    expect(order.indexOf("topWords")).toBeLessThan(order.indexOf("counters"));
+
+    expect(resolved.find((widget) => widget.id === "topWords")?.visible).toBe(false);
+    expect(resolved.find((widget) => widget.id === "recentEntries")?.visible).toBe(true);
+    expect(resolved.find((widget) => widget.id === "counters")?.visible).toBe(true);
+
+    // Every catalogue id is present exactly once, whatever the reader named.
     expect(resolved).toHaveLength(JOURNAL_HOME_WIDGET_IDS.length);
+    expect(new Set(order).size).toBe(JOURNAL_HOME_WIDGET_IDS.length);
   });
 
   it("drops unknown and duplicate ids, and falls back when nothing is left", () => {

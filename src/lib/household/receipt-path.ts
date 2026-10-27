@@ -43,7 +43,7 @@ export function receiptMimeTypeFor(fileName: string): string | undefined {
  */
 export function sanitizeNameSegment(text: string, maxLength = 40): string {
   const cleaned = text
-    // eslint-disable-next-line no-control-regex -- control characters are exactly what is being removed
+     
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "")
     .trim()
     .replace(/\s+/g, "-")

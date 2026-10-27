@@ -1,5 +1,247 @@
 # Change History
 
+## 2026-10-26 — Expense charts by month, import feedback, and a run of correctness fixes
+
+**No migration.** Everything here reads tables that already exist; the release still
+carries migration 0157 from the entry below, which is applied on the NAS.
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were
+not invoked, and nothing was loaded in a browser. The clips work in the entry below was
+gated in its own session; the changes described here are **unverified on screen** —
+`Testing_List.md` carries items for them.
+
+### Expense: a month's spend by category
+
+- **New "Expense type By Month" tab** on Expense → Charts: one month's spend split by
+  category as a donut, beside a table that prints every category and reconciles with the
+  month's own total. Four categories are named and the rest pool into one slice, which
+  drills exactly as the Vendor card's pooled slice does.
+- **It opens on the real current month, not the newest month with data.** A deliberate
+  difference from the Month Comparison card above it: that card compares the two months
+  you actually have, where this one answers "where is this month's money going" — and
+  "nothing yet" is a true answer, where showing August in October would be a misleading
+  one. The steppers walk the calendar, so an empty month is reachable and says so.
+- **A category in credit gets no slice.** A negative share has nowhere to sit in a
+  part-to-whole form, so a net-negative category is returned flagged and printed in the
+  table, but never charted — the same exclusion the category and vendor charts make.
+- The rollup is [src/lib/expense/month-breakdown.ts](src/lib/expense/month-breakdown.ts),
+  a sibling of `trends.ts` rather than part of it. It reuses that file's `monthOf` /
+  `monthLabel`, so the two tabs cannot disagree about which rows belong to August, and it
+  keeps the same rule about never constructing a `Date` from a `YYYY-MM` period — routing
+  one through `new Date(...)` reinterprets it in the runtime's timezone and moves a
+  purchase on the 1st into the previous month.
+- **Spend Over Time now labels every month.** Twelve months is exactly
+  `DEFAULT_MAX_POINT_LABELS`, so a desktop prints all twelve dollar amounts; a narrow
+  viewport halves the cap and falls back to the high/low pair rather than collide twelve
+  labels across 390px. The gear toolbar still overrides it, and that choice persists.
+
+### Expense: importing a statement says what happened
+
+- **The import summary leads with the outcome** — "12 transactions imported
+  successfully!" — rather than opening on a run of counts. The counts stay, as a muted
+  second line, and the card is announced to a screen reader.
+- **A busy overlay covers the import.** A statement import writes for long enough that a
+  changed button label is easy to miss. It runs off its own flag rather than the one the
+  file-parse step uses, so dropping a CSV no longer flashes "Importing transactions…"
+  over a preview, and the previous run's summary is cleared when a new import starts so a
+  slow import can't show a stale success line beside the spinner.
+- **Transactions get per-row Edit and Delete buttons**, both carrying an accessible name
+  and a tooltip — without them the icon control is unlabelled for a screen reader.
+
+### Correctness fixes
+
+- **The journal entry form no longer blanks its Time field on arrival.** The form's state
+  initialiser also runs on the server, so stamping it there put the *server's* instant
+  into the initial HTML, which the client then hydrated over with its own — a value
+  mismatch React does not repair on a controlled input, and which `<input type="time">`
+  resolves by showing nothing at all. Both fields now start empty and an effect stamps
+  them after mount, the same rule the fullscreen check already followed.
+- **Journal → Meta Data's Home Screen row had no icon.** It asked for a `home` glyph,
+  which is not in `TREE_ICON_NAMES` — and `TreeIcon` renders nothing at all for a name it
+  does not know. It now wears `window`, a framed pane, borrowing an existing glyph the way
+  migrations 0055 and 0085 did; adding a new concept would mean drawing it in all twelve
+  generated sets.
+- **Topic matching now reads punctuated acronyms.** "H.S.A." matches the term "hsa":
+  `normalizeWords` splits on punctuation, so the text was three single-letter words
+  against a one-word term, and three words never equal one. A second pass joins runs of
+  adjacent *single-letter* words only — that restriction is what keeps it an acronym rule
+  rather than a licence to ignore word boundaries, which would make "we made a start"
+  match "art".
+- **A wide dragged toolbar keeps the x it was dragged to**, overhanging whichever edge the
+  reader pushed it past with a grabbable strip always left. The clamp range stays valid
+  for a bar far wider than the screen; an earlier comment claimed the inversion was the
+  normal wide-bar case, and it is not.
+- **The photo viewer's loading indicator follows the reader.** It tracks which path has
+  loaded rather than a bare `isLoading` flag: these are multi-megabyte reads off a NAS
+  share, and paging to the next photo while one is in flight used to let whichever image
+  finished first clear the spinner from a photo that was still blank.
+- **Admin → About stopped shadowing `module`.** A local binding of that name shadows the
+  CommonJS global, which Next flags in a file transpiled to CJS.
+
+### Elsewhere
+
+- **Journal → Calendar** gained a Today button and a jump control, with the period title
+  centred between them, and banded alternate rows as a reading aid.
+- **Gallery's random-photo widget** explains its measurements: which numbers are facts
+  read from `CULLING_CONFIG` (a pixel at or below 5 really is crushed) and which are
+  estimates of what you will usually see. There is no absolute cutoff for sharpness
+  anywhere in this codebase — `score.ts` ranks a set against itself precisely because none
+  exists — so the typical figures are labelled as estimates everywhere they appear.
+
+## 2026-10-25 — The Clips board: pinning, card colour and checklists
+
+**Migration 0157.** Two columns on `clp_clips` (`is_pinned`, `card_color`), one new table
+(`clp_clip_items`), and `idx_clp_clips_pinned_updated` replacing `idx_clp_clips_updated`. No backfill —
+both columns default to the right answer for every existing row, so an upgrading household sees the
+same clips in the same order. The card excerpt length needed **no** migration: it is a
+`sys_module_settings` key/value row, the storage the Journal's `photo_root` already uses.
+
+**Gates run this session, at Min's request.** Typecheck clean; the full unit suite green at
+7,673 passing across 322 files; `npm run build` succeeds; the library-boundary check passes.
+Lint is down to 32 errors, all pre-existing React Compiler diagnostics in shared components
+(see below). **Nothing was loaded in a browser** — the tints, the column balancing and the
+phone layout are unverified, and `Testing_List.md` carries 17 items for them. The NAS database
+was not touched: migration 0157 was rehearsed against a throwaway copy.
+
+### All Clips is now a board or a list
+
+- **Two shapes, one set of rows**, switched with the existing `ViewModeSwitch` and remembered per
+  device in `localStorage` (`myhomebase:clips-view`), the way the Location Manager's two switches are.
+  Board is the default. The choice is deliberately **not** a search param: it is how you want to look
+  at the rows, not which rows, so a shared link shows the recipient their own preferred shape.
+- **Both shapes draw the same `ClipsCard`** — one card, two layouts, so the two can't drift into
+  different chips or a different pin.
+- **Pinned clips get their own band in both**, because pinning is in the repository's single
+  `ORDER BY` rather than in either view. They cannot disagree about what is pinned or in what order.
+
+### Cards: colour, pin, checklist
+
+- **Seven card tints** (default, rose, amber, sage, ocean, indigo, slate), set from the editor or the
+  card's own Colour button. `card_color` stores a **key**, never a hex: the tint is `color-mix`ed from
+  the running theme's `--paper-raised` and `--line`, so a coloured card recolours with the app instead
+  of being the same pink in all eight themes — two of which are light. The keys are permanent, like an
+  icon slot id. `design.md` gains *Tinted surfaces — a hue mixed into a token, never a stored colour*.
+- **Pinning** reuses `JournalPinButton`, so the thumbtack means the same thing here as on an entry. A
+  sealed clip can be pinned and coloured: neither reads plaintext, and the taxonomy of a sealed clip is
+  already visible by the same reasoning.
+- **Checklists are rows in `clp_clip_items`, not checkboxes in the body.** This is the load-bearing
+  decision: `sanitizeClipHtml` removes `<input>` with its contents and refuses `style` outright,
+  deliberately, because a clip body is pasted email. Storing checklists as markup would mean reopening
+  that allowlist, and would also mean rewriting the whole `content_html` column — potentially hundreds
+  of kilobytes — on every tick. An item is a row and a tick is one `UPDATE`.
+- Completed items collapse into an openable "N completed items" group, most recently ticked first;
+  outstanding ones keep the writer's arrangement. That split is a domain rule in
+  `src/lib/clips/board.ts`, not a filter in a view.
+- **Ticking does not revalidate the route.** A tick on a forty-card board would re-render the lot, so
+  the card shows it optimistically and `toggleClipItemAction` deliberately skips `revalidatePath`.
+
+### Card excerpt length is now configurable (Clips → Configuration)
+
+- `clips_excerpt_chars`, default **300**, clamped 80–2000. The section was a placeholder with nothing
+  in it; this is its first real setting. Admin-only, because it is module-wide — one reader changing it
+  changes every reader's board.
+- **The ceiling is pinned to the repository's bounded-prefix read.** `listClips` reads a bounded
+  `substr` of `content_html` *in SQL* so a pasted email's bytes never leave the database; letting the
+  setting exceed that prefix would silently re-introduce the full-column read it exists to avoid.
+  `settings.ts` and `repository.ts` both carry the note.
+- Out-of-range values are **clamped, not refused** — a reader typing 5000 meant "as much as possible",
+  and an error message is a worse answer to that.
+
+### Also in this release: the test suite is green again
+
+The suite had **28 failures across 16 files** before this work, none of them caused by
+the board. They are fixed here, and three were real defects rather than stale
+assertions:
+
+- **The paste sanitizer stopped reporting what it removed.** `sanitizeAttributes`
+  returned early for any element with no entry in `ALLOWED_ATTRS` — which is most of
+  them, `<p>` and `<div>` included — so the scan that records a dropped `style` or
+  `onclick` never ran. The markup was always correctly stripped, so this was never a
+  security hole; what broke was the explanation, on exactly the paste most likely to
+  need one. **This affected Clips directly.**
+- **A Journal nav row had no icon.** `journal-sections.ts` and `ICON_SLOTS` both named
+  a `home` glyph that does not exist in `TREE_ICON_NAMES`, and `TreeIcon` renders
+  `null` for a name it does not know — so Configuration → Home screen layout drew a
+  blank where its icon should be. Now `window`, borrowing an existing glyph the way
+  migrations 0055 and 0085 did rather than drawing a new concept across twelve sets.
+- **Punctuated acronyms did not match in Topics.** `containsTermAsWords` splits on
+  punctuation, so "H.S.A." became three words and could never equal the one-word term
+  "hsa" — despite `fuzzy.ts` stating that keeping punctuated acronyms is the point.
+  A second pass now joins runs of adjacent single-letter words. Restricted to single
+  letters on purpose: joining whole words would make "we made a start" match "art".
+
+The rest were tests that had drifted from correct code, and the fix was to correct the
+test:
+
+- **Culling fixtures were the same picture at different brightnesses.** dHash reads
+  the gradient and is deliberately exposure-invariant, so the sharp and underexposed
+  checkerboards hashed identically — and the 8px checkerboard hashed to *all zeros*,
+  because it averages to flat grey at the 9×8 reduction. Nine tests were asking the
+  grouper to separate images a perceptual hash is designed to call identical. The four
+  fixtures are now four distinct coarse patterns, 32 bits apart.
+- **`clampToolbarPosition`** was asserted against a premise its own comment stated and
+  that is false: `minX > maxX` ("an empty range") does not occur for a wide bar on a
+  narrow screen — 900px on 320px gives `[-852, 272]`. The expectation would have
+  forced an onscreen bar to jump to the right edge, hiding the first shortcuts the
+  test said it wanted reachable. Code and comment both corrected.
+- **The graph simulation** was asserted to push unconnected nodes apart indefinitely.
+  Repulsion falls off as 1/d² while centering pulls linearly, so a pair seeded ~205px
+  apart correctly settles *inward* to a stable ~93px, near the 90px spring length. Now
+  asserts separation and equilibrium instead of growth.
+- **A timezone-flaky date test** compared `parseDateToIso` (local) against
+  `toISOString()` (UTC). It passed in the morning and failed in the evening.
+- **Four stale expectations**: the Journal fake could not evaluate `isLocked`, so four
+  Unlocked-tab tests — including the one guarding against a locked entry leaking
+  through an OR-joined filter — were passing a question the fake answered `true` to
+  regardless. Plus `DEFAULT_MODULES` gaining Clips, two Topics preferences added to
+  the metadata export, an over-literal assertion on generated SQL parentheses, and one
+  on home-widget ordering that contradicted the documented insertion rule.
+
+**Lint**: 64 errors → 32. Two apostrophes escaped, a local `module` binding renamed,
+eslint's own `--fix` applied, and 25 React Compiler diagnostics suppressed with a
+one-line reason each. Those 25 are legitimate patterns the rule has an escape hatch
+for — syncing state to a prop, reading `localStorage` on mount — and the precedent is
+the Location Manager, which already carries the same directive.
+
+**The remaining 32 are deliberately untouched.** They sit in load-bearing shared
+components — `CollapsibleCard` (128 call sites), `PersonalToolbar`, the graph views,
+the music player, the photo viewer, the navigation. They arrived with a Next.js
+upgrade that tightened the linter; the code did not change. Each wants reading on its
+own, in a browser, which is not something this session can do.
+
+**Still failing, and not a code problem:** `npm run db:migrate:dry-run` aborts at
+migration 0094 (`no such table: stk_stock_transactions`), because `C:/webapp/MHB_DATA`
+is a stale copy missing tables. A database built from scratch stops at 0111 for the
+same kind of reason. Migration 0157 was therefore validated directly instead — applied
+over 0155, with a pre-existing row present, and the repository driven against the
+result.
+
+### New reusable component: `MasonryBoard`
+
+Variable-height cards dealt into balanced columns that read left to right. Registered in
+`components.md`. The balancing function is a **prop**, because how tall a card will be is domain
+knowledge the component can't have — Clips estimates from the clip's own excerpt, item count and chips
+(`dealClipsIntoColumns`). Not CSS `columns`, which fills column one to the bottom first and so reads
+top-to-bottom-then-across; and the estimate is computed server-side from data already in hand, so the
+board is right on first paint rather than re-dealing after a layout pass.
+
+On a phone it is one column and the dealt columns stack in order — every card present, each column's
+order preserved. Accepted deliberately rather than re-dealing, which would mean reading the viewport
+during render.
+
+### Also
+
+- **CLI parity**, as the architecture requires: `clips pin|unpin|colour|items|tick|untick`, plus
+  `--colour` on `clips add`. Both spellings of colour are accepted.
+- `getClipAction` now returns a clip's items alongside it, so the editor opens in one round trip.
+- The Clips home screen's "Most recent" uses the same cards, two columns wide.
+- Library: `src/lib/clips/board.ts` and `settings.ts`, both with colocated tests; `buildClipExcerpt`
+  takes a length.
+- **One pre-existing bug noticed, not fixed:** `text-danger` is used in 12 files across the app but has
+  no colour token behind it, so it renders as nothing — error text in those places is invisible.
+  `design.md` prescribes `text-red-400`, which is what the new Configuration view uses. Left alone
+  because fixing it touches twelve files across several modules, which is its own change.
+
 ## 2026-10-24 — Top-tabs desktop navigation, clips on the journal entry screen and form
 
 **No migration.** The new preference is a key/value row in `sys_user_preferences`, which needs no

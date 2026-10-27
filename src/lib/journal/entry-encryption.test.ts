@@ -32,7 +32,7 @@ const PASSWORD = "a strong entry password";
  * stub's empty answer and passing for the wrong reason.
  */
 function fakeRepo(): JournalRepository {
-  let entries: JournalEntry[] = [];
+  const entries: JournalEntry[] = [];
   let nextEntryId = 1;
   let nextLocationId = 1;
   const now = "2026-03-04T00:00:00.000Z";

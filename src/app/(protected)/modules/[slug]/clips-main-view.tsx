@@ -3,13 +3,22 @@
 // The Clips home screen: what is kept here, and the most recent few.
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { TreeIcon } from "@/components/tree-icons";
-import type { ClipSummary } from "@/lib/clips";
+import { MasonryBoard } from "@/components/masonry-board";
+import { dealClipsIntoColumns, type ClipSummary } from "@/lib/clips";
+import { ClipsCard } from "./clips-card";
 import { ClipsViewer } from "./clips-viewer";
+import { setClipPinnedAction, toggleClipItemAction } from "./clips-actions";
 
 export function ClipsMainView({ clips, total }: { clips: ClipSummary[]; total: number }) {
+  const router = useRouter();
   const [viewing, setViewing] = useState<number | undefined>(undefined);
+
+  async function handleTogglePin(id: number, isPinned: boolean) {
+    await setClipPinnedAction(id, isPinned);
+    router.refresh();
+  }
 
   return (
     <div className="space-y-4">
@@ -31,27 +40,25 @@ export function ClipsMainView({ clips, total }: { clips: ClipSummary[]; total: n
             Nothing yet. Paste an email or write a note under All Clips.
           </p>
         ) : (
-          <ul className="grid gap-3 lg:grid-cols-2">
-            {clips.map((clip) => (
-              <li key={clip.id}>
-                <button
-                  type="button"
-                  onClick={() => setViewing(clip.id)}
-                  className="w-full rounded-xl border border-line bg-paper-raised p-4 text-left hover:border-brass"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-display text-base text-ink">
-                      {clip.title || "(untitled)"}
-                    </h3>
-                    {clip.isEncrypted && (
-                      <TreeIcon name="lock" className="h-4 w-4 shrink-0 text-muted" />
-                    )}
-                  </div>
-                  {clip.excerpt && <p className="mt-1 text-sm text-muted">{clip.excerpt}</p>}
-                </button>
-              </li>
-            ))}
-          </ul>
+          // The same card the board and the list draw, in two columns. Editing and
+          // recolouring deliberately live on All Clips — this screen is a glance at
+          // what is here, and a colour picker on it would make it a second editor.
+          <MasonryBoard
+            items={clips}
+            deal={dealClipsIntoColumns}
+            renderItem={(clip) => (
+              <ClipsCard
+                clip={clip}
+                onOpen={setViewing}
+                onDelete={() => router.push("/modules/clips/all")}
+                onTogglePin={(id, isPinned) => void handleTogglePin(id, isPinned)}
+                onToggleItem={(itemId, isDone) => void toggleClipItemAction(itemId, isDone)}
+                onRecolour={() => router.push("/modules/clips/all")}
+              />
+            )}
+            itemKey={(clip) => clip.id}
+            columns={{ compact: 1, wide: 2 }}
+          />
         )}
       </div>
 

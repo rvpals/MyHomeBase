@@ -169,10 +169,18 @@ export {
   monthOf,
   monthRange,
   monthlyTotals,
+  nextMonthOf,
   previousMonthOf,
   type CategoryComparison,
   type MonthlyTotal,
 } from "./trends";
+export {
+  currentMonth,
+  monthCategoryBreakdown,
+  monthsPresent,
+  type MonthCategoryBreakdown,
+  type MonthCategorySlice,
+} from "./month-breakdown";
 export {
   EXPENSE_SETTING_KEYS,
   DEFAULT_AUTO_IMPORT_INTERVAL_MINUTES,

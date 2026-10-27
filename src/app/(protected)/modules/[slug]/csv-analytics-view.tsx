@@ -726,6 +726,7 @@ function ChartBuilder({ entry }: { entry: CsvAnalyticEntry }) {
   // data can't honour, so fall back to a line. Done as an effect rather than inside
   // the split handler because a preset can also load scatter + a split column.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     if (isSplit && chartType === "scatter") setChartType("line");
   }, [isSplit, chartType]);
 

@@ -158,7 +158,11 @@ describe("matchTopic", () => {
       "HSA",
       OFF,
     );
-    expect(result.matchedNames).toEqual(["HSA", "Health Savings Account"]);
+    // Alphabetical, not the order the entries were seen in — `matchTopic` sorts
+    // these with `localeCompare` so a chip row is stable between renders. Under that
+    // comparison "Health Savings Account" precedes "HSA" (the space sorts before the
+    // S), which is what this previously had the wrong way round.
+    expect(result.matchedNames).toEqual(["Health Savings Account", "HSA"]);
   });
 
   it("returns nothing for a blank term rather than matching everything", () => {

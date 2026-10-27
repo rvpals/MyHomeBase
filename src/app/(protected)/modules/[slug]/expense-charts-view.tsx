@@ -9,9 +9,13 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { Tabs, type TabItem } from "@/components/tabs";
 import {
   compareMonths,
+  currentMonth,
   latestMonth,
+  monthCategoryBreakdown,
   monthLabel,
   monthlyTotals,
+  monthsPresent,
+  nextMonthOf,
   previousMonthOf,
   type CategoryComparison,
   type CategoryTotal,
@@ -284,6 +288,13 @@ function SpendOverTimeCard({ transactions }: { transactions: ExpenseTransaction[
           series={[{ key: "spend", label: "Net spend" }]}
           xKey="month"
           formatValue={(value) => `$${value.toFixed(2)}`}
+          // Every month prints its own dollar amount. Twelve months is exactly
+          // DEFAULT_MAX_POINT_LABELS, so a desktop labels all of them; a narrow
+          // viewport halves the cap and `resolvePointLabelMode` downgrades this
+          // to the high/low pair rather than collide twelve labels across 390px.
+          // The gear toolbar still lets a reader override it, and that choice
+          // persists under the storage key below.
+          pointLabels="all"
           displayStorageKey="myhomebase:chart:expense-spend-over-time"
         />
       </div>
@@ -407,6 +418,268 @@ function MonthComparisonCard({
   );
 }
 
+/** How many categories the month pie names before the rest pool into one slice. */
+const CHARTED_CATEGORY_COUNT = 4;
+
+/**
+ * One month's spend split by category — the "Expense type By Month" tab.
+ *
+ * Opens on the **real current month**, not on the newest month in the data. That
+ * is a deliberate difference from `MonthComparisonCard` above, which compares the
+ * two months you actually have: this tab answers "where is this month's money
+ * going", and "nothing yet" is a true answer to that, where showing August in
+ * October would be a misleading one. The steppers walk the calendar, so an empty
+ * month is reachable and says so.
+ *
+ * The pooled slice drills exactly as the Vendor card's does — same operation
+ * applied one level down, with "Back" being a smaller depth.
+ */
+function MonthCategoryPieCard({
+  transactions,
+  categoryIconUrls,
+}: {
+  transactions: ExpenseTransaction[];
+  categoryIconUrls: Map<string, string>;
+}) {
+  // The opening month is read once, at mount, rather than on every render: a
+  // render that happened to cross midnight on the 1st would otherwise move the
+  // reader to a different month under them.
+  const [month, setMonth] = useState(() => currentMonth());
+  // How many whole pages of categories have been drilled past. 0 is the top level.
+  const [depth, setDepth] = useState(0);
+
+  // Walks every transaction, so it recomputes only when the rows or the month
+  // change rather than on each render of the surrounding screen.
+  const breakdown = useMemo(
+    () => monthCategoryBreakdown(transactions, month),
+    [transactions, month],
+  );
+  const months = useMemo(() => monthsPresent(transactions), [transactions]);
+
+  function goToMonth(next: string | undefined) {
+    if (next === undefined) return;
+    setMonth(next);
+    // A new month is a new set of categories, so a depth carried over from the
+    // old one would point into a page that no longer means anything.
+    setDepth(0);
+  }
+
+  // Only positive spend reaches the chart — a credit has no share of a whole.
+  // The table below still lists every category, credits included.
+  const allSlices: PartToWholeSlice[] = breakdown.slices
+    .filter((slice) => slice.isSpend)
+    .map((slice) => ({
+      key: slice.categoryName || UNCATEGORISED_LABEL,
+      label: slice.categoryName || UNCATEGORISED_LABEL,
+      value: slice.totalCents / 100,
+    }));
+
+  // Guard a stale depth: the row count can shrink under a re-render and leave a
+  // depth pointing past the end.
+  const maxDepth = Math.max(0, Math.ceil(allSlices.length / CHARTED_CATEGORY_COUNT) - 1);
+  const safeDepth = Math.min(depth, maxDepth);
+
+  const pageSlices = allSlices.slice(safeDepth * CHARTED_CATEGORY_COUNT);
+  const items = foldToOther(
+    pageSlices,
+    CHARTED_CATEGORY_COUNT,
+    (count) => `${count} other categories`,
+  );
+
+  const pageTotalCents = Math.round(pageSlices.reduce((sum, slice) => sum + slice.value, 0) * 100);
+  const isDrilled = safeDepth > 0;
+  const canDrill = pageSlices.length > CHARTED_CATEGORY_COUNT;
+
+  return (
+    <section>
+      {/* The month bar. Wraps rather than scrolls: at 390px the picker drops to
+          its own line instead of pushing the steppers off the edge. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => goToMonth(previousMonthOf(month))}
+          aria-label="Previous month"
+          className="rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass motion-reduce:transition-none"
+        >
+          &lsaquo;
+        </button>
+
+        {/*
+          The month title is itself the picker. A native <select> rather than a
+          custom menu: it is one short list, and the platform's own control is
+          the one that already works with a phone's wheel and a keyboard.
+
+          `months` holds only months that have rows, but the steppers walk the
+          calendar freely — so the current month is added when it isn't in that
+          list, or the <select> would show a value matching no <option> and
+          silently render the first one instead.
+        */}
+        <label className="relative">
+          <span className="sr-only">Month</span>
+          <select
+            value={month}
+            onChange={(event) => goToMonth(event.target.value)}
+            className="cursor-pointer rounded-md border border-line bg-paper px-3 py-1.5 font-display text-lg text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          >
+            {(months.includes(month) ? months : [...months, month].sort())
+              .slice()
+              .reverse()
+              .map((option) => (
+                <option key={option} value={option}>
+                  {monthLabel(option)}
+                </option>
+              ))}
+          </select>
+        </label>
+
+        <button
+          type="button"
+          onClick={() => goToMonth(nextMonthOf(month))}
+          aria-label="Next month"
+          className="rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass motion-reduce:transition-none"
+        >
+          &rsaquo;
+        </button>
+
+        {isDrilled && (
+          <button
+            type="button"
+            onClick={() => setDepth(safeDepth - 1)}
+            className="rounded-md text-sm font-medium text-brass-dark hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          >
+            &larr; Back
+          </button>
+        )}
+      </div>
+
+      {/* The biggest category, called out rather than exploded out of the ring:
+          ChartPie draws one fixed donut shape by design, so the emphasis lives
+          here and on the table row instead of in the wedge geometry. */}
+      {breakdown.biggest !== undefined && !isDrilled && (
+        <p className="mt-3 text-sm text-muted">
+          Biggest:{" "}
+          <span className="font-medium text-ink">
+            {breakdown.biggest.categoryName || UNCATEGORISED_LABEL}
+          </span>{" "}
+          <span className="font-mono text-ink">{formatCents(breakdown.biggest.totalCents)}</span> —{" "}
+          {Math.round(breakdown.biggest.share * 100)}% of {formatCents(breakdown.spendCents)} spent
+          across {breakdown.slices.filter((slice) => slice.isSpend).length} categor
+          {breakdown.slices.filter((slice) => slice.isSpend).length === 1 ? "y" : "ies"}.
+        </p>
+      )}
+
+      <p className="mt-1 text-sm text-muted">
+        {isDrilled ? (
+          <>
+            The categories pooled one level up, as a share of their own{" "}
+            {formatCents(pageTotalCents)}.
+          </>
+        ) : (
+          <>
+            {breakdown.transactionCount} transaction(s), {formatCents(breakdown.netCents)} net.
+            {breakdown.netCents !== breakdown.spendCents &&
+              " Categories in credit are listed below but not charted."}
+          </>
+        )}
+        {canDrill && " Click the pooled slice to break it down further."}
+      </p>
+
+      {items.length > 0 ? (
+        <div className="mt-3">
+          <ChartPie
+            items={items}
+            formatValue={(value) => `$${value.toFixed(2)}`}
+            // Only the pooled slice drills — a single category has nothing inside it.
+            isSliceEnabled={(slice) => slice.key === OTHER_SLICE_KEY}
+            onSliceClick={() => setDepth(safeDepth + 1)}
+          />
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted">
+          {breakdown.transactionCount === 0
+            ? `Nothing recorded in ${breakdown.label}.`
+            : `No positive spend to chart in ${breakdown.label}.`}
+        </p>
+      )}
+
+      {/*
+        The companion table, and it is required rather than decorative: ChartPie
+        prints only a percentage inside each wedge, so this is where a slice's
+        identity and its exact amount live, and it is the only way a keyboard
+        reaches the drill-down. It lists *every* category for the month —
+        including the ones folded into the pooled slice and the ones in credit —
+        so the rows reconcile with the month's own total even though the chart
+        shows a subset. The swatch index tracks the chart's, which is why both
+        read CHART_CATEGORICAL_COLORS in the same order.
+      */}
+      {breakdown.slices.length > 0 && (
+        <ul className="mt-4 flex flex-col gap-1">
+          {breakdown.slices.map((slice) => {
+            const label = slice.categoryName || UNCATEGORISED_LABEL;
+            // Only the charted page carries a swatch: a row folded into "others"
+            // or sitting in credit has no colour in the ring to match.
+            const chartedIndex = isDrilled
+              ? -1
+              : items.findIndex((item) => item.key === label && item.key !== OTHER_SLICE_KEY);
+            const isBiggest = breakdown.biggest?.categoryName === slice.categoryName;
+
+            return (
+              <li
+                key={label}
+                className={`flex items-center justify-between gap-3 rounded-md border px-3 py-1.5 text-sm max-lg:flex-col max-lg:items-start max-lg:gap-1 ${
+                  isBiggest ? "border-brass bg-brass-soft" : "border-line bg-paper"
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-2 text-ink">
+                  <span
+                    aria-hidden
+                    className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                    style={{
+                      backgroundColor:
+                        chartedIndex >= 0
+                          ? CHART_CATEGORICAL_COLORS[
+                              chartedIndex % CHART_CATEGORICAL_COLORS.length
+                            ]
+                          : "transparent",
+                    }}
+                  />
+                  {slice.categoryName === "" ? (
+                    <span className="text-muted">{UNCATEGORISED_LABEL}</span>
+                  ) : (
+                    <>
+                      <CategoryIconThumbnail
+                        iconUrl={categoryIconUrls.get(slice.categoryName)}
+                        name={slice.categoryName}
+                      />
+                      <span className={`truncate ${isBiggest ? "font-medium" : ""}`}>
+                        {slice.categoryName}
+                      </span>
+                    </>
+                  )}
+                  <span className="shrink-0 text-xs text-muted">
+                    {slice.transactionCount} transaction(s)
+                  </span>
+                </span>
+
+                <span className="flex shrink-0 items-center gap-3 font-mono text-xs max-lg:w-full max-lg:justify-between">
+                  <span className={slice.isSpend ? "text-ink" : "text-emerald-400"}>
+                    {formatCents(slice.totalCents)}
+                  </span>
+                  {/* A credit has no share of the spend, so it prints a dash
+                      rather than a 0% that would read as "nothing spent here". */}
+                  <span className="w-12 text-right text-muted">
+                    {slice.isSpend ? `${Math.round(slice.share * 100)}%` : "—"}
+                  </span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function ExpenseChartsView({
   totals,
   vendorTotals,
@@ -514,9 +787,14 @@ export function ExpenseChartsView({
     </div>
   );
 
+  const byMonthTab = (
+    <MonthCategoryPieCard transactions={transactions} categoryIconUrls={categoryIconUrls} />
+  );
+
   const tabs: TabItem[] = [
     { key: "main", label: "Main", content: mainTab },
     { key: "monthly", label: "Monthly comparison", content: monthlyTab },
+    { key: "by-month", label: "Expense type By Month", content: byMonthTab },
   ];
 
   return <Tabs items={tabs} defaultActiveKey="main" />;

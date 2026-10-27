@@ -155,6 +155,7 @@ export function HsaEditor({
   // read from `receipt` inside the cleanup, so the effect does not re-run — and revoke
   // a URL that is still on screen — every time the held receipt changes.
   const previewUrlRef = useRef<string | undefined>(undefined);
+  // eslint-disable-next-line react-hooks/refs -- a render-phase ref read that is deliberate here; it schedules no render, which is the reason a ref was chosen over state.
   previewUrlRef.current = receipt.kind === "new" ? receipt.previewUrl : undefined;
   useEffect(() => {
     return () => {
@@ -411,7 +412,7 @@ export function HsaEditor({
                 before saving. Not shown for a zip or a PDF: there is nothing to draw,
                 and a stack of thumbnails would repeat the dropzone's own list. */}
             {receipt.kind === "new" && receipt.previewUrl && (
-              // eslint-disable-next-line @next/next/no-img-element -- a local object
+               
               // URL with no known dimensions; next/image would need a loader for bytes
               // that never touch the network.
               <img

@@ -11,15 +11,23 @@ import {
   encryptClip,
   getClip,
   linkClip,
+  listClipItems,
   listClips,
   listClipsForTarget,
   openClip,
   saveClipCategory,
+  saveClipItems,
   saveClipTag,
+  setClipColor,
+  setClipExcerptChars,
+  setClipPinned,
+  toggleClipItem,
   unlinkClip,
   updateClip,
   type Clip,
+  type ClipCardColor,
   type ClipImageUploadInput,
+  type ClipItem,
   type ClipSummary,
   type CreateClipInput,
   type EncryptClipInput,
@@ -30,7 +38,7 @@ import {
 // `src/lib/journal`. See the note above the link actions below.
 import { displayEntryTitle, getEntry, listRecentEntries, searchEntries } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
-import { requireModuleAccess } from "../../require-access";
+import { requireAdmin, requireModuleAccess } from "../../require-access";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
 const ACCESS_MODULE_SLUG = "clips";
@@ -59,6 +67,14 @@ export interface ClipResult extends ActionResult {
   clip?: Clip;
   /** What the sanitizer stripped, so the editor can tell the reader. */
   removed?: string[];
+  /**
+   * The clip's checklist, on the reads that fetch a full record.
+   *
+   * Carried here rather than fetched separately so the editor opens in one round
+   * trip — the items and the body are both needed to draw it, and two actions would
+   * mean two loading states for one panel.
+   */
+  items?: ClipItem[];
 }
 
 export interface ClipListResult extends ActionResult {
@@ -81,7 +97,11 @@ export async function listClipsAction(filter: {
 export async function getClipAction(id: number): Promise<ClipResult> {
   try {
     await requireModuleAccess(ACCESS_MODULE_SLUG);
-    return { ok: true, clip: getClip(deps.clipsRepo, id) };
+    return {
+      ok: true,
+      clip: getClip(deps.clipsRepo, id),
+      items: listClipItems(deps.clipsRepo, id),
+    };
   } catch (error) {
     return toErrorResult(error, "Could not load that clip.");
   }
@@ -388,5 +408,102 @@ export async function deleteClipTagAction(name: string): Promise<ActionResult> {
     return { ok: true };
   } catch (error) {
     return toErrorResult(error, "Could not delete that tag.");
+  }
+}
+
+// Board actions: pinning, colour, and the checklist.
+//
+// Each opens with `requireModuleAccess` on its first line inside the try, exactly as
+// every action above does — an action is its own POST endpoint, so nothing the page
+// or the layout checks protects these.
+
+export interface ClipItemsResult extends ActionResult {
+  items?: ClipItem[];
+}
+
+export async function setClipPinnedAction(
+  id: number,
+  isPinned: boolean,
+): Promise<ActionResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    setClipPinned(deps.clipsRepo, { id, isPinned });
+    revalidatePath(CLIPS_PATH);
+    return { ok: true };
+  } catch (error) {
+    return toErrorResult(error, "Could not pin that clip.");
+  }
+}
+
+export async function setClipColorAction(id: number, color: string): Promise<ActionResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    // Cast at the boundary only: the schema inside the use-case is what actually
+    // validates the key, so an unknown colour still fails there rather than here.
+    setClipColor(deps.clipsRepo, { id, color: color as ClipCardColor | "" });
+    revalidatePath(CLIPS_PATH);
+    return { ok: true };
+  } catch (error) {
+    return toErrorResult(error, "Could not recolour that clip.");
+  }
+}
+
+export async function saveClipItemsAction(
+  clipId: number,
+  items: { id?: number; text: string; isDone?: boolean }[],
+): Promise<ClipItemsResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const saved = saveClipItems(deps.clipsRepo, {
+      clipId,
+      items: items.map((item) => ({
+        id: item.id,
+        text: item.text,
+        isDone: item.isDone ?? false,
+      })),
+    });
+    revalidatePath(CLIPS_PATH);
+    return { ok: true, items: saved };
+  } catch (error) {
+    return toErrorResult(error, "Could not save that checklist.");
+  }
+}
+
+/**
+ * Ticks or un-ticks one item.
+ *
+ * Deliberately does NOT `revalidatePath`. A tick is a single click on a board that
+ * may hold forty cards, and re-rendering the whole route on each one would make a
+ * checklist feel like a page load. The card updates its own state optimistically and
+ * the next navigation picks up the stored value.
+ */
+export async function toggleClipItemAction(
+  itemId: number,
+  isDone: boolean,
+): Promise<ActionResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    toggleClipItem(deps.clipsRepo, { itemId, isDone });
+    return { ok: true };
+  } catch (error) {
+    return toErrorResult(error, "Could not update that item.");
+  }
+}
+
+/**
+ * Saves how much of a clip a card shows.
+ *
+ * `requireAdmin` rather than `requireModuleAccess`: this is a module-wide setting
+ * stored in `sys_module_settings`, so one reader changing it changes every reader's
+ * board — the same reason the other module Configuration screens are admin-only.
+ */
+export async function setClipExcerptCharsAction(value: number): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    setClipExcerptChars(deps.moduleRepo, deps.moduleSettingsRepo, value);
+    revalidatePath(CLIPS_PATH);
+    return { ok: true };
+  } catch (error) {
+    return toErrorResult(error, "Could not save that setting.");
   }
 }

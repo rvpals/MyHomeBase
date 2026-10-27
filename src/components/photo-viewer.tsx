@@ -444,6 +444,19 @@ export function PhotoViewer({
   // the strip, which a reader turns on to see what is redundant and off to see the
   // folder as it is. The verdicts survive turning it off, so switching back on is free
   // -- only the first turn-on pays for the decode.
+  // Which photograph's bytes have arrived on the stage.
+  //
+  // A PATH, not a boolean, for the same reason as `readingPath` below: these are
+  // multi-megabyte reads off a NAS share, and the reader can page to the next photo
+  // while one is still in flight. A bare `isLoading` flag would be cleared by whichever
+  // image happened to finish, so the spinner would vanish from a photo that is still
+  // blank. Comparing paths means the indicator always belongs to the photo on screen.
+  //
+  // Holds the LOADED path rather than the loading one so the initial mount is covered
+  // without an effect: on first render nothing has loaded, which is exactly "still
+  // loading" -- there is no moment where a fresh photo is wrongly treated as ready.
+  const [loadedPath, setLoadedPath] = useState<string | undefined>(undefined);
+
   const [isCullOn, setIsCullOn] = useState(false);
   // The chunked runner: real progress and a cancel that stops actual work.
   // `onCull` is optional, so a caller without one gets a runner that is never started.
@@ -984,6 +997,11 @@ export function PhotoViewer({
   const caption = photo?.caption ?? photo?.name ?? "";
   const subcaption = photo?.subcaption ?? (label === "" ? undefined : label);
 
+  // Whether the photograph ON SCREEN is still arriving. Compared by path, so paging to
+  // a neighbour while a read is in flight moves the indicator with the reader instead of
+  // leaving it on the photo they have left.
+  const isStageLoading = photo !== undefined && loadedPath !== photo.relativePath;
+
   return createPortal(
     <>
       <div
@@ -1087,7 +1105,8 @@ export function PhotoViewer({
               </button>
             )}
 
-            {canFileIntoAlbum && (
+            {canFileIntoAlbum && (
+
               <div data-album-menu className="relative">
                 <button
                   type="button"
@@ -1334,8 +1353,40 @@ export function PhotoViewer({
                 key={photo.relativePath}
                 src={photoUrl(photo.relativePath)}
                 alt={caption}
-                className={`max-h-full max-w-full object-contain ${effectClass(options.effect)}`}
+                // Hidden rather than unmounted while the bytes are in flight: the
+                // element has to be mounted for the browser to fetch it at all, and
+                // `visibility` keeps it out of sight without cancelling the request.
+                // `opacity` would also work, but the entry animation in
+                // `effectClass` animates opacity -- overriding it here would fight the
+                // fade the photo is supposed to arrive with.
+                className={`max-h-full max-w-full object-contain ${effectClass(options.effect)} ${
+                  isStageLoading ? "invisible" : ""
+                }`}
+                // The read is the slow half of opening a photograph, so the indicator
+                // ends here rather than when the folder listing returned. `onError`
+                // too -- a photo whose bytes fail must not spin forever, and the
+                // broken-image glyph is a truer answer than an endless wait.
+                onLoad={() => setLoadedPath(photo.relativePath)}
+                onError={() => setLoadedPath(photo.relativePath)}
               />
+
+              {/* Only while this photograph's bytes are in flight. Absolute, so it
+                  neither moves the centred image nor changes the stage's height.
+
+                  A spinner AND a word: on a phone over SMB a cold read can take several
+                  seconds, and a bare black stage reads as a broken viewer rather than a
+                  slow one. */}
+              {isStageLoading && (
+                <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <span
+                    className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white/80"
+                    aria-hidden="true"
+                  />
+                  <span className="text-sm text-white/60" aria-live="polite">
+                    Loading the photograph…
+                  </span>
+                </span>
+              )}
 
               {hasPrevious && <NavButton side="left" label="Previous photo" onClick={goPrevious} />}
               {hasNext && <NavButton side="right" label="Next photo" onClick={goNext} />}
@@ -1371,7 +1422,8 @@ export function PhotoViewer({
           )}
 
           {photos.length > 1 && (
-            <div
+            <div
+
               ref={stripRef}
               // A single scrolling row, not a wrapping grid: the strip's job is "where am I
               // in this set", which a line preserves and a block of rows loses.

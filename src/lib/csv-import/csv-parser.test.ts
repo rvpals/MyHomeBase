@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { toIsoDateLocal } from "../shared/date";
 import { autoMapHeaders, mapRow, parseDateToIso, parseNumeric } from "./csv-parser";
 
 // parseCsvLine/parseCsv tests live in src/lib/shared/csv.test.ts — this module
@@ -64,7 +65,15 @@ describe("parseDateToIso", () => {
   });
 
   it("falls back to today for missing or unparseable input", () => {
-    const today = new Date().toISOString().slice(0, 10);
+    // `toIsoDateLocal`, not `toISOString().slice(0, 10)`.
+    //
+    // The function under test resolves "today" in LOCAL time, which is what an
+    // imported row means by a date. Comparing against the UTC date made this test
+    // depend on the clock: it passed all morning and failed every evening east of
+    // UTC, and the reverse west of it, because the two calendars disagree for part
+    // of each day. Using the same helper the implementation uses makes the
+    // assertion true at every hour.
+    const today = toIsoDateLocal(new Date());
     expect(parseDateToIso(undefined)).toBe(today);
     expect(parseDateToIso("not a date")).toBe(today);
   });

@@ -44,6 +44,7 @@ function useLocalLabel(stamp: string | null | undefined): string | undefined {
     const instant = stamp ? parseUtcStamp(stamp) : null;
     // A stamp the parser rejects gets no parenthetical at all. Printing the raw text
     // alone is honest; "(Invalid Date)" beside it is noise.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     setLabel(instant ? describeLocalInstant(instant) : undefined);
   }, [stamp]);
 

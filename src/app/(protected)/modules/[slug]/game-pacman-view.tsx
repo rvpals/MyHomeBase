@@ -673,9 +673,7 @@ export function GamePacmanView({ bestScore }: { bestScore: number }) {
   const pacCol = state?.pacman.col;
   useEffect(() => {
     if (pacRow === undefined || pacCol === undefined) return;
-    /* eslint-disable-next-line react-hooks/set-state-in-effect --
-       The trail is a history of a value that only exists tick by tick; there is no
-       render-time way to know the previous tile. */
+     
     setTrail((current) => {
       const head = current[0];
       // The same tile again — he is stopped against a wall, and a stopped Pac-Man

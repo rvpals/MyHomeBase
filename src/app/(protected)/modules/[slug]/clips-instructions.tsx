@@ -35,6 +35,23 @@ export function ClipsInstructions({ section }: { section: ClipsSection }) {
           searchable while sealed.
         </p>
         <p>
+          <strong className="text-ink">Board or list.</strong> The same clips, two
+          shapes — the board puts cards in balanced columns, the list gives one per
+          row. Your choice is remembered on this device.
+        </p>
+        <p>
+          <strong className="text-ink">Pinning and colour.</strong> A pinned clip
+          sits in its own band at the top of both shapes. A colour is a label, not
+          decoration — it is mixed into whichever theme you are running, so a card
+          stays recognisable when the theme changes.
+        </p>
+        <p>
+          <strong className="text-ink">Checklists.</strong> A clip can hold tickable
+          lines beside its body. Ticking one keeps it — the completed lines collapse
+          into a group you can open rather than disappearing. How much of a
+          clip&rsquo;s text a card shows is set under Configuration.
+        </p>
+        <p>
           <strong className="text-ink">Deleting</strong> a clip cannot be undone.
           There is no recycle bin here.
         </p>
@@ -56,7 +73,8 @@ export function ClipsInstructions({ section }: { section: ClipsSection }) {
 
   return (
     <p className="text-sm text-muted">
-      How Clips behaves. Nothing is configurable yet.
+      How Clips behaves. The card excerpt length applies to everyone — it is a module
+      setting, not a personal one — so only an administrator can change it.
     </p>
   );
 }

@@ -111,6 +111,15 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
  */
 const SAFE_URL = /^(https?:\/\/|mailto:|\/)/i;
 
+/**
+ * The allowlist for an element that keeps no attributes.
+ *
+ * A shared frozen empty set rather than `{}` per call: it lets `sanitizeAttributes`
+ * treat "no attributes allowed" and "these attributes allowed" as one path, so the
+ * reporting scan runs for every element instead of only the five with entries above.
+ */
+const EMPTY_ATTRS: ReadonlySet<string> = new Set<string>();
+
 /** Drops an element and everything inside it. */
 function removeElementTree(source: string, tag: string): { html: string; hit: boolean } {
   const paired = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}\\s*>`, "gi");
@@ -121,8 +130,17 @@ function removeElementTree(source: string, tag: string): { html: string; hit: bo
 }
 
 function sanitizeAttributes(tag: string, rawAttrs: string, removed: Set<string>): string {
-  const allowed = ALLOWED_ATTRS[tag];
-  if (!allowed) return "";
+  // NOT an early return for an element with no allowlist entry.
+  //
+  // Most allowed elements -- `p`, `div`, `span`, every heading -- keep no attributes
+  // at all, so returning here was the common path, not the rare one. The scan below
+  // is what *reports* a dropped `style` or `onclick`, and skipping it meant the
+  // markup was correctly stripped while `removed` came back empty: the reader was
+  // told nothing had been removed from the very paste most likely to carry it.
+  //
+  // The security outcome was never affected -- nothing was kept either way. What was
+  // broken was the explanation, which is this module's other job.
+  const allowed = ALLOWED_ATTRS[tag] ?? EMPTY_ATTRS;
 
   const kept: string[] = [];
   const attr = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("([^"]*)"|'([^']*)')/g;
@@ -241,18 +259,32 @@ export function clipHtmlToText(html: string): string {
     .trim();
 }
 
-/** How long a list excerpt runs before it is cut. */
+/**
+ * How long an excerpt runs before it is cut, when no length is asked for.
+ *
+ * Kept as the fallback for callers that do not carry the reader's preference — the
+ * journal's clip badge, the CLI's one-line listing. The board and the list both pass
+ * the configured length instead; see `src/lib/clips/settings.ts`.
+ */
 export const CLIP_EXCERPT_LENGTH = 200;
 
-/** The list's second line: plain text, cut on a word boundary where one is near. */
-export function buildClipExcerpt(html: string): string {
+/**
+ * A card's text: plain text, cut on a word boundary where one is near.
+ *
+ * `maxLength` is the reader's configured excerpt length. A non-positive or absent
+ * value falls back to the default rather than returning nothing — an excerpt of zero
+ * characters is never what a caller meant, and a blank card is a worse answer than a
+ * default-length one.
+ */
+export function buildClipExcerpt(html: string, maxLength = CLIP_EXCERPT_LENGTH): string {
+  const limit = maxLength > 0 ? Math.floor(maxLength) : CLIP_EXCERPT_LENGTH;
   const text = clipHtmlToText(html);
-  if (text.length <= CLIP_EXCERPT_LENGTH) return text;
+  if (text.length <= limit) return text;
 
-  const cut = text.slice(0, CLIP_EXCERPT_LENGTH);
+  const cut = text.slice(0, limit);
   const lastSpace = cut.lastIndexOf(" ");
   // Only honour a word boundary in the last fifth, so a long unbroken string — a URL,
   // a base64 fragment — is not cut back to almost nothing chasing a space.
-  const body = lastSpace > CLIP_EXCERPT_LENGTH * 0.8 ? cut.slice(0, lastSpace) : cut;
+  const body = lastSpace > limit * 0.8 ? cut.slice(0, lastSpace) : cut;
   return `${body.trimEnd()}…`;
 }

@@ -70,6 +70,43 @@ themes, and a 600–700 shade would read as low-contrast mud there. (Known trade
 the Daybreak light theme these 300–400 shades run a little light; acceptable for now —
 don't branch per-theme to fix it unless asked.)
 
+### Tinted surfaces — a hue mixed into a token, never a stored colour
+
+A few features let a reader *choose* a colour for one record: a clip's card on the
+Clips board is the current one. That looks like a hardcoded colour and must not
+become one.
+
+The rule: **store a key, mix the hue into a token at render.** `clp_clips.card_color`
+holds `'rose'`, never `#fecaca`. The seven tints are defined once in `globals.css` as
+
+```css
+.clip-tint {
+  background-color: color-mix(in srgb, var(--clip-tint-hue) 14%, var(--paper-raised));
+  border-color: color-mix(in srgb, var(--clip-tint-hue) 22%, var(--line));
+}
+```
+
+so the surface, the lightness and therefore the contrast with `--ink` all stay the
+theme's. A pale wash on Daybreak's white card and a deep one on Copper Vault's
+near-black card are the same rule, with no branching.
+
+The hue itself is a literal inside that mix, because there is no theme token for
+"red" — the nine tokens are structural roles, not a palette. That is the same
+exception semantic red/green already takes: the hue identifies the record, and a
+reader who filed a clip under "rose" expects it to stay rose across themes.
+
+Two things to keep:
+
+- **Keep the mix low.** 14%/22% is tuned — below about 10% the tint reads as a
+  rendering artefact on the dark themes, above about 25% it fights `--brass` and
+  `--ink` loses contrast on the light ones.
+- **The keys are permanent**, like an icon slot id: they are written into every
+  tinted row, so renaming one blanks those records back to the default surface.
+
+Spell the class names out in a lookup rather than interpolating `clip-tint-${key}` —
+Tailwind and the CSS bundle are both scanned as source text, so a built class name is
+never emitted, and an unknown key then draws an unstyled card instead of the default.
+
 ## Chrome Style and Border Weight — the frame, tuned separately from color
 
 Two more admin-configurable styling rules sit beside Color Themes, both scoped to the

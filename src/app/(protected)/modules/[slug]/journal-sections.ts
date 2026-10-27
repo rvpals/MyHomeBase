@@ -196,9 +196,18 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   // categories, which is the same idea this section edits, not a collision with
   // another destination.
   metadata: "shapes",
-  // `home` — the screen it configures. Free as a Journal section glyph: `main`, the
-  // screen itself, wears `grid`.
-  "home-screen": "home",
+  // `window` — a framed pane, for the section that arranges the home screen's cards.
+  //
+  // NOT `home`, which is what this said until `slots.test.ts` caught it: there is no
+  // `home` glyph in TREE_ICON_NAMES, and `TreeIcon` renders nothing at all for a name
+  // it does not know — so this row had no icon on screen. Adding the concept would
+  // mean drawing it in all twelve generated sets (`scripts/gen-icon-glyphs.mjs`
+  // treats a missing one as fatal), which is its own piece of work; borrowing an
+  // existing glyph is the precedent migrations 0055 and 0085 set for exactly this.
+  //
+  // Free as a Journal section glyph, and `main` — the screen itself — wears `grid`,
+  // so the two rows still read as different destinations.
+  "home-screen": "window",
 };
 
 const BASE_PATH = "/modules/journal";

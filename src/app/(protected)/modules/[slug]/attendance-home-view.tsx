@@ -457,7 +457,7 @@ export function RegisterPanel({
             You are editing{" "}
             <span className="font-mono text-brass-dark">{sheet.attendanceDate}</span>{" "}
             <span className="text-muted">({describeDayOffset(sheet.attendanceDate, today)})</span>
-            , not today. Saving updates that day's register.
+            , not today. Saving updates that day&rsquo;s register.
           </p>
         )}
 

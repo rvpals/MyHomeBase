@@ -296,6 +296,7 @@ export function useChartDisplay(
   // Re-reading storage because a default changed was never intended.
   const hasLoaded = useRef(false);
   const defaultsRef = useRef(resolvedDefaults);
+  // eslint-disable-next-line react-hooks/refs -- a render-phase ref read that is deliberate here; it schedules no render, which is the reason a ref was chosen over state.
   defaultsRef.current = resolvedDefaults;
 
   useEffect(() => {
@@ -305,9 +306,7 @@ export function useChartDisplay(
     }
     try {
       const stored = window.localStorage.getItem(storageKey);
-      /* eslint-disable-next-line react-hooks/set-state-in-effect --
-         Syncing from an external system (localStorage) on mount, not reacting to
-         React state. Same pattern as DataGrid's stored view. */
+       
       setDisplay(parseChartDisplay(stored, defaultsRef.current));
     } catch {
       // Storage can be unavailable (private browsing). The defaults still apply.

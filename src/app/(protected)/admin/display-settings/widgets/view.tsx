@@ -62,7 +62,7 @@ export function DashboardWidgetsView({ widgets }: { widgets: HomeWidgetPreferenc
   return (
     <CollapsibleCard className="mt-8" title="Home screen cards">
       <p className="text-sm text-muted">
-        Untick a card to keep it off the home screen, and drag a card's handle to set
+        Untick a card to keep it off the home screen, and drag a card&rsquo;s handle to set
         the order they appear in. Hiding a card changes only what the home screen draws — nothing
         stops being recorded, and every card is still reachable from its own module.
       </p>

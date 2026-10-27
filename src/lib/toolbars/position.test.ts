@@ -148,12 +148,27 @@ describe("clampToolbarPosition", () => {
     );
   });
 
-  it("prefers the left overhang when the bar is wider than the viewport", () => {
-    // minX > maxX here — an empty range — and the first shortcuts on the bar are
-    // the ones worth keeping reachable.
+  it("leaves a bar wider than the viewport where it is, showing its left end", () => {
+    // The old version of this asserted `narrow.width - KEEP_TOOLBAR_VISIBLE` on the
+    // premise that minX > maxX here — "an empty range". It is not: with a 900px bar
+    // on a 320px viewport, minX is -852 and maxX is 272, so x = 0 sits comfortably
+    // inside the range and is returned untouched. (The range only empties when the
+    // bar AND the viewport together are under 2 × KEEP_TOOLBAR_VISIBLE, which no
+    // real screen hits.)
+    //
+    // Returning 0 is also what the old test said it wanted: the first shortcuts on
+    // the bar are the ones worth keeping reachable, and pushing the bar's LEFT edge
+    // out to 272 would have hidden exactly those behind the right margin.
     const narrow = { width: 320, height: 640 };
     const wide = { width: 900, height: 44 };
-    expect(clampToolbarPosition({ x: 0, y: 10 }, wide, narrow).x).toBe(
+
+    expect(clampToolbarPosition({ x: 0, y: 10 }, wide, narrow).x).toBe(0);
+
+    // It may still overhang either edge, so long as a grabbable strip remains.
+    expect(clampToolbarPosition({ x: -5000, y: 10 }, wide, narrow).x).toBe(
+      KEEP_TOOLBAR_VISIBLE - wide.width,
+    );
+    expect(clampToolbarPosition({ x: 5000, y: 10 }, wide, narrow).x).toBe(
       narrow.width - KEEP_TOOLBAR_VISIBLE,
     );
   });

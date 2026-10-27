@@ -1,6 +1,14 @@
 import type { DecodedImage } from "@/lib/shared/image-upload";
-import type { ClipFilterInput } from "./schema";
-import type { Clip, ClipImage, ClipLink, ClipLinkModule, ClipSummary, ClipTaxonomyItem } from "./types";
+import type { ClipCardColor, ClipFilterInput } from "./schema";
+import type {
+  Clip,
+  ClipImage,
+  ClipItem,
+  ClipLink,
+  ClipLinkModule,
+  ClipSummary,
+  ClipTaxonomyItem,
+} from "./types";
 
 /** What the repository is handed to write a clip. Taxonomy arrives already trimmed. */
 export interface ClipWriteData {
@@ -8,7 +16,16 @@ export interface ClipWriteData {
   contentHtml: string;
   categories: string[];
   tags: string[];
+  /** A key from `CLIP_CARD_COLORS`, or `""` for the default surface. */
+  color: ClipCardColor | "";
   createdBy: number | null;
+}
+
+/** One checklist line on its way in. No id for a line the reader just typed. */
+export interface ClipItemWriteData {
+  id?: number;
+  text: string;
+  isDone: boolean;
 }
 
 /** The sealed form of a clip's text, written together so a clip is never half-sealed. */
@@ -58,6 +75,40 @@ export interface ClipsRepository {
   getTagIcon(name: string): DecodedImage | undefined;
   setCategoryIcon(name: string, image: DecodedImage | null): void;
   setTagIcon(name: string, image: DecodedImage | null): void;
+
+  // Board
+  /**
+   * Pins or unpins a clip. Returns the updated record.
+   *
+   * Ordering is not this method's business: it writes the flag, and
+   * `idx_clp_clips_pinned_updated` is what puts pinned clips first in every read.
+   */
+  setClipPinned(id: number, isPinned: boolean): Clip;
+  /** Recolours a clip. `color` is a `CLIP_CARD_COLORS` key, or `""`. */
+  setClipColor(id: number, color: ClipCardColor | ""): Clip;
+
+  // Checklist items
+  /** One clip's items, in `(sort_order, id)` order. */
+  listClipItems(clipId: number): ClipItem[];
+  /**
+   * The items for many clips in **one** query, keyed by clip id.
+   *
+   * This is what lets `ClipSummary` carry its items: a board of 40 cards costs one
+   * round trip rather than 40. The same shape, and the same reason, as
+   * `countLinksForTargets` above. Clips with no items are absent from the map.
+   */
+  listClipItemsForClips(clipIds: number[]): Map<number, ClipItem[]>;
+  /**
+   * Replaces a clip's whole checklist in one transaction.
+   *
+   * A full replace rather than a patch, matching `updateClip`: the editor owns the
+   * arrangement, and diffing item-by-item across a reorder would be a second way to
+   * write the same rows. Items carrying an existing id keep it — and with it their
+   * `done_at` — so a save that only reorders does not un-tick anything.
+   */
+  saveClipItems(clipId: number, items: ClipItemWriteData[]): ClipItem[];
+  /** Ticks or un-ticks one item, stamping or clearing `done_at`. */
+  toggleClipItem(itemId: number, isDone: boolean): ClipItem;
 
   // Images
   /** Metadata only — the list never pulls bytes. */

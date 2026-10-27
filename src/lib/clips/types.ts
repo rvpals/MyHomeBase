@@ -4,6 +4,8 @@
 // No zod here and no SQL — `schema.ts` validates boundary input, `repository.ts`
 // talks to the database, and these are the shapes everything else passes around.
 
+import type { ClipCardColor } from "./schema";
+
 /**
  * One clip, in full.
  *
@@ -37,6 +39,30 @@ export interface Clip {
    * decrypt. It must never contain the password — the UI says so.
    */
   passwordHint: string;
+  /**
+   * Whether the clip sits in the board's pinned band, and first in the list.
+   *
+   * Shared, like the clip itself — there is no per-user pin, because there is no
+   * per-user clip. Pinning is applied in the repository's ORDER BY, so the list
+   * view and the board inherit the same order and cannot disagree about it.
+   */
+  isPinned: boolean;
+  /**
+   * Which card tint this clip wears, or `""` for the default surface.
+   *
+   * A **key** from `CLIP_CARD_COLORS`, never a hex — `design.md` forbids a literal
+   * colour anywhere structural, and a stored hex would be the same pink card in all
+   * eight themes including the two light ones. The key is resolved to a tint built
+   * from the current theme's own tokens, so a coloured card recolours with the app.
+   *
+   * The keys are permanent, like an icon slot id: they are written into every
+   * coloured clip's row, so renaming one blanks those cards back to the default.
+   *
+   * Typed as the union rather than `string` so a card, a picker or an action cannot
+   * pass a colour the palette does not hold. The repository widens a stored value
+   * back into this type on the way out — see `toClip`.
+   */
+  color: ClipCardColor | "";
   categories: string[];
   tags: string[];
   /** Who wrote it. Attribution only — never a permission check. */
@@ -64,14 +90,68 @@ export interface ClipSummary {
    */
   excerpt: string;
   isEncrypted: boolean;
+  /** See `Clip.isPinned`. Carried on the summary because both views order by it. */
+  isPinned: boolean;
+  /** See `Clip.color`. A key from `CLIP_CARD_COLORS`, or `""`. */
+  color: ClipCardColor | "";
   categories: string[];
   tags: string[];
+  /**
+   * The clip's checklist, in full.
+   *
+   * Carried on the **summary** — the one place this projection deliberately does not
+   * trim — because a card draws its items and a board of 40 cards would otherwise
+   * cost 40 extra round trips. They are safe to carry where the body is not: an item
+   * is one short line by construction, where `content_html` can be a pasted email.
+   * The repository fetches them for the whole page in one query.
+   *
+   * Empty for a clip with no checklist, which is most of them.
+   */
+  items: ClipItem[];
   /** How many images the clip holds, without fetching any of them. */
   imageCount: number;
   /** How many records elsewhere link to it. Drives the "linked" badge. */
   linkCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * One tickable line on a clip.
+ *
+ * ## Why this is a row and not a checkbox in `contentHtml`
+ *
+ * `sanitizeClipHtml` removes `<input>` **with its contents** and refuses `style`
+ * outright, both deliberately: a clip body is pasted email, and a working form inside
+ * this app's own origin is worse than one in a mail client. Storing checklists as
+ * markup would mean reopening that allowlist, and failing closed is the only thing
+ * that makes it defensible.
+ *
+ * It is also wrong mechanically. Ticking a box would rewrite the entire
+ * `content_html` column — potentially hundreds of kilobytes — on every click, and
+ * re-run the sanitiser over it each time, with the tick surviving only if that round
+ * trip happened to preserve it.
+ *
+ * So an item is a row and a tick is one UPDATE. A clip has both: the card draws the
+ * body, then the items. Migration 0157 records the same reasoning.
+ */
+export interface ClipItem {
+  id: number;
+  clipId: number;
+  /** What the line says. Never blank — an item with no text is not an item. */
+  text: string;
+  /** Ticking does not delete; the completed half stays, collapsed. */
+  isDone: boolean;
+  /**
+   * ISO 8601 when it was ticked, or `undefined` while outstanding.
+   *
+   * Optional for the reason `TodoItem.doneAt` is: "not completed" genuinely has no
+   * timestamp, where a sentinel date would read as a real completion.
+   */
+  doneAt?: string;
+  /** Position among the outstanding items. Ignored once done — see `buildClipBoard`. */
+  sortOrder: number;
+  createdAt: string;
 }
 
 /** A managed category or tag, with its optional uploaded icon. */

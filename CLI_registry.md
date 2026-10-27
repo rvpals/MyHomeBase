@@ -100,7 +100,7 @@ alongside its row here.
 | [`recipes`](#recipes) | read (writes with `--add`/`--made`/`--delete`) | no |
 | [`hsa`](#hsa) | read (writes with `--add`/`--reimburse`/`--delete`/the card flags) | no |
 | [`todo`](#todo) | read (writes with `--add`/`--done`/`--delete`/the list flags) | no |
-| [`clips`](#clips) | read (writes with `add`/`link`/`delete`) | no |
+| [`clips`](#clips) | read (writes with `add`/`pin`/`colour`/`items`/`tick`/`link`/`delete`) | no |
 | [`menu-items`](#menu-items) | read (writes with `set`/`reset`) | no |
 | [`toolbars`](#toolbars) | read (writes with `add`/`set`/`delete`/the item flags) | no |
 
@@ -1299,6 +1299,13 @@ npm run cli -- clips list --search JFK
 npm run cli -- clips show --id 3
 npm run cli -- clips show --id 3 --password "correct horse"
 npm run cli -- clips add --title "Flight confirmation" --content "<p>BA117</p>" --tags "flight,travel"
+npm run cli -- clips pin --id 3
+npm run cli -- clips unpin --id 3
+npm run cli -- clips colour --id 3 --colour ocean
+npm run cli -- clips items --id 3
+npm run cli -- clips items --id 3 --set "Goggles,Towel,Cap"
+npm run cli -- clips tick --item 7
+npm run cli -- clips untick --item 7
 npm run cli -- clips link --id 3 --entry 42
 npm run cli -- clips delete --id 3
 ```
@@ -1306,8 +1313,18 @@ npm run cli -- clips delete --id 3
 **Input** — `list` takes `--search`, `--category` and `--tag` (each optional;
 category and tag are comma-separated and AND together). `show --id <n>` needs
 `--password` when the clip is sealed. `add` takes `--title`, `--content` (HTML),
-`--categories` and `--tags`. `link --id <n> --entry <n>` attaches a clip to a
-journal entry. `delete --id <n>` is irreversible — there is no recycle bin here.
+`--categories`, `--tags` and `--colour`. `link --id <n> --entry <n>` attaches a clip
+to a journal entry. `delete --id <n>` is irreversible — there is no recycle bin here.
+
+`pin`/`unpin --id <n>` move a clip in and out of the board's pinned band.
+`colour --id <n> --colour <key>` takes one of `rose`, `amber`, `sage`, `ocean`,
+`indigo`, `slate`, or `""` to clear it — an unknown key is refused by the schema
+inside the use-case, which is where the palette is defined. Both `--colour` and
+`--color` are accepted, as are the `colour`/`color` subcommands.
+
+`items --id <n>` lists a clip's checklist with each item's id and tick state;
+`--set "a,b,c"` **replaces** the whole list, matching how the editor saves it.
+`tick`/`untick --item <n>` toggle one item by its own id.
 
 `--content` is **sanitized exactly as a browser paste is**, by the same
 `sanitizeClipHtml` the use-case runs. That is the point of routing both through
@@ -1316,14 +1333,16 @@ the library rather than the view.
 Images are deliberately unreachable here: pasting one is a browser gesture, and a
 flag taking a base64 blob on argv would be unusable.
 
-**Calls** — `listClips`, `getClip`, `openClip`, `createClip`, `linkClip`,
+**Calls** — `listClips`, `getClip`, `openClip`, `createClip`, `setClipPinned`,
+`setClipColor`, `listClipItems`, `saveClipItems`, `toggleClipItem`, `linkClip`,
 `deleteClip`, `clipHtmlToText` on `deps.clipsRepo`.
 
 **Output** — `list` prints one line per clip (id, title, and bracketed marks for
 `locked`, image and link counts), with the excerpt and taxonomy indented beneath.
 `show` prints the title, taxonomy, then the body **as plain text** — a terminal
 cannot render the markup, and raw tags would bury the useful part. `add` reports
-the new id and any formatting the sanitizer removed.
+the new id and any formatting the sanitizer removed. `items` prints one line per
+item as `[x] <id> <text>`; `tick`/`untick` echo the item in the same form.
 **Exit** — 0; 1 on an unknown subcommand or a missing required flag. A wrong
 password throws `WrongPasswordError`, the same failure the web app shows.
 Source: [src/cli/clips.ts](src/cli/clips.ts)

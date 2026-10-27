@@ -4,6 +4,7 @@
 // they take a repository through their parameters and never construct one. The
 // composition root in `wiring.ts` supplies the real thing; a test supplies a fake.
 
+import { z } from "zod";
 import { decryptText, displayTitle, encryptText } from "@/lib/shared/encryption";
 import { decodeImageUpload } from "@/lib/shared/image-upload";
 import type { ClipImageProcessor, ClipsRepository, ClipWriteData } from "./ports";
@@ -18,6 +19,10 @@ import {
   createClipSchema,
   encryptClipSchema,
   linkClipSchema,
+  pinClipSchema,
+  saveClipItemsSchema,
+  setClipColorSchema,
+  toggleClipItemSchema,
   unlinkClipSchema,
   updateClipSchema,
   type ClipFilterInput,
@@ -27,11 +32,22 @@ import {
   type CreateClipInput,
   type EncryptClipInput,
   type LinkClipInput,
+  type PinClipInput,
+  type SaveClipItemsInput,
+  type SetClipColorInput,
+  type ToggleClipItemInput,
   type UnlinkClipInput,
   type UpdateClipInput,
 } from "./schema";
 import { buildClipExcerpt, sanitizeClipHtml } from "./sanitize-html";
-import type { Clip, ClipImage, ClipLinkModule, ClipSummary, ClipTaxonomyItem } from "./types";
+import type {
+  Clip,
+  ClipImage,
+  ClipItem,
+  ClipLinkModule,
+  ClipSummary,
+  ClipTaxonomyItem,
+} from "./types";
 
 /** Thrown when a clip id does not exist. */
 export class ClipNotFoundError extends Error {
@@ -93,7 +109,10 @@ function normaliseNames(names: string[]): string[] {
  * CLI and the web app sanitise identically.
  */
 function toWriteData(
-  input: CreateClipInput,
+  // The **parsed** clip, not `CreateClipInput`: this runs after `.parse()`, so every
+  // defaulted field is present. `CreateClipInput` is the input type, where they are
+  // optional — see the note on it in `schema.ts`.
+  input: z.output<typeof createClipSchema>,
   createdBy: number | null,
 ): { data: ClipWriteData; removed: string[] } {
   const { html, removed } = sanitizeClipHtml(input.contentHtml);
@@ -103,6 +122,7 @@ function toWriteData(
       contentHtml: html,
       categories: normaliseNames(input.categories),
       tags: normaliseNames(input.tags),
+      color: input.color,
       createdBy,
     },
     removed,
@@ -353,14 +373,19 @@ export function toClipSummary(
   clip: Clip,
   imageCount: number,
   linkCount: number,
+  items: ClipItem[] = [],
+  excerptChars?: number,
 ): ClipSummary {
   return {
     id: clip.id,
     title: displayTitle(clip.title, clip.isEncrypted),
-    excerpt: clip.isEncrypted ? "" : buildClipExcerpt(clip.contentHtml),
+    excerpt: clip.isEncrypted ? "" : buildClipExcerpt(clip.contentHtml, excerptChars),
     isEncrypted: clip.isEncrypted,
+    isPinned: clip.isPinned,
+    color: clip.color,
     categories: clip.categories,
     tags: clip.tags,
+    items,
     imageCount,
     linkCount,
     createdAt: clip.createdAt,
@@ -368,3 +393,74 @@ export function toClipSummary(
   };
 }
 
+
+// Board
+
+/**
+ * Pins or unpins a clip.
+ *
+ * Throws when the clip is gone, rather than silently succeeding: a pin button that
+ * reports success on a deleted clip leaves the reader looking for it in the band.
+ *
+ * A sealed clip CAN be pinned. Pinning reads no plaintext — it is a property of the
+ * row, like its taxonomy, which migration 0155 deliberately left readable while
+ * sealed for the same reason. Requiring a password to pin would be security theatre.
+ */
+export function setClipPinned(repo: ClipsRepository, input: PinClipInput): Clip {
+  const { id, isPinned } = pinClipSchema.parse(input);
+  if (!repo.getClipById(id)) throw new ClipNotFoundError(id);
+  return repo.setClipPinned(id, isPinned);
+}
+
+/**
+ * Recolours a clip's card.
+ *
+ * Like pinning, this is legal on a sealed clip: the colour is on the row, not in the
+ * ciphertext, and a reader who can see a sealed clip in the list can already tell it
+ * apart. The empty string restores the default surface.
+ */
+export function setClipColor(repo: ClipsRepository, input: SetClipColorInput): Clip {
+  const { id, color } = setClipColorSchema.parse(input);
+  if (!repo.getClipById(id)) throw new ClipNotFoundError(id);
+  return repo.setClipColor(id, color);
+}
+
+// Checklist items
+
+/** One clip's checklist, in the writer's arrangement. */
+export function listClipItems(repo: ClipsRepository, clipId: number): ClipItem[] {
+  if (!repo.getClipById(clipId)) throw new ClipNotFoundError(clipId);
+  return repo.listClipItems(clipId);
+}
+
+/**
+ * Replaces a clip's whole checklist.
+ *
+ * Text is trimmed and empty lines are dropped **before** the count is checked, so a
+ * reader who left three blank rows at the bottom of the editor is not told they have
+ * too many items. De-duplication is deliberately NOT done: two identical lines on a
+ * packing list ("batteries", "batteries") are a normal thing to write, unlike two
+ * identical tags.
+ */
+export function saveClipItems(repo: ClipsRepository, input: SaveClipItemsInput): ClipItem[] {
+  const parsed = saveClipItemsSchema.parse(input);
+  if (!repo.getClipById(parsed.clipId)) throw new ClipNotFoundError(parsed.clipId);
+
+  return repo.saveClipItems(
+    parsed.clipId,
+    parsed.items.map((item) => ({ id: item.id, text: item.text, isDone: item.isDone })),
+  );
+}
+
+/**
+ * Ticks or un-ticks one item.
+ *
+ * Its own use-case rather than a `saveClipItems` call with one field changed, because
+ * it is the one write here that happens on a plain click: it touches one row and one
+ * column, needs no arrangement, and must not restamp the rest of the list's
+ * `sort_order` as a side effect of a tick.
+ */
+export function toggleClipItem(repo: ClipsRepository, input: ToggleClipItemInput): ClipItem {
+  const { itemId, isDone } = toggleClipItemSchema.parse(input);
+  return repo.toggleClipItem(itemId, isDone);
+}

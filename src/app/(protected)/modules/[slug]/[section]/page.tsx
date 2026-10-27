@@ -170,6 +170,7 @@ function renderSection(
         search={recipeSearch}
         category={recipeCategory}
         tag={recipeTag}
+        isAdmin={isAdmin}
       />
     );
   }

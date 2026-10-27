@@ -162,7 +162,7 @@ function PortfolioSummaryCard({
   // the same data doesn't retire a still-climbing figure mid-walk.
   useEffect(() => {
     if (!isRefreshing) setLiveSummary(undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the prop's total is
+     
     // the trigger; `isRefreshing` is read as a guard, not depended on.
   }, [summary.totalValueCents, summary.totalDayGainLossCents]);
 

@@ -1,5 +1,5 @@
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { listClipCategories, listClips, listClipTags } from "@/lib/clips";
+import { getClipsSettings, listClipCategories, listClips, listClipTags } from "@/lib/clips";
 import { deps } from "@/lib/wiring";
 import { ClipsAllView } from "./clips-all-view";
 import { ClipsConfigurationView } from "./clips-configuration-view";
@@ -18,6 +18,7 @@ export async function ClipsSection({
   search,
   category,
   tag,
+  isAdmin = false,
 }: {
   section: ClipsSectionName;
   /** The list's filters, parsed from search params by the route so they survive a
@@ -25,8 +26,14 @@ export async function ClipsSection({
   search?: string;
   category?: string;
   tag?: string;
+  /** Whether this reader may change the module-wide settings. */
+  isAdmin?: boolean;
 }) {
   const info = CLIPS_SECTION_INFO[section];
+
+  // Read for every section that draws a card, and for Configuration itself. One
+  // read, so the board and the list cut their excerpts to the same length.
+  const settings = getClipsSettings(deps.moduleRepo, deps.moduleSettingsRepo);
 
   // Loaded only for the section that renders it. `listClips` projects away the
   // bodies and never touches the image blobs, so even the unfiltered list is cheap.
@@ -36,6 +43,7 @@ export async function ClipsSection({
           search: search ?? "",
           categories: category ? [category] : [],
           tags: tag ? [tag] : [],
+          excerptChars: settings.excerptChars,
         })
       : [];
 
@@ -75,7 +83,9 @@ export async function ClipsSection({
           {section === "metadata" && (
             <ClipsMetadataView categories={categories} tags={tags} />
           )}
-          {section === "configuration" && <ClipsConfigurationView />}
+          {section === "configuration" && (
+            <ClipsConfigurationView excerptChars={settings.excerptChars} canEdit={isAdmin} />
+          )}
         </div>
       </div>
     </ClipsShell>

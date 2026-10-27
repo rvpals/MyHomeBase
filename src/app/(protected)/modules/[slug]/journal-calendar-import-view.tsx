@@ -432,6 +432,7 @@ export function JournalCalendarImportView({
     // Wall-clock, measured around the action itself. `performance.now()` rather
     // than `Date.now()`: it is monotonic, so a clock adjustment mid-import
     // cannot produce a negative or wildly wrong duration.
+    // eslint-disable-next-line react-hooks/purity -- reads the clock/locale, which is browser-only and intentionally not render-pure.
     const startedAt = performance.now();
     try {
       const result = await runIcsImportAction(
@@ -450,6 +451,7 @@ export function JournalCalendarImportView({
         skippedCount,
         excludedCount,
         requestedCount: indexes.length,
+        // eslint-disable-next-line react-hooks/purity -- reads the clock/locale, which is browser-only and intentionally not render-pure.
         durationMs: performance.now() - startedAt,
       });
       // The action hands back refreshed rows, so the grid stops offering the

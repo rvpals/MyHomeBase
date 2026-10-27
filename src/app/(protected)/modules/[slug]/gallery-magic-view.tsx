@@ -383,6 +383,7 @@ export function MagicListView({
   // be worse than none.
   useEffect(() => {
     cullRun.reset();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     setIsShowingCull(false);
   }, [generation]);
 

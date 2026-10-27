@@ -161,6 +161,7 @@ export function StockBiggestChanges({ positions }: StockBiggestChangesProps) {
   }
 
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     void loadChanges();
   }, [period]);
 

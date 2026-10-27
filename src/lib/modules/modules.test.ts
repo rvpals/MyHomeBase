@@ -212,6 +212,9 @@ describe("resetModulesToDefaults", () => {
       "picture-gallery",
       "tools",
       "household",
+      // Clips, seeded by migration 0156 and carried in DEFAULT_MODULES so an admin
+      // "Reset to Default" does not drop it. This list has to track that constant.
+      "clips",
     ]);
   });
 

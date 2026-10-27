@@ -12,8 +12,22 @@ import type { CullingImageStore } from "./ports";
 // A real encode, not a hand-built pixel array, because these tests are the only place
 // the sharp decode path in `analyze.ts` is exercised at all.
 
-/** A sharp checkerboard: the highest-frequency pattern that fits, so maximum sharpness. */
-export async function checkerboardJpeg(size = 256, squarePixels = 8): Promise<Uint8Array> {
+/**
+ * A sharp checkerboard -- hard edges everywhere, so maximum measured sharpness.
+ *
+ * ## Why the squares are 32px and not 8px
+ *
+ * Sharpness is measured on the full frame, but the duplicate hash is taken from a
+ * 9x8 reduction. An 8px checkerboard averages to a flat grey at that size, so every
+ * comparison in the dHash came out equal and this fixture hashed to **all zeros** --
+ * the same hash as any other flat image, which made it a near-duplicate of fixtures
+ * it has nothing in common with.
+ *
+ * 32px squares survive the reduction, giving a strong hash (`a55a...`) while leaving
+ * the edges just as hard for the sharpness measure. Callers wanting the old
+ * behaviour can still pass `squarePixels`.
+ */
+export async function checkerboardJpeg(size = 256, squarePixels = 32): Promise<Uint8Array> {
   const pixels = Buffer.alloc(size * size);
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
@@ -26,31 +40,70 @@ export async function checkerboardJpeg(size = 256, squarePixels = 8): Promise<Ui
   return encode(pixels, size);
 }
 
-/** The same checkerboard put heavily out of focus. */
-export async function blurredCheckerboardJpeg(size = 256, squarePixels = 8): Promise<Uint8Array> {
+/**
+ * A heavily out-of-focus frame -- the soft half of every sharpness comparison.
+ *
+ * Built from a checkerboard at a DIFFERENT square size, not from `checkerboardJpeg`
+ * itself. A blur of the very same frame is a near-duplicate by construction (seven
+ * bits apart, inside the ten-bit `duplicateDistance`), so the grouper would fold the
+ * pair into one keeper and a test comparing their two scores would find only one
+ * photo to compare. Blurring a different pattern keeps this unmistakably soft while
+ * leaving it a separate picture.
+ *
+ * `squarePixels` still defaults to 8 so a caller asking for a specific size gets the
+ * blur of that size; only the no-argument case -- every caller today -- differs.
+ */
+export async function blurredCheckerboardJpeg(size = 256, squarePixels = 24): Promise<Uint8Array> {
   const sharpSource = await checkerboardJpeg(size, squarePixels);
   // Sigma well above the square size, so the pattern is destroyed rather than softened.
   const blurred = await sharp(Buffer.from(sharpSource)).blur(12).jpeg({ quality: 92 }).toBuffer();
   return new Uint8Array(blurred);
 }
 
-/** A checkerboard crushed into the bottom of the range -- detail present, exposure wrong. */
+/**
+ * Crushed into the bottom of the range -- detail present, exposure wrong.
+ *
+ * ## Why this is vertical bars and not a dark checkerboard
+ *
+ * It used to be the same checkerboard as `checkerboardJpeg`, two stops down. That
+ * made it useless as a *second photograph*: dHash encodes whether each pixel is
+ * brighter than the one to its right, so it is deliberately indifferent to exposure
+ * (see `dhash.ts`). The same geometry at a different brightness therefore produced
+ * the SAME hash, and every test that used this as "a genuinely different picture"
+ * was really asking the grouper to distinguish two images a perceptual hash is
+ * designed to call identical.
+ *
+ * Vertical bars give a different gradient from the checkerboard while staying just
+ * as dark, so this fixture still tests what it was written to test -- an
+ * underexposed frame -- and is also a different photograph.
+ */
 export async function underexposedJpeg(size = 256): Promise<Uint8Array> {
   const pixels = Buffer.alloc(size * size);
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      pixels[y * size + x] = (Math.floor(x / 8) + Math.floor(y / 8)) % 2 === 0 ? 6 : 0;
+      pixels[y * size + x] = Math.floor(x / 32) % 2 === 0 ? 6 : 0;
     }
   }
   return encode(pixels, size);
 }
 
-/** A checkerboard pushed to the top of the range -- blown highlights. */
+/**
+ * Pushed to the top of the range -- blown highlights.
+ *
+ * Horizontal bars, for the reason `underexposedJpeg` gives: a third distinct
+ * gradient, so the three exposure fixtures are three different pictures rather than
+ * one picture at three brightnesses.
+ */
 export async function overexposedJpeg(size = 256): Promise<Uint8Array> {
   const pixels = Buffer.alloc(size * size);
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      pixels[y * size + x] = (Math.floor(x / 8) + Math.floor(y / 8)) % 2 === 0 ? 255 : 251;
+      // Coarse diagonal bands, for the reason `checkerboardJpeg` gives at length:
+      // a pattern finer than the 9x8 reduction averages away to a flat grey and
+      // hashes to all zeros. NOT horizontal bands either -- dHash compares each
+      // pixel with the one to its RIGHT, so a purely horizontal pattern carries no
+      // gradient for it to read.
+      pixels[y * size + x] = Math.floor((x + y) / 48) % 2 === 0 ? 255 : 251;
     }
   }
   return encode(pixels, size);

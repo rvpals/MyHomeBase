@@ -136,11 +136,24 @@ describe("buildLocationGraph", () => {
 });
 
 describe("stepSimulation", () => {
-  it("pushes unconnected nodes apart", () => {
+  it("holds unconnected nodes apart rather than letting them collapse together", () => {
     const graph = buildLocationGraph([place("A"), place("B")], "tag");
-    const before = gap(graph, 0, 1);
-    for (let i = 0; i < 40; i += 1) stepSimulation(graph);
-    expect(gap(graph, 0, 1)).toBeGreaterThan(before);
+    for (let i = 0; i < 400; i += 1) stepSimulation(graph);
+
+    // The property that matters is that two nodes sharing nothing stay legibly
+    // separated — not that the distance only ever grows, which is what the old
+    // assertion required. Repulsion falls off as 1/d² while centering pulls at a
+    // constant 0.015 × distance, so a pair seeded ~205px apart correctly settles
+    // INWARD to a stable ~93px (near the 90px springLength) instead of flying
+    // apart. Asserting growth made the test a statement about where the seed
+    // happened to put them rather than about the physics.
+    const settled = gap(graph, 0, 1);
+    expect(settled).toBeGreaterThan(DEFAULT_FORCES.minDistance);
+    expect(settled).toBeGreaterThan(DEFAULT_FORCES.springLength * 0.5);
+
+    // And it is an equilibrium, not a moment on the way to a collapse.
+    for (let i = 0; i < 400; i += 1) stepSimulation(graph);
+    expect(gap(graph, 0, 1)).toBeCloseTo(settled, 1);
   });
 
   it("pulls connected nodes together from far apart", () => {

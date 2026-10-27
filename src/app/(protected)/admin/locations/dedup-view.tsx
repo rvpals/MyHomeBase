@@ -105,6 +105,7 @@ export function LocationDedupModal({ onClose }: { onClose: () => void }) {
   // handler instead of an effect keyed on `threshold`, so dragging the slider
   // doesn't fire a scan per pixel.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     void scan(DEFAULT_NAME_THRESHOLD, DEFAULT_DISTANCE_METRES);
   }, [scan]);
 

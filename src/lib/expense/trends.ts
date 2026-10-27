@@ -124,7 +124,7 @@ export function monthRange(from: string, to: string): string[] {
 }
 
 /** The period one month after `month`, rolling the year over. */
-function nextMonthOf(month: string): string | undefined {
+export function nextMonthOf(month: string): string | undefined {
   const match = /^(\d{4})-(\d{2})$/.exec(month);
   if (!match) return undefined;
   const year = Number(match[1]);

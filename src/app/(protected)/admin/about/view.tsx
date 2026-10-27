@@ -461,21 +461,24 @@ function renderChangeHistoryByModule(markdown: string): ReactNode[] {
       const body = line.slice(4).trim();
 
       // Gather following content until next h3 or h2
-      let contentLines: string[] = [];
+      const contentLines: string[] = [];
       for (let j = i + 1; j < lines.length; j++) {
         if (lines[j].startsWith("## ") || lines[j].startsWith("### ")) break;
         contentLines.push(lines[j]);
       }
       const followingContent = contentLines.join(" ");
 
-      const module = inferModuleFromContent(body, followingContent);
+      // `moduleName`, not `module`: a local binding called `module` shadows the
+      // CommonJS global of that name, which Next flags because a file that is
+      // transpiled to CJS then assigns to the real module object.
+      const moduleName = inferModuleFromContent(body, followingContent);
 
-      if (!releases[currentReleaseIndex].sections.has(module)) {
-        releases[currentReleaseIndex].sections.set(module, { items: [] });
+      if (!releases[currentReleaseIndex].sections.has(moduleName)) {
+        releases[currentReleaseIndex].sections.set(moduleName, { items: [] });
       }
 
       // Store the h3 and its content
-      releases[currentReleaseIndex].sections.get(module)!.items.push(line, ...contentLines);
+      releases[currentReleaseIndex].sections.get(moduleName)!.items.push(line, ...contentLines);
     }
   }
 
@@ -486,13 +489,13 @@ function renderChangeHistoryByModule(markdown: string): ReactNode[] {
   const sortedModules = Array.from(allModules).sort();
   const blocks: ReactNode[] = [];
 
-  for (const module of sortedModules) {
+  for (const moduleName of sortedModules) {
     // Collect this module's entries across all releases, newest first
     const moduleReleases = releases
       .map((release, index) => ({
         release,
         index,
-        items: release.sections.get(module)?.items,
+        items: release.sections.get(moduleName)?.items,
       }))
       .filter((r) => r.items)
       .reverse(); // Newest releases first
@@ -500,11 +503,11 @@ function renderChangeHistoryByModule(markdown: string): ReactNode[] {
     if (moduleReleases.length === 0) continue;
 
     blocks.push(
-      <div key={module} className="mt-8 border-t border-line pt-6 first:mt-0 first:border-t-0 first:pt-0">
-        <h2 className="font-display text-xl font-semibold text-ink">{module}</h2>
+      <div key={moduleName} className="mt-8 border-t border-line pt-6 first:mt-0 first:border-t-0 first:pt-0">
+        <h2 className="font-display text-xl font-semibold text-ink">{moduleName}</h2>
         <div className="mt-4 space-y-4">
           {moduleReleases.map((item) => (
-            <div key={`${item.release.date}-${module}`} className="rounded-lg border border-line bg-paper-raised p-4">
+            <div key={`${item.release.date}-${moduleName}`} className="rounded-lg border border-line bg-paper-raised p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted">{item.release.date}</p>
               <div className="mt-2">
                 {renderChangeHistory((item.items as string[]).join("\n"))}
@@ -597,7 +600,7 @@ export function AboutView({
     // are inside `refreshLog`'s awaited branches, so they land after the fetch
     // resolves, not synchronously in this effect. There is no cascading render to
     // avoid — the log simply isn't known until the request comes back.
-    // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+     
   }, []);
 
   // The deployment pending deletion, or null when the confirm isn't up. Held here rather

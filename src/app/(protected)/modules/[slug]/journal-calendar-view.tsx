@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/button";
 import { Comments } from "@/components/comments";
 import { JournalViewer } from "@/components/journal-viewer";
@@ -49,6 +50,7 @@ import {
 import { adjacentEntryDateAction, recycleJournalEntryAction } from "./journal-actions";
 import { JournalPhotosHost } from "./journal-photos-host";
 import { TaxonomyChipRow } from "@/components/taxonomy-icon";
+import { TreeIcon } from "@/components/tree-icons";
 import { journalEntriesFilterHref } from "./journal-shared";
 
 /**
@@ -364,7 +366,20 @@ function CalendarToolbar({
   const stepLabel = scope === "week" ? "week" : scope === "year" ? "year" : "month";
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    // Three groups: the two period-independent actions anchor left, the period
+    // itself (steppers + title) sits in the middle, the range switch and help
+    // close the right. The flex-1 spacers are what keep the middle centred when
+    // the two ends are different widths.
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" size="sm" onClick={onToday}>
+          Today
+        </Button>
+        <JumpControl anchor={anchor} today={today} onJump={onJump} />
+      </div>
+
+      <div className="flex-1 max-lg:hidden" />
+
       <div className="flex items-center gap-2">
         <Button
           variant="secondary"
@@ -431,12 +446,10 @@ function CalendarToolbar({
         </Button>
       </div>
 
+      <div className="flex-1 max-lg:hidden" />
+
       <div className="flex flex-wrap items-center gap-2">
         <ScopeSwitch scope={scope} onScope={onScope} />
-        <Button variant="secondary" size="sm" onClick={onToday}>
-          Today
-        </Button>
-        <JumpControl anchor={anchor} today={today} onJump={onJump} />
         <Comments
           title="Using the calendar"
           content={
@@ -758,13 +771,16 @@ function MonthGrid({
         ))}
       </div>
       <div className="grid grid-cols-7">
-        {weeks.flatMap((week) =>
+        {weeks.flatMap((week, weekIndex) =>
           week.days.map((day) => (
             <DayCell
               key={day.date}
               day={day}
               titleLimit={cellTitleLimit}
               isTall={isWeekScope}
+              // Row banding is a reading aid, not domain data, so the index
+              // stays here rather than going on CalendarWeek.
+              isBandedRow={weekIndex % 2 === 1}
               onSelect={() => onSelectDay(day)}
               onOpenEntry={onOpenEntry}
               onOpenPhotos={() => onOpenPhotos(day.date)}
@@ -780,6 +796,7 @@ function DayCell({
   day,
   titleLimit,
   isTall,
+  isBandedRow,
   onSelect,
   onOpenEntry,
   onOpenPhotos,
@@ -787,6 +804,8 @@ function DayCell({
   day: CalendarDay;
   titleLimit: number;
   isTall: boolean;
+  /** Every other week row carries a faint tint, to help the eye track across. */
+  isBandedRow: boolean;
   onSelect: () => void;
   onOpenEntry: (id: number) => void;
   onOpenPhotos: () => void;
@@ -812,8 +831,24 @@ function DayCell({
       }}
       className={`flex cursor-pointer flex-col gap-1 border-b border-r border-line p-1.5 text-left transition-colors last:border-r-0 ${
         isTall ? "min-h-40" : "min-h-24 max-lg:min-h-16"
-      } ${day.isCurrentPeriod ? "bg-paper" : "bg-paper-raised/40"} ${
-        day.isSelected ? "ring-2 ring-inset ring-brass" : "hover:bg-paper-raised"
+      } ${
+        // Three things want this background, in priority order: the selection
+        // (loudest), then whether the day belongs to the month on screen — the
+        // only one that carries meaning — then the row band, which is a faint
+        // tint laid over the in-month fill so it never muddies that boundary.
+        day.isSelected
+          ? "bg-brass-soft"
+          : day.isCurrentPeriod
+            ? isBandedRow
+              ? "bg-paper-raised/50"
+              : "bg-paper"
+            : isBandedRow
+              ? "bg-paper-raised/30"
+              : "bg-paper-raised/15"
+      } ${
+        day.isSelected
+          ? "ring-[3px] ring-inset ring-brass"
+          : "hover:bg-paper-raised"
       }`}
     >
       <div className="flex items-center justify-between gap-1">
@@ -1060,15 +1095,44 @@ function DayEntriesPanel({
 
       {entries.length > 0 ? (
         <ul className="mt-3 flex flex-col divide-y divide-line border-t border-line">
-          {entries.map((entry) => (
-            <li key={entry.id} className="flex items-center gap-2">
+          {entries.map((entry, index) => (
+            <li
+              key={entry.id}
+              // Zebra striping, and the hover lives here rather than on the
+              // inner button so it covers the whole row — the button is only
+              // the middle of it, and a partial tint over a stripe reads as a
+              // glitch.
+              //
+              // The stripe is `--paper`, NOT a translucent `--paper-raised`:
+              // this panel is itself `bg-paper-raised`, so tinting with that
+              // token over itself composites to the panel colour and stripes
+              // nothing. `--paper` is its sibling in every theme, so the pair
+              // reads in both directions without a light/dark flag.
+              className={`flex items-center gap-2 transition-colors ${
+                index % 2 === 1 ? "bg-paper" : ""
+              } hover:bg-brass-soft`}
+            >
+              {/* A bare pencil, not a labelled button: a row action, which
+                  coding-guide.md keeps out of the icon-slot registry, and
+                  ALWAYS_CLASSIC holds it hand-drawn. A link rather than a
+                  router push, so it opens in a new tab like any other. */}
+              <Link
+                href={`/modules/journal/entries/${entry.id}`}
+                aria-label={`Edit the entry ${
+                  entry.isEncrypted || entry.title.trim() === "" ? "on this day" : entry.title
+                }`}
+                title="Edit"
+                className="shrink-0 px-1 text-muted hover:text-brass max-lg:px-2 max-lg:py-1"
+              >
+                <TreeIcon name="pencil" className="h-4 w-4" />
+              </Link>
               {/* The row's clickable region and Delete are siblings, not nested:
                   a <button> inside a <button> is invalid HTML and the inner one
                   would not reliably receive the click. */}
               <button
                 type="button"
                 onClick={() => onOpenEntry(entry.id)}
-                className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 px-1 py-2.5 text-left hover:bg-paper max-lg:py-3"
+                className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 px-1 py-2.5 text-left max-lg:py-3"
               >
                 <span className="w-12 shrink-0 font-mono text-xs text-muted">
                   {entry.time === "" ? "—" : entry.time.slice(0, 5)}

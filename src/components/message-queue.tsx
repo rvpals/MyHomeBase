@@ -130,6 +130,7 @@ export function MessageQueue({
   // The server's count is authoritative on every navigation. Without this the
   // badge would keep whatever the first page load said for the life of the tab.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     setUnreadCount(initialUnreadCount);
   }, [initialUnreadCount]);
 

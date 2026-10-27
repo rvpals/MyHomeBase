@@ -157,10 +157,14 @@ export function clampToolbarPosition(
   const maxY = viewport.height - KEEP_TOOLBAR_VISIBLE;
 
   return {
-    // `Math.min(maxX, ...)` on the outside so that when the bar is wider than the
-    // viewport — minX > maxX, an empty range — the result is the LEFT overhang
-    // rather than the right. The first shortcuts on a bar are the ones worth
-    // keeping reachable; a reader can still drag the rest into view.
+    // Clamped into [minX, maxX], which stays a valid range even for a bar far wider
+    // than the screen: a 900px bar on a 320px viewport gives [-852, 272]. (It would
+    // only invert if the bar and the viewport together were under
+    // 2 * KEEP_TOOLBAR_VISIBLE, which no real screen reaches — an earlier comment
+    // here claimed the inversion was the normal wide-bar case and it is not.)
+    //
+    // So a wide bar simply keeps the x it was dragged to, overhanging whichever edge
+    // the reader pushed it past, with KEEP_TOOLBAR_VISIBLE always left to grab.
     x: Math.min(maxX, Math.max(minX, position.x)),
     y: Math.min(maxY, Math.max(0, position.y)),
   };

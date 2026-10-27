@@ -67,6 +67,7 @@ pattern instead of inventing one.
 | [`Tabs`](#tabs) | One-of-N panels in the same space | [src/components/tabs.tsx](src/components/tabs.tsx) | yes |
 | [`TreeNav`](#treenav) | **Two-level tree** — expandable groups, selectable leaves | [src/components/tree-nav.tsx](src/components/tree-nav.tsx) | yes |
 | [`ViewModeSwitch`](#viewmodeswitch) | **Same data, re-cut** — segmented control, `<select>` when narrow | [src/components/view-mode-switch.tsx](src/components/view-mode-switch.tsx) | yes |
+| [`MasonryBoard`](#masonryboard) | **A card board** — variable-height cards dealt into balanced columns | [src/components/masonry-board.tsx](src/components/masonry-board.tsx) | yes |
 | [`ModuleCarousel`](#modulecarousel) | The home screen's module picker (grid on desktop, coverflow on phones) | [src/components/module-carousel.tsx](src/components/module-carousel.tsx) | yes |
 | [`TwoTierShell`](#twotiershell) | **The navigation shell** — tree on desktop, two-tier bar on compact, plus header | [src/components/two-tier-shell.tsx](src/components/two-tier-shell.tsx) | yes |
 | [`NavTree`](#navtree) | **Desktop navigation** — the 260px tree: Home, every module, every section, filtered | [src/components/nav-tree.tsx](src/components/nav-tree.tsx) | yes |
@@ -1669,7 +1670,7 @@ const tabs: TabItem[] = [
 sits above the strip, so it stays readable on all three tabs)*;
 the About screen's Application / Change History split
 [admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx); the Expense module's
-Charts and Analysis Main / Monthly comparison split
+Charts and Analysis Main / Monthly comparison / Expense type By Month split
 [expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx); SQL
 Explorer's SQL Query / Tables Explorer / Modules split
 [admin/sql-explorer/view.tsx](src/app/(protected)/admin/sql-explorer/view.tsx) *(controlled
@@ -1747,6 +1748,73 @@ navigation shell ([design.md](design.md)); don't reach for this to build a third
 views, indexes and triggers, with the selected object's rows or definition beside it; and
 the same screen's **Modules** tab, where the groups are the modules from `sys_modules` and
 the leaves are the tables each one owns.
+
+---
+
+## MasonryBoard
+
+**A card board.** Cards of differing heights dealt into balanced columns that read
+left to right — the Google-Keep shape, where a short card sits beside a tall one
+rather than under it.
+
+**Not a grid.** A `grid` gives every cell in a row the height of the tallest, so a
+one-line card beside a long one leaves a hole. Use a plain `grid` when the cards
+genuinely are the same height; use this when they are not.
+
+- **Source:** [src/components/masonry-board.tsx](src/components/masonry-board.tsx)
+- **Import:** `import { MasonryBoard, type MasonryColumns } from "@/components/masonry-board";`
+- **Client component:** yes
+
+| Prop | Type | Default | Notes |
+|------|------|---------|-------|
+| `items` | `T[]` | — | The cards, in reading order. |
+| `deal` | `(items: T[], count: number) => T[][]` | — | Splits them into columns. Must return exactly `count` arrays. |
+| `renderItem` | `(item: T) => ReactNode` | — | Draws one card. |
+| `itemKey` | `(item: T) => string \| number` | — | A stable key per item. |
+| `columns` | `MasonryColumns` — `{ compact, wide }` | `{ compact: 1, wide: 3 }` | Columns below and above 1024px. `wide` supports 1–5, `compact` 1–2. |
+| `className?` | `string` | | |
+
+```tsx
+<MasonryBoard
+  items={clips}
+  deal={dealClipsIntoColumns}
+  renderItem={(clip) => <ClipsCard clip={clip} … />}
+  itemKey={(clip) => clip.id}
+/>
+```
+
+### Balancing is the caller's job
+
+`deal` is a prop because *how* to estimate a card's height is domain knowledge this
+component cannot have — the Clips board estimates from the clip's own excerpt length,
+item count and chips (`dealClipsIntoColumns` in
+[src/lib/clips/board.ts](src/lib/clips/board.ts)). Passing a round-robin function is
+perfectly valid when the cards are near enough the same height.
+
+The estimate is computed from data, on the server, so the board is correct on its
+first paint. Measuring real rendered heights would be exact but needs a layout pass,
+a re-deal on resize, and cards visibly jumping between columns after paint.
+
+### Why not CSS `columns`
+
+CSS multi-column fills column one to the bottom, then column two — so eight cards
+read top-to-bottom-then-across while every reader scans a card board left-to-right.
+It also re-flows on resize in ways that move the card the reader was about to click,
+and `break-inside: avoid` is only mostly honoured.
+
+### What a narrow screen does
+
+At `compact: 1` the grid becomes one column and the dealt columns stack in order, so
+a phone reads column one's cards, then column two's — not the same order a
+single-column deal would give. Accepted deliberately: every card is present, each
+column's order is preserved, and re-dealing would mean reading the viewport during
+render, which `design.md` reserves for when the small screen needs a genuinely
+*different* component rather than a restyled one.
+
+**Used by:** Clips — the board mode of All Clips
+[clips-board-view.tsx](<src/app/(protected)/modules/[slug]/clips-board-view.tsx>) and
+the Clips home screen's "Most recent"
+[clips-main-view.tsx](<src/app/(protected)/modules/[slug]/clips-main-view.tsx>).
 
 ---
 
@@ -3755,8 +3823,13 @@ second kind of view, and the pooled value always equals the next level's total (
 pinning that). **A wedge can't take focus**, so put the same action on the companion list's
 pooled row as a real `<button>`; that's the keyboard path.
 
-**Used by:** the Expense module's Charts and Analysis → Vendor card —
-[expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx).
+**Used by:** the Expense module's Charts and Analysis — the Vendor card and the
+Expense type By Month tab, both in
+[expense-charts-view.tsx](src/app/(protected)/modules/[slug]/expense-charts-view.tsx)
+*(the month tab folds to 4 named categories + a drillable pooled slice, and its
+companion table lists **every** category for the month — the folded ones and the ones
+in credit included — so the rows reconcile with the month total even though the ring
+shows a subset)*.
 
 **Notes:** each bar is direct-labeled with its value (the required contrast relief) and the
 axis tick supplies identity, so there is no legend box.

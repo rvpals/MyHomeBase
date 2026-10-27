@@ -146,6 +146,53 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-26 — Release (Expense charts by month, import feedback, correctness fixes)
+
+**No migration for these items.** Items 1–6 are Expense → Charts, 7–10 Expense → Import and
+Transactions, 11–16 the fixes. Item 6 is phone-only. Item 11 is the one most worth doing —
+it is a hydration fix, so it only shows on a **fresh page load**, not on a client navigation.
+
+- [ ] **1.** Expense → Charts: an **Expense type By Month** tab exists, and opens on the real current month even when the newest transaction is older
+- [ ] **2.** That tab in a month with no transactions: it says so plainly rather than showing another month's data
+- [ ] **3.** The steppers walk to the previous and next calendar month, including into months that have no rows
+- [ ] **4.** The donut names four categories and pools the rest into one slice; clicking the pooled slice drills in, and Back returns
+- [ ] **5.** The table beside the donut lists every category and its total reconciles with the month's own total — including a category in credit, which appears in the table but gets no slice
+- [ ] **6.** Phone → Charts → Spend Over Time: the months do not collide into unreadable overlapping labels; on desktop the same chart prints a dollar amount on every month
+- [ ] **7.** Expense → Import: run an import — a dimmed overlay with a spinner covers the screen while it works, and the Import button cannot be clicked twice
+- [ ] **8.** When it finishes, the result leads with "**N transactions imported successfully!**", with the skipped/duplicate/categorised counts beneath
+- [ ] **9.** Drop a CSV onto the dropzone: the overlay does **not** say "Importing transactions…" while the file is merely being parsed for the preview
+- [ ] **10.** Expense → Transactions: each row has Edit and Delete icon buttons; Edit opens that row in the form card, Delete asks first and then removes the row
+- [ ] **11.** Journal → New Entry on a **fresh page load** (F5, not a click through the nav): the Time field shows a time rather than being blank, and Date is filled
+- [ ] **12.** Journal → Meta Data: the **Home Screen** row shows an icon (a framed pane) rather than an empty space where the glyph should be
+- [ ] **13.** Journal → Topics: a topic term like "hsa" matches an entry that writes it "H.S.A."; confirm a short term still does *not* match inside an unrelated word
+- [ ] **14.** Drag a chart's gear toolbar past the left or right edge on a narrow window: it stays where you dropped it with a grabbable strip still on screen, rather than snapping back
+- [ ] **15.** Gallery → a photo with measurements: page quickly to the next photo while one is still loading — the spinner stays on the photo that is actually still blank
+- [ ] **16.** Journal → Calendar: a **Today** button and a jump control sit at the left, the month title is centred, and alternate week rows are subtly banded
+
+## 2026-10-25 — Release (Clips board: pinning, card colour, checklists, configurable excerpt)
+
+**Migration 0157 required.** Every item needs the Clips module (visible to admins until granted) and
+at least one clip. Items 1–5 are the board, 6–9 the card, 10–12 the checklist, 13–14 Configuration,
+15 is phone-only, 16–17 are the terminal.
+
+- [ ] **1.** Clips → All Clips: a **View** switcher offers Board and List, and Board is what a reader who never chose sees
+- [ ] **2.** All Clips → Board: cards sit in columns of uneven height — a short clip beside a tall one rather than under it, with no large gaps
+- [ ] **3.** All Clips: pick List, reload the page — it is still List; pick Board, reload — still Board (the choice is per device, not per account)
+- [ ] **4.** All Clips → Board with 6+ clips of very different lengths: the columns end at roughly the same height, and no clip is missing or drawn twice
+- [ ] **5.** Clips → Home screen: "Most recent" draws the same cards, two columns wide
+- [ ] **6.** Any card: the thumbtack pins the clip — it moves to a **Pinned** band at the top, with **Others** beneath, in Board *and* in List
+- [ ] **7.** A pinned card: press the thumbtack again — it leaves the band and returns to the main run
+- [ ] **8.** Any card → **Colour**: a row of seven swatches opens; pick one and the card takes that tint, border included
+- [ ] **9.** With a coloured card on screen, switch theme (Admin → Configuration → Color Themes), including to a light one (Daybreak): the card is still recognisably that colour and its text is still readable
+- [ ] **10.** Write a clip → **Checklist**: type a line, press Enter — it joins the list and a fresh blank row appears; the caret stays where it is as you type
+- [ ] **11.** A card with a checklist: tick a line — it strikes through and moves into a collapsed **N completed items** group; open the group and untick it, and it returns to the list
+- [ ] **12.** Edit a clip with a checklist, reorder or retype lines, Save, then Save again without closing: the items are not duplicated and nothing that was ticked comes back unticked
+- [ ] **13.** Clips → Configuration as an admin: set the card excerpt length to 600, Save, go back to All Clips — cards show noticeably more text; set it to 100 and they show less
+- [ ] **14.** Clips → Configuration as a non-admin: the field is greyed out and says only an administrator can change it
+- [ ] **15.** Phone (or a window pinned to the compact layout) → All Clips: one column of cards, nothing cut off at the right edge, and the bottom bar is unchanged — in Board and in List
+- [ ] **16.** Terminal: `clips pin --id <n>` then `clips list` — the pinned clip is first; `clips unpin --id <n>` puts it back
+- [ ] **17.** Terminal: `clips items --id <n> --set "Goggles,Towel"` then `clips items --id <n>` lists both with ids; `clips tick --item <id>` marks one, and `clips colour --id <n> --colour fuchsia` is refused
+
 ## 2026-10-24 — Release (Top-tabs desktop navigation, clips on the journal entry screen and form)
 
 **No migration needed.** Items 1–11 and 13 are desktop-only; item 12 is phone-only. Items 14–17 need

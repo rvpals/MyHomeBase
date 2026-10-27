@@ -175,7 +175,7 @@ function RecipeThumb({ recipe, size }: { recipe: RecipeSummary; size: number }) 
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- the bytes come from our
+     
     // own API route with no known dimensions; next/image would need a loader config
     // for a route that already serves cache headers.
     <img
@@ -858,7 +858,7 @@ function RecipeEditor({
                 a placeholder. A preview matters most for a NEW recipe, where
                 there is nothing on the server to fall back to yet. */}
             {picturePreview ? (
-              // eslint-disable-next-line @next/next/no-img-element -- a local
+               
               // data URL with no known dimensions; next/image would need a
               // loader for bytes that never touch the network.
               <img

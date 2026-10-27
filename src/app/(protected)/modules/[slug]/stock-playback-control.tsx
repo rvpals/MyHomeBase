@@ -62,6 +62,7 @@ export function StockPlaybackControl({ snapshots }: { snapshots: DailySnapshot[]
   // A step change mid-playback would leave `revealed` indexing a different set
   // of frames, so changing the cut stops the run rather than reinterpreting it.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     setRevealed(undefined);
   }, [step]);
 

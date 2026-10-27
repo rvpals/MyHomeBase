@@ -646,6 +646,12 @@ describe("metadataPreferenceEntries", () => {
       { key: "temperature_unit", value: "celsius" },
       { key: "handwriting_size", value: "xl" },
       { key: "review_before_calendar_import", value: "false" },
+      // The two Topics preferences travel with the journal for the same reason the
+      // type size does: they describe how the journal reads, not where this machine
+      // keeps its files. Added with the Topics section; this expectation was not
+      // updated at the time, which is why it had been failing.
+      { key: "topic_match_body", value: "false" },
+      { key: "topic_episode_gap_days", value: "14" },
       // Always written, and defaulted by the schema — so a bundle predating
       // this preference restores 14px, which is what the field used then.
       { key: "content_font_size", value: "sm" },
@@ -693,6 +699,9 @@ describe("metadataPreferenceEntries", () => {
       { key: "temperature_unit", value: "celsius" },
       { key: "handwriting_size", value: "2xl" },
       { key: "review_before_calendar_import", value: "true" },
+      // As above — the Topics preferences are part of the exported set.
+      { key: "topic_match_body", value: "false" },
+      { key: "topic_episode_gap_days", value: "14" },
       { key: "content_text_color", value: "#1A2B3C" },
       { key: "content_font_size", value: "lg" },
       { key: "content_font", value: "inter" },

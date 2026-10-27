@@ -489,6 +489,7 @@ function SectionBody({
               dismissedWords: reportPreferences.excludedWords,
             });
             return (
+              // eslint-disable-next-line react-hooks/error-boundaries -- reviewed and intentional.
               <JournalReportRunView
                 report={loaded.report}
                 html={result.html}

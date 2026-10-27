@@ -352,6 +352,7 @@ function MergeTaxonomyModal({
   // the dialog closed.
   useEffect(() => {
     if (trimmedTarget === "") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
       setPlan(undefined);
       return;
     }
@@ -584,6 +585,7 @@ function TaxonomyPanel({
   const itemNames = items.map((item) => item.name).join("\u0000");
   useEffect(() => {
     const live = new Set(itemNames === "" ? [] : itemNames.split("\u0000"));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     setSelected((previous) => {
       if (previous.size === 0) return previous;
       const pruned = new Set([...previous].filter((selectedName) => live.has(selectedName)));

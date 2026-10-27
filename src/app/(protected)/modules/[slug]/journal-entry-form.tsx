@@ -217,9 +217,22 @@ export interface JournalEntryFormInitialValues {
   tags?: string[];
 }
 
-/** Applies `initialValues` over a blank form stamped with the current clock. */
-function seededForm(initialValues: JournalEntryFormInitialValues | undefined) {
-  const blank = emptyForm(todayIso(), nowIso());
+/**
+ * Applies `initialValues` over a blank form.
+ *
+ * `stamp` decides whether the clock is read. It is false during render — on the
+ * server and on the hydrating client — and true from the effect that stamps the
+ * form after mount, and from `reset`. Reading the clock during render would put
+ * the *server's* instant into the initial HTML, which the client then hydrates
+ * over with its own: a value mismatch React does not repair on a controlled
+ * input, and which an `<input type="time">` resolves by showing nothing at all.
+ * Same rule as `canFullscreen` below — browser-only data is read after mount.
+ */
+function seededForm(
+  initialValues: JournalEntryFormInitialValues | undefined,
+  stamp: boolean,
+) {
+  const blank = emptyForm(stamp ? todayIso() : "", stamp ? nowIso() : "");
   if (!initialValues) return blank;
   return {
     ...blank,
@@ -317,9 +330,11 @@ export function JournalEntryForm({
 }) {
   const router = useRouter();
   // Date and time both start at the writer's current clock, unless the caller
-  // seeded them. Lazy initialiser, so the clock is read when the form mounts
-  // rather than on every render.
-  const [form, setForm] = useState(() => seededForm(initialValues));
+  // seeded them — but the clock is read in the effect below, not here: this
+  // initialiser also runs on the server, and stamping it there blanked the Time
+  // field on arrival. Starts with both empty, so the server's HTML and the
+  // client's first render agree, and the effect fills them in on mount.
+  const [form, setForm] = useState(() => seededForm(initialValues, false));
   // Seeded from `initialLocations` when the caller supplied pins (Clone), empty
   // otherwise. Copied rather than aliased, for the same reason the form's own
   // arrays are: adding a pin here must not reach back into the seed the server
@@ -333,6 +348,23 @@ export function JournalEntryForm({
   // copies what the writer wrote, and the clips attached to the original support
   // *that* entry, not a new one that happens to start from the same text.
   const [clips, setClips] = useState<ClipSummary[]>([]);
+  // Which clip panel the toolbar's "+ Clip" / "+ New clip" has open, if either.
+  // Here rather than inside the clips field because the buttons are in the Save
+  // toolbar, which is outside the tab strip: the field unmounts whenever the
+  // reader is on Main or Misc, and state it owned would be destroyed with it.
+  // Both render as modals, so either works from whichever tab is showing.
+  const [isWritingClip, setIsWritingClip] = useState(false);
+  const [isPickingClip, setIsPickingClip] = useState(false);
+  // Which tab is showing. Controlled so the clip buttons can switch to +Clip —
+  // see the note on the strip itself.
+  const [activeTab, setActiveTab] = useState("main");
+
+  /** Opens one clip panel, closes the other, and reveals the tab that draws it. */
+  function openClipPanel(panel: "write" | "pick") {
+    setIsWritingClip(panel === "write");
+    setIsPickingClip(panel === "pick");
+    setActiveTab("clips");
+  }
   // Weather is held as three strings, not an EntryWeatherInput, because these
   // are text inputs: a half-typed temperature ("-", "1.") is not a number yet
   // and the field still has to let the writer get there. `typedWeather` below
@@ -378,7 +410,24 @@ export function JournalEntryForm({
   const { request: requestPosition } = useCurrentPosition();
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     setCanFullscreen(canGoFullscreen());
+  }, []);
+
+  // Stamps the blank date and time with the writer's clock, once, after mount.
+  // Only the fields the caller did not seed and the writer has not already
+  // typed into: the guard is on the current value being empty, so a clone's
+  // seeded date survives, and so a fast typist who set a time before this ran
+  // does not have it overwritten.
+  useEffect(() => {
+    setForm((current) => {
+      if (current.date !== "" && current.time !== "") return current;
+      return {
+        ...current,
+        ...(current.date === "" ? { date: todayIso() } : {}),
+        ...(current.time === "" ? { time: nowIso() } : {}),
+      };
+    });
   }, []);
 
   // Text fields only. Categories and tags are arrays and go through setTaxonomy.
@@ -400,7 +449,9 @@ export function JournalEntryForm({
   // form there would throw away the assembled content with no way to get it back
   // short of closing the dialog and ticking the rows again.
   function reset() {
-    setForm(seededForm(initialValues));
+    // Stamps straight away, unlike the mount path above: this only ever runs
+    // from a click, so there is no server render to disagree with.
+    setForm(seededForm(initialValues, true));
     // Back to the seeded pins, not to none — on a cloned form "Clear" means
     // "undo my edits", and wiping the copied locations would throw away the
     // part of the clone that is most tedious to re-pick by hand. Matches how
@@ -411,6 +462,11 @@ export function JournalEntryForm({
     // field's starting value. Clearing here also stops a failed attach leaving
     // the picks on screen to be silently re-attached to the next entry written.
     setClips([]);
+    // And shut whichever clip panel is open: Clear has just dropped the picks,
+    // so leaving a picker standing would invite re-attaching to a form that no
+    // longer has them.
+    setIsWritingClip(false);
+    setIsPickingClip(false);
     setWeatherTemp("");
     setWeatherUnit("");
     setWeatherDescription("");
@@ -770,41 +826,46 @@ export function JournalEntryForm({
         />
       </div>
 
-      {/* Content gets a card of its own: it is the entry, and the two controls
-          in the header act on it alone rather than on the form. `headerAction`
-          keeps them visible even when the card is shut. */}
-      <CollapsibleCard
-        title="Content"
-        defaultOpen
-        headerAction={
-          <div className="flex flex-wrap items-center gap-2">
-            {canFullscreen && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setIsFullscreen(true)}
-                title="Show just the content box, filling the screen"
-              >
-                Full screen
-              </Button>
-            )}
-            {/* On/off is carried by the variant swap. Deliberately no
-                `ariaLabel`: `Button` renders it as `aria-label`, which would
-                *replace* the visible "Handwriting" text and leave the accessible
-                name not matching the label. `Button` also whitelists only
-                `ariaExpanded`/`ariaControls`, so `aria-pressed` isn't available
-                — the hint lives in `title`, as its doc prescribes. */}
+      {/* The content field, with no card around it: it is the entry, so it reads
+          as the page rather than as one more titled section. The "Content" label
+          is gone with the card — the placeholder already says what the box is for,
+          and the textarea keeps its `aria-label` so the accessible name survives.
+
+          The two controls float over the field's top-right corner instead of
+          sitting in a card header. `absolute` against the `relative` wrapper
+          below, `z-10` to clear the texture underlay, and `pointer-events-auto`
+          inside a `pointer-events-none` strip so the gap between the buttons
+          still lets a click through to the text. */}
+      <div className="relative">
+        <div className="pointer-events-none absolute right-2 top-2 z-10 flex flex-wrap items-center justify-end gap-2">
+          {canFullscreen && (
             <Button
               size="sm"
-              variant={isHandwriting ? "primary" : "secondary"}
-              onClick={() => setIsHandwriting((on) => !on)}
-              title="Using cursive font"
+              variant="secondary"
+              onClick={() => setIsFullscreen(true)}
+              title="Show just the content box, filling the screen"
+              className="pointer-events-auto !shadow-sm"
             >
-              Handwriting
+              Full screen
             </Button>
-          </div>
-        }
-      >
+          )}
+          {/* On/off is carried by the variant swap. Deliberately no
+              `ariaLabel`: `Button` renders it as `aria-label`, which would
+              *replace* the visible "Handwriting" text and leave the accessible
+              name not matching the label. `Button` also whitelists only
+              `ariaExpanded`/`ariaControls`, so `aria-pressed` isn't available
+              — the hint lives in `title`, as its doc prescribes. */}
+          <Button
+            size="sm"
+            variant={isHandwriting ? "primary" : "secondary"}
+            onClick={() => setIsHandwriting((on) => !on)}
+            title="Using cursive font"
+            className="pointer-events-auto !shadow-sm"
+          >
+            Handwriting
+          </Button>
+        </div>
+
         {/* A toggle over the same textarea, not a preview pane: the writer keeps
             typing in cursive rather than having to leave the mode to edit. The
             sheet texture goes on the wrapper and the field turns transparent so
@@ -814,17 +875,21 @@ export function JournalEntryForm({
             rather than stacking on it — two fibre layers read as noise — and
             draws in both modes, while the hand-drawn sheet stays tied to
             Handwriting as it always was. */}
-        {/* With a texture and Handwriting off, the border moves from the field
-            to this wrapper: the field has to go transparent for the picture to
-            show through, and a transparent field keeping `INPUT_CLASS` would
-            draw its border *inside* the textured area rather than around it.
-            Handwriting mode has never drawn a border here, textured or not. */}
+        {/* Without the card there is always a border now: plain used to get one
+            from `INPUT_CLASS` on the field itself, and the textured states got
+            theirs from this wrapper. The card's own edge is gone, so the field
+            needs its own outline to read as a box on the page. */}
+        {/* The border is now unconditional on the textured paths. Both used to
+            sit inside a card and borrow its edge — with the card gone, a
+            textured sheet with no outline bleeds into the page. The plain path
+            still takes its border from `INPUT_CLASS` on the field itself, so it
+            is left bare here to avoid drawing a second one around the first. */}
         <div
           className={`relative ${
             contentTexture
-              ? `rounded-md ${isHandwriting ? "" : "border border-line"}`
+              ? "rounded-md border border-line"
               : isHandwriting
-                ? "rounded-md paper-texture"
+                ? "rounded-md border border-line paper-texture"
                 : ""
           }`}
         >
@@ -834,7 +899,12 @@ export function JournalEntryForm({
             onChange={(event) => update("content", event.target.value)}
             placeholder="What happened today…"
             aria-label="Content"
-            rows={18}
+            // Shorter than it was (18): without the card's header and padding
+            // around it the field reads taller than before at the same height,
+            // and the toolbar below is worth keeping on screen while writing.
+            // Still `resize-y`, so a long entry can be dragged taller, and
+            // Full screen is there for a real writing session.
+            rows={10}
             // `relative` lifts the field above the texture underlay; without a
             // position it would paint under the picture.
             style={contentTextStyle}
@@ -852,19 +922,34 @@ export function JournalEntryForm({
             }
           />
         </div>
-      </CollapsibleCard>
-
-      {/* Below the writing, because a clip is what supports what you just wrote.
-          On a new entry the picks are held until Save — the field says so — since
-          there is no entry row to link them to until then. */}
-      <JournalEntryClipsField
-        value={clips}
-        onChange={setClips}
-        categoryOptions={categoryOptions}
-        tagOptions={tagOptions}
-      />
+      </div>
     </div>
   );
+
+  // The clips field, built once and rendered in the +Clip tab below.
+  //
+  // Its two buttons are hoisted into the Save toolbar, so the panels they open
+  // are modals and the open/closed state lives here in the form — `Tabs`
+  // unmounts the panel it is not showing, and state owned by the field would
+  // die with it the moment the reader pressed the toolbar button from Main.
+  // The picked clips were already form state, so they survive a tab switch as
+  // before, along with the pending-until-Save behaviour.
+  const clipsField = (
+    <JournalEntryClipsField
+      value={clips}
+      onChange={setClips}
+      categoryOptions={categoryOptions}
+      tagOptions={tagOptions}
+      panels={{
+        isWriting: isWritingClip,
+        isPicking: isPickingClip,
+        onCloseWriting: () => setIsWritingClip(false),
+        onClosePicking: () => setIsPickingClip(false),
+      }}
+    />
+  );
+
+  const clipsTab = <div className="flex flex-col gap-4">{clipsField}</div>;
 
   const miscTab = (
     <div className="flex flex-col gap-4">
@@ -950,149 +1035,197 @@ export function JournalEntryForm({
 
       {/* Above the fields, because it acts on all of them. Hidden entirely when
           no template is enabled, rather than shown empty — a dropdown with
-          nothing in it is a dead control. Full width on a phone, and it stays
-          full width on desktop too: it is a header for the grid below, not a
-          member of it. */}
+          nothing in it is a dead control.
+
+          Collapsed by default: starting from a template is the exception, not
+          the usual way in, so the control that offers it should not push the
+          Date field down the screen on every visit. Open it and it is the same
+          dropdown as before. */}
       {prefillTemplates.length > 0 && (
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Select prefill template</span>
-          <select
-            value={templateId}
-            onChange={(event) => handleApplyTemplate(event.target.value)}
-            className={INPUT_CLASS}
-          >
-            <option value="">Start from a template…</option>
-            {prefillTemplates.map((template) => (
-              <option key={template.id} value={String(template.id)}>
-                {template.name}
-              </option>
-            ))}
-          </select>
-          <span className="mt-1 block text-xs text-muted">
-            Fills the fields you have left blank. Anything you have already typed is kept.
-          </span>
-        </label>
+        <CollapsibleCard title="Prefill Template">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Select prefill template</span>
+            <select
+              value={templateId}
+              onChange={(event) => handleApplyTemplate(event.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">Start from a template…</option>
+              {prefillTemplates.map((template) => (
+                <option key={template.id} value={String(template.id)}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-muted">
+              Fills the fields you have left blank. Anything you have already typed is kept.
+            </span>
+          </label>
+        </CollapsibleCard>
       )}
 
-      {/* Two tabs, and the form state that feeds them stays up here rather than
-          inside either panel. `Tabs` unmounts the panel it isn't showing, so a
+      {/* Three tabs, and the form state that feeds them stays up here rather
+          than inside any panel. `Tabs` unmounts the panel it isn't showing, so a
           Misc field owned by the Misc panel would lose what was typed into it
-          the moment the writer flipped back to Main. */}
+          the moment the writer flipped back to Main.
+
+          Controlled, because the toolbar's clip buttons switch to +Clip when
+          they open a panel: the modal they raise is rendered by the clips
+          field, which only exists while its own tab is mounted. Switching also
+          leaves the reader looking at the list the modal is about to add to. */}
       <Tabs
+        activeKey={activeTab}
+        onActiveKeyChange={setActiveTab}
         items={[
           { key: "main", label: "Main", content: mainTab },
           { key: "misc", label: "Misc", content: miscTab },
+          { key: "clips", label: "+Clip", content: clipsTab },
         ]}
       />
 
-      {/* Outside the tab strip on purpose: a Save button that disappears on one
-          of two tabs is a trap, and the error line above has to stay readable
-          from Main even when a Misc action raised it. */}
-      <div className="flex flex-wrap gap-2">
-        {/* Sits before Save because it modifies what Save does. It is a toggle,
-            not an action: nothing is locked until the entry is saved. Icon only,
-            so the state has to carry entirely in the glyph and the fill —
-            `primary` (filled brass) when it will save locked, `secondary` when
-            it won't, on top of the open/closed shackle. `title` and `ariaLabel`
-            both spell the outcome out, since there is no visible text, and
-            `aria-pressed` is what makes a screen reader announce it as a
-            two-state control rather than a button that locks something now.
+      {/* The action bar. Outside the tab strip on purpose: a Save button that
+          disappeared on two of three tabs would be a trap, and the error line
+          above has to stay readable from Main even when a Misc action raised it.
 
-            Hidden on the merge dialog (`saveLabel` set) for the same reason the
-            encrypt button is: that flow saves one assembled entry and has its
-            own controls, and locking it there would block the edit it exists to
-            allow. Same row as Save/Clear, so on a phone it wraps with them —
-            no layout of its own. */}
-        {saveLabel === undefined && (
+          A bordered card rather than a bare row, so the controls that act on the
+          whole entry read as one bar separate from the fields above them, and
+          the groups inside it are separated by hairline dividers:
+
+            Save entry | Lock, Pin, Encrypt | + Clip, + New clip | Clear
+
+          `flex-wrap` with the dividers hidden once wrapped (`max-sm:hidden`): a
+          vertical rule between two buttons that have landed on different rows
+          points at nothing. Phones get the same buttons in the same order, just
+          without the rules. */}
+      <div className="rounded-xl border border-line bg-paper-raised px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Save first, because it is what the bar is for. */}
+          <Button onClick={handleSave} disabled={isBusy || form.date === ""}>
+            {isBusy ? "Saving…" : (saveLabel ?? "Save entry")}
+          </Button>
+
+          <span aria-hidden className="mx-1 h-6 w-px bg-line max-sm:hidden" />
+
+          {/* The three that modify what Save does. None of them acts now: the
+              lock and the pin are toggles over the save that hasn't happened
+              yet, and Encrypt opens a confirm dialog. Grouped for that reason. */}
+          {/* Icon only, so the state has to carry entirely in the glyph and the
+              fill — `primary` (filled brass) when it will save locked,
+              `secondary` when it won't, on top of the open/closed shackle.
+              `title` and `ariaLabel` both spell the outcome out, since there is
+              no visible text, and `aria-pressed` is what makes a screen reader
+              announce it as a two-state control rather than a button that locks
+              something now.
+
+              Hidden on the merge dialog (`saveLabel` set) for the same reason
+              the encrypt button is: that flow saves one assembled entry and has
+              its own controls, and locking it there would block the edit it
+              exists to allow. */}
+          {saveLabel === undefined && (
+            <Button
+              variant={saveLocked ? "primary" : "secondary"}
+              onClick={() => setSaveLocked((current) => !current)}
+              disabled={isBusy}
+              ariaPressed={saveLocked}
+              title={
+                saveLocked
+                  ? "Will save locked — click to save unlocked instead."
+                  : "Will save unlocked — click to save this entry locked."
+              }
+              ariaLabel={saveLocked ? "Save this entry locked" : "Save this entry unlocked"}
+            >
+              {saveLocked ? (
+                <LockClosedIcon className="h-5 w-5" />
+              ) : (
+                <LockOpenIcon className="h-5 w-5" />
+              )}
+            </Button>
+          )}
+          {/* The pin, on exactly the same rule as the lock: it modifies what Save
+              does rather than acting now.
+
+              Shown on the merge dialog too, unlike the lock and encrypt buttons:
+              those two are hidden there because locking blocks the edit the
+              dialog exists to allow and encrypting has no undo, whereas pinning a
+              merged entry is just a pin. */}
           <Button
-            variant={saveLocked ? "primary" : "secondary"}
-            onClick={() => setSaveLocked((current) => !current)}
+            variant={savePinned ? "primary" : "secondary"}
+            onClick={() => setSavePinned((current) => !current)}
             disabled={isBusy}
-            ariaPressed={saveLocked}
+            ariaPressed={savePinned}
             title={
-              saveLocked
-                ? "Will save locked — click to save unlocked instead."
-                : "Will save unlocked — click to save this entry locked."
+              savePinned
+                ? "Will save pinned — click to save unpinned instead."
+                : "Will save unpinned — click to save this entry pinned."
             }
-            ariaLabel={saveLocked ? "Save this entry locked" : "Save this entry unlocked"}
+            ariaLabel={savePinned ? "Save this entry pinned" : "Save this entry unpinned"}
           >
-            {saveLocked ? (
-              <LockClosedIcon className="h-5 w-5" />
-            ) : (
-              <LockOpenIcon className="h-5 w-5" />
-            )}
+            <TreeIcon name={savePinned ? "pushpin-filled" : "pushpin"} className="h-5 w-5" />
           </Button>
-        )}
-        {/* The pin, beside the lock and on exactly the same rule: it modifies what
-            Save does rather than acting now, so it is a toggle in this row and not a
-            write. Same `Button` shell as the lock — `primary` when it will save
-            pinned, `secondary` when it won't — rather than the bare icon button the
-            edit form uses on its card title, because here it has to sit on the
-            baseline with Save and Clear and wrap with them on a phone.
+          {/* Migration 0131. A second save, not a toggle beside the first: which
+              button you press is the decision, and a checkbox that silently made
+              Save mean something irreversible is exactly the wrong shape for a
+              choice with no undo. Offered only on a genuinely new entry — a
+              caller that passes `saveLabel` (Review Data's merge dialog) has its
+              own one-entry flow, and that entry can be encrypted afterwards from
+              its own page like any other.
 
-            Shown on the merge dialog too, unlike the lock and encrypt buttons: those
-            two are hidden there because locking blocks the edit the dialog exists to
-            allow and encrypting has no undo, whereas pinning a merged entry is just a
-            pin, and the entry it writes is as pin-able as any other. */}
-        <Button
-          variant={savePinned ? "primary" : "secondary"}
-          onClick={() => setSavePinned((current) => !current)}
-          disabled={isBusy}
-          ariaPressed={savePinned}
-          title={
-            savePinned
-              ? "Will save pinned — click to save unpinned instead."
-              : "Will save unpinned — click to save this entry pinned."
-          }
-          ariaLabel={savePinned ? "Save this entry pinned" : "Save this entry unpinned"}
-        >
-          <TreeIcon name={savePinned ? "pushpin-filled" : "pushpin"} className="h-5 w-5" />
-        </Button>
-        <Button onClick={handleSave} disabled={isBusy || form.date === ""}>
-          {isBusy ? "Saving…" : (saveLabel ?? "Save entry")}
-        </Button>
-        {/* Migration 0131. A second save, not a toggle beside the first: which
-            button you press is the decision, and a checkbox that silently makes
-            Save mean something irreversible is exactly the wrong shape for a
-            choice with no undo. Offered only on a genuinely new entry -- a
-            caller that passes `saveLabel` (Review Data's merge dialog) has its
-            own one-entry flow, and that entry can be encrypted afterwards from
-            its own page like any other.
+              Icon only, like the lock toggle, but it opens the confirm dialog
+              rather than acting, so nothing irreversible happens on a misread
+              glyph. The `Comments` explainer beside it carries the words. */}
+          {saveLabel === undefined && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setError(undefined);
+                setIsEncryptPromptOpen(true);
+              }}
+              disabled={isBusy || form.date === ""}
+              title="Save entry encrypted"
+              ariaLabel="Save entry encrypted"
+            >
+              <KeyIcon className="h-5 w-5" />
+            </Button>
+          )}
+          {/* The explanation, reachable without opening the dialog — someone
+              deciding whether to encrypt at all should not have to start the
+              irreversible flow to read what it does. Same prose the dialog shows. */}
+          {saveLabel === undefined && (
+            <span className="flex items-center">
+              <Comments
+                title={ENTRY_ENCRYPTION_EXPLAINER_TITLE}
+                content={<EntryEncryptionExplainer />}
+                size="md"
+              />
+            </span>
+          )}
 
-            Icon only, like the lock toggle, so the row stays a row of controls
-            rather than a wall of sentences — but it opens the confirm dialog
-            rather than acting, so nothing irreversible happens on a misread
-            glyph. The `Comments` explainer immediately after it is what carries
-            the words now that the button doesn't. */}
-        {saveLabel === undefined && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setError(undefined);
-              setIsEncryptPromptOpen(true);
-            }}
-            disabled={isBusy || form.date === ""}
-            title="Save entry encrypted"
-            ariaLabel="Save entry encrypted"
-          >
-            <KeyIcon className="h-5 w-5" />
+          <span aria-hidden className="mx-1 h-6 w-px bg-line max-sm:hidden" />
+
+          {/* The clip buttons, hoisted out of the clips field's own header so
+              they sit with the other entry-wide actions. Each opens a modal that
+              the field renders, so `openClipPanel` also switches to the +Clip tab
+              — the field is unmounted while another tab is showing, and the
+              switch leaves the reader looking at the list being added to.
+
+              The labels stay fixed rather than flipping to Cancel/Done the way
+              they did in the field's header: these are now two buttons among
+              seven, and a label that changes under the reader's eye in a toolbar
+              reads as a different button appearing. The modal has its own close. */}
+          <Button variant="secondary" onClick={() => openClipPanel("pick")} disabled={isBusy}>
+            + Clip
           </Button>
-        )}
-        {/* The explanation, reachable without opening the dialog -- someone
-            deciding whether to encrypt at all should not have to start the
-            irreversible flow to read what it does. Same prose the dialog shows. */}
-        {saveLabel === undefined && (
-          <span className="flex items-center">
-            <Comments
-              title={ENTRY_ENCRYPTION_EXPLAINER_TITLE}
-              content={<EntryEncryptionExplainer />}
-              size="md"
-            />
-          </span>
-        )}
-        <Button variant="secondary" onClick={reset} disabled={isBusy}>
-          Clear
-        </Button>
+          <Button variant="secondary" onClick={() => openClipPanel("write")} disabled={isBusy}>
+            + New clip
+          </Button>
+
+          <span aria-hidden className="mx-1 h-6 w-px bg-line max-sm:hidden" />
+
+          {/* Last, and on its own: it throws work away. */}
+          <Button variant="secondary" onClick={reset} disabled={isBusy}>
+            Clear
+          </Button>
+        </div>
       </div>
 
       {/* The same dialog the entry page uses to encrypt an existing entry, so

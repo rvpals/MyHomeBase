@@ -143,7 +143,7 @@ function TransactionsInstructions() {
       <Section title="Transactions">
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
-            The <strong className="text-ink">wand</strong> beside a description opens{" "}
+            <strong className="text-ink">Create Rule</strong> in the Actions column opens{" "}
             <strong className="text-ink">Transaction Rules</strong> with a new rule started for you
             — the name seeded from the first few characters, the description from the whole line.
             Both are yours to edit, and nothing is saved until you save it there.

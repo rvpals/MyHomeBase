@@ -136,7 +136,7 @@ function useThemeColors(): {
       attributes: true,
       attributeFilter: ["data-theme", "class", "style"],
     });
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the computed
+     
     // style is unknowable during render (no `window` on the server), so the
     // first real read has to happen after mount.
     setColors(read());

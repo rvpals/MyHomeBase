@@ -54,10 +54,23 @@ describe("buildEntriesSql", () => {
     };
     const { sql } = buildEntriesSql(orFilter, 500, "substantial");
     const where = sql.slice(sql.indexOf("WHERE"));
-    // The whole OR expression sits inside one pair of parens, ahead of the AND.
-    expect(where.startsWith("WHERE ((")).toBe(true);
+
+    // The property that matters is PRECEDENCE: the whole OR expression has to sit
+    // inside parentheses so the body-length term ANDs onto all of it, not onto the
+    // last branch. Asserted by shape rather than by counting the opening parens —
+    // a group holding one condition is not wrapped a second time (`(A OR B)`, not
+    // `((A) OR (B))`), which is valid SQL and still binds correctly. The old
+    // assertion required `WHERE ((` and so failed on exactly that, describing the
+    // generator's formatting rather than the behaviour being protected.
+    expect(where.startsWith("WHERE (")).toBe(true);
     expect(where).toContain(" OR ");
     expect(where).toContain(") AND (length(trim(e.content))");
+
+    // The OR must close before the AND opens — the actual leak this guards against.
+    const orAt = where.indexOf(" OR ");
+    const bodyAt = where.indexOf(") AND (length(trim(e.content))");
+    expect(orAt).toBeGreaterThan(0);
+    expect(bodyAt).toBeGreaterThan(orAt);
   });
 
   it("honours an explicit sort", () => {

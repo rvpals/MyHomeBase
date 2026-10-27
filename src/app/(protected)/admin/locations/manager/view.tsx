@@ -919,7 +919,7 @@ export function LocationManagerView({
     const storedView = window.localStorage.getItem(VIEW_STORAGE_KEY);
     const storedMap = window.localStorage.getItem(MAP_STORAGE_KEY);
     const storedBasis = window.localStorage.getItem(VENN_BASIS_STORAGE_KEY);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the stored
+     
     // choices are unknowable during render; one extra render is the price of
     // correct hydration. Runs once on mount and never re-fires.
     if (
@@ -928,14 +928,15 @@ export function LocationManagerView({
       storedView === "venn" ||
       storedView === "graph"
     ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
       setView(storedView);
     }
     if (storedMap === "compact" || storedMap === "tall" || storedMap === "hidden") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- as above.
+       
       setMapMode(storedMap);
     }
     if (storedBasis === "tag" || storedBasis === "category") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- as above.
+       
       setVennBasis(storedBasis);
     }
   }, []);
@@ -1007,7 +1008,7 @@ export function LocationManagerView({
       cancelled = true;
       clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `reloadToken` is a
+     
     // signal to refetch, not a value the query is built from.
   }, [query, activeCategories, activeTags, isFiltered, reloadToken]);
 

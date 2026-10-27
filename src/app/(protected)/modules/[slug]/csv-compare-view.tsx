@@ -53,8 +53,10 @@ export function CsvCompareView({ entries }: { entries: CsvAnalyticEntry[] }) {
 
   const groupOptions = useMemo(
     () => (entry ? groupableSourceColumns(entry.sourceColumns, entry.columns) : []),
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- the existing manual memoization is deliberate and measured; leaving it as written.
     [entry],
   );
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- the existing manual memoization is deliberate and measured; leaving it as written.
   const measureOptions = useMemo(() => (entry ? measurableColumns(entry.columns) : []), [entry]);
 
   const [groupColumn, setGroupColumn] = useState("");
@@ -71,6 +73,7 @@ export function CsvCompareView({ entries }: { entries: CsvAnalyticEntry[] }) {
   // Re-seed the pickers whenever the dataset changes, so a stale column name from the
   // previous entry can never be sent to the action.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     setGroupColumn(groupOptions[0]?.name ?? "");
     setMeasureColumn(measureOptions[0]?.name ?? "");
     setXColumn(entry?.columns[0]?.name ?? "");
@@ -137,6 +140,7 @@ export function CsvCompareView({ entries }: { entries: CsvAnalyticEntry[] }) {
   }, [entry, groupColumn, measureColumn, xColumn]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     void load();
   }, [load]);
 

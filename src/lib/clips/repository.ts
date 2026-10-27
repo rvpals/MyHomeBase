@@ -6,10 +6,23 @@
 import type Database from "better-sqlite3";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import { displayTitle } from "@/lib/shared/encryption";
-import type { ClipEncryptionData, ClipsRepository, ClipWriteData } from "./ports";
-import type { ClipFilterInput } from "./schema";
+import type {
+  ClipEncryptionData,
+  ClipItemWriteData,
+  ClipsRepository,
+  ClipWriteData,
+} from "./ports";
+import { CLIP_CARD_COLORS, type ClipCardColor, type ClipFilterInput } from "./schema";
 import { buildClipExcerpt } from "./sanitize-html";
-import type { Clip, ClipImage, ClipLink, ClipLinkModule, ClipSummary, ClipTaxonomyItem } from "./types";
+import type {
+  Clip,
+  ClipImage,
+  ClipItem,
+  ClipLink,
+  ClipLinkModule,
+  ClipSummary,
+  ClipTaxonomyItem,
+} from "./types";
 
 interface ClipRow {
   id: number;
@@ -19,9 +32,21 @@ interface ClipRow {
   title_encrypted: string;
   content_encrypted: string;
   password_hint: string;
+  is_pinned: number;
+  card_color: string;
   created_by: number | null;
   created_at: string;
   updated_at: string;
+}
+
+interface ItemRow {
+  id: number;
+  clip_id: number;
+  text: string;
+  is_done: number;
+  done_at: string | null;
+  sort_order: number;
+  created_at: string;
 }
 
 interface TaxonomyRow {
@@ -64,10 +89,36 @@ const TAXONOMY_COLUMNS = "name, description, icon_image_mime_type";
  * `content_html` holds a pasted email and can be hundreds of kilobytes. The list
  * needs an excerpt, so the excerpt is computed from a bounded prefix rather than
  * the whole column — `substr` in SQL, not in TypeScript, so the bytes never leave
- * the database. 2000 characters is far more than the 200-character excerpt needs,
- * with room for the markup that will be stripped out of it.
+ * the database.
+ *
+ * The prefix is **not** the excerpt length. It is that length plus room for the
+ * markup that will be stripped out of it: 2000 characters of `<td style=…>` can
+ * reduce to a few dozen words. The multiplier is deliberately generous because
+ * over-reading costs a few kilobytes while under-reading silently truncates the
+ * excerpt a reader asked for.
+ *
+ * `MAX_CLIP_EXCERPT_CHARS` in `settings.ts` is pinned to this ceiling for exactly
+ * that reason — read the note there before raising either one.
  */
 const EXCERPT_SOURCE_CHARS = 2000;
+
+/**
+ * Narrows a stored colour to the palette.
+ *
+ * The column is plain TEXT, so a row can hold anything — a key from a newer build,
+ * or a value hand-edited in the database. Checking here rather than casting means an
+ * unrecognised value becomes the default surface at the one boundary where the data
+ * enters the app, instead of travelling as a lie about its own type and surfacing as
+ * an unstyled card three layers away.
+ */
+function toCardColor(value: string): ClipCardColor | "" {
+  return (CLIP_CARD_COLORS as readonly string[]).includes(value)
+    ? (value as ClipCardColor)
+    : "";
+}
+
+/** Markup allowance: how much raw HTML to read per character of wanted excerpt. */
+const EXCERPT_MARKUP_FACTOR = 6;
 
 export class SqliteClipsRepository implements ClipsRepository {
   constructor(private readonly db: Database.Database) {}
@@ -116,20 +167,30 @@ export class SqliteClipsRepository implements ClipsRepository {
 
     const where = wheres.length > 0 ? `WHERE ${wheres.join(" AND ")}` : "";
 
+    // Read enough raw markup to yield the wanted excerpt after stripping, but never
+    // more than the ceiling — the bounded-prefix property above is the point.
+    const sourceChars = Math.min(
+      EXCERPT_SOURCE_CHARS,
+      Math.max(1, Math.floor(filter.excerptChars * EXCERPT_MARKUP_FACTOR)),
+    );
+
     const rows = this.db
       .prepare(
-        `SELECT c.id, c.title, c.is_encrypted, c.created_at, c.updated_at,
-                substr(c.content_html, 1, ${EXCERPT_SOURCE_CHARS}) AS excerpt_source,
+        `SELECT c.id, c.title, c.is_encrypted, c.is_pinned, c.card_color,
+                c.created_at, c.updated_at,
+                substr(c.content_html, 1, ${sourceChars}) AS excerpt_source,
                 (SELECT COUNT(*) FROM clp_clip_images i WHERE i.clip_id = c.id) AS image_count,
                 (SELECT COUNT(*) FROM clp_clip_links l WHERE l.clip_id = c.id) AS link_count
          FROM clp_clips c
          ${where}
-         ORDER BY c.updated_at DESC, c.id DESC`,
+         ORDER BY c.is_pinned DESC, c.updated_at DESC, c.id DESC`,
       )
       .all(...params) as Array<{
       id: number;
       title: string;
       is_encrypted: number;
+      is_pinned: number;
+      card_color: string;
       created_at: string;
       updated_at: string;
       excerpt_source: string;
@@ -141,14 +202,22 @@ export class SqliteClipsRepository implements ClipsRepository {
 
     const categories = this.taxonomyByClip("clp_clip_categories", "category_name");
     const tags = this.taxonomyByClip("clp_clip_tags", "tag_name");
+    // One query for the whole page's checklists — see `listClipItemsForClips`.
+    const items = this.listClipItemsForClips(rows.map((row) => row.id));
 
     return rows.map((row) => ({
       id: row.id,
       title: displayTitle(row.title, row.is_encrypted === 1),
-      excerpt: row.is_encrypted === 1 ? "" : buildClipExcerpt(row.excerpt_source),
+      excerpt:
+        row.is_encrypted === 1
+          ? ""
+          : buildClipExcerpt(row.excerpt_source, filter.excerptChars),
       isEncrypted: row.is_encrypted === 1,
+      isPinned: row.is_pinned === 1,
+      color: toCardColor(row.card_color),
       categories: categories.get(row.id) ?? [],
       tags: tags.get(row.id) ?? [],
+      items: items.get(row.id) ?? [],
       imageCount: row.image_count,
       linkCount: row.link_count,
       createdAt: row.created_at,
@@ -192,6 +261,8 @@ export class SqliteClipsRepository implements ClipsRepository {
       titleEncrypted: row.title_encrypted,
       contentEncrypted: row.content_encrypted,
       passwordHint: row.password_hint,
+      isPinned: row.is_pinned === 1,
+      color: toCardColor(row.card_color),
       categories: this.namesFor("clp_clip_categories", "category_name", row.id),
       tags: this.namesFor("clp_clip_tags", "tag_name", row.id),
       createdBy: row.created_by,
@@ -212,10 +283,15 @@ export class SqliteClipsRepository implements ClipsRepository {
     const run = this.db.transaction((data: ClipWriteData) => {
       const result = this.db
         .prepare(
-          `INSERT INTO clp_clips (title, content_html, created_by)
-           VALUES (@title, @contentHtml, @createdBy)`,
+          `INSERT INTO clp_clips (title, content_html, card_color, created_by)
+           VALUES (@title, @contentHtml, @color, @createdBy)`,
         )
-        .run({ title: data.title, contentHtml: data.contentHtml, createdBy: data.createdBy });
+        .run({
+          title: data.title,
+          contentHtml: data.contentHtml,
+          color: data.color,
+          createdBy: data.createdBy,
+        });
 
       const id = Number(result.lastInsertRowid);
       this.writeTaxonomy(id, data.categories, data.tags);
@@ -230,9 +306,11 @@ export class SqliteClipsRepository implements ClipsRepository {
     const run = this.db.transaction((data: ClipWriteData) => {
       this.db
         .prepare(
-          `UPDATE clp_clips SET title = @title, content_html = @contentHtml WHERE id = @id`,
+          `UPDATE clp_clips
+              SET title = @title, content_html = @contentHtml, card_color = @color
+            WHERE id = @id`,
         )
-        .run({ id, title: data.title, contentHtml: data.contentHtml });
+        .run({ id, title: data.title, contentHtml: data.contentHtml, color: data.color });
 
       // Replace rather than diff: the pairings are two columns and a handful of
       // rows, so rewriting them is simpler than reconciling and cannot drift.
@@ -264,8 +342,137 @@ export class SqliteClipsRepository implements ClipsRepository {
       this.db.prepare("DELETE FROM clp_clip_tags WHERE clip_id = ?").run(id);
       this.db.prepare("DELETE FROM clp_clip_images WHERE clip_id = ?").run(id);
       this.db.prepare("DELETE FROM clp_clip_links WHERE clip_id = ?").run(id);
+      this.db.prepare("DELETE FROM clp_clip_items WHERE clip_id = ?").run(id);
       this.db.prepare("DELETE FROM clp_clips WHERE id = ?").run(id);
     })();
+  }
+
+  // Board
+
+  setClipPinned(id: number, isPinned: boolean): Clip {
+    this.db
+      .prepare("UPDATE clp_clips SET is_pinned = ? WHERE id = ?")
+      .run(isPinned ? 1 : 0, id);
+    return this.getClipById(id)!;
+  }
+
+  setClipColor(id: number, color: ClipCardColor | ""): Clip {
+    this.db.prepare("UPDATE clp_clips SET card_color = ? WHERE id = ?").run(color, id);
+    return this.getClipById(id)!;
+  }
+
+  // Checklist items
+
+  listClipItems(clipId: number): ClipItem[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM clp_clip_items WHERE clip_id = ? ORDER BY sort_order, id",
+      )
+      .all(clipId) as ItemRow[];
+    return rows.map(toClipItem);
+  }
+
+  listClipItemsForClips(clipIds: number[]): Map<number, ClipItem[]> {
+    const map = new Map<number, ClipItem[]>();
+    if (clipIds.length === 0) return map;
+
+    // Placeholders rather than a joined string: the ids are numbers here, but an
+    // interpolated IN list is the habit that becomes an injection the first time one
+    // of them is a string from a query param.
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM clp_clip_items
+          WHERE clip_id IN (${clipIds.map(() => "?").join(", ")})
+          ORDER BY sort_order, id`,
+      )
+      .all(...clipIds) as ItemRow[];
+
+    for (const row of rows) {
+      const item = toClipItem(row);
+      const list = map.get(row.clip_id);
+      if (list) list.push(item);
+      else map.set(row.clip_id, [item]);
+    }
+    return map;
+  }
+
+  saveClipItems(clipId: number, items: ClipItemWriteData[]): ClipItem[] {
+    this.db.transaction(() => {
+      // Anything the editor did not send back has been removed by the reader.
+      // Computed before the writes so a kept id is never seen as missing.
+      const keptIds = new Set(items.map((item) => item.id).filter((id) => id !== undefined));
+      const existing = this.db
+        .prepare("SELECT id FROM clp_clip_items WHERE clip_id = ?")
+        .all(clipId) as Array<{ id: number }>;
+
+      for (const row of existing) {
+        if (!keptIds.has(row.id)) {
+          this.db.prepare("DELETE FROM clp_clip_items WHERE id = ?").run(row.id);
+        }
+      }
+
+      items.forEach((item, index) => {
+        if (item.id === undefined) {
+          this.db
+            .prepare(
+              `INSERT INTO clp_clip_items (clip_id, text, is_done, done_at, sort_order)
+               VALUES (@clipId, @text, @isDone, @doneAt, @sortOrder)`,
+            )
+            .run({
+              clipId,
+              text: item.text,
+              isDone: item.isDone ? 1 : 0,
+              // A line typed as already-ticked is stamped now; an untouched one has
+              // no timestamp at all, never a sentinel date.
+              doneAt: item.isDone ? new Date().toISOString() : null,
+              sortOrder: index,
+            });
+          return;
+        }
+
+        // `done_at` is written only when `is_done` actually changes, so a save that
+        // merely reorders or retypes a line does not restamp when it was ticked.
+        this.db
+          .prepare(
+            `UPDATE clp_clip_items
+                SET text = @text,
+                    sort_order = @sortOrder,
+                    done_at = CASE
+                      WHEN is_done = @isDone THEN done_at
+                      WHEN @isDone = 1 THEN @now
+                      ELSE NULL
+                    END,
+                    is_done = @isDone
+              WHERE id = @id AND clip_id = @clipId`,
+          )
+          .run({
+            id: item.id,
+            clipId,
+            text: item.text,
+            isDone: item.isDone ? 1 : 0,
+            sortOrder: index,
+            now: new Date().toISOString(),
+          });
+      });
+    })();
+
+    return this.listClipItems(clipId);
+  }
+
+  toggleClipItem(itemId: number, isDone: boolean): ClipItem {
+    // Keyed by the item alone, with no clip id to check it against. Safe because a
+    // clip is shared: everyone granted the module may read and tick every clip, the
+    // same model `tol_todo_items` uses (migration 0123). There is no per-reader clip
+    // to cross into, so the only gate is module access, which the action enforces.
+    this.db
+      .prepare("UPDATE clp_clip_items SET is_done = ?, done_at = ? WHERE id = ?")
+      .run(isDone ? 1 : 0, isDone ? new Date().toISOString() : null, itemId);
+
+    const row = this.db.prepare("SELECT * FROM clp_clip_items WHERE id = ?").get(itemId) as
+      | ItemRow
+      | undefined;
+    if (!row) throw new Error(`No clip item with id ${itemId}.`);
+    return toClipItem(row);
   }
 
   // Encryption
@@ -539,6 +746,27 @@ function toLink(row: LinkRow): ClipLink {
     clipId: row.clip_id,
     targetModule: row.target_module as ClipLinkModule,
     targetId: row.target_id,
+    createdAt: row.created_at,
+  };
+}
+
+/**
+ * One item row as a domain object.
+ *
+ * A free function rather than a method: it needs no database handle, and keeping it
+ * out of the class makes clear that mapping a row is not a query.
+ *
+ * `done_at` maps NULL to `undefined` rather than `""` — the one place this module
+ * carries a genuinely optional value, because "not completed" has no timestamp.
+ */
+function toClipItem(row: ItemRow): ClipItem {
+  return {
+    id: row.id,
+    clipId: row.clip_id,
+    text: row.text,
+    isDone: row.is_done === 1,
+    doneAt: row.done_at ?? undefined,
+    sortOrder: row.sort_order,
     createdAt: row.created_at,
   };
 }

@@ -2413,10 +2413,28 @@ bulk actions with it.
 
 **Clips** (`clips`) — rich-text notes that stand on their own: paste an email, keep
 a reference, jot something down. Four sections (Home screen, All Clips, Categories &
-Tags, Configuration), one library module `src/lib/clips`, seven `clp_` tables from
-migration 0155. Driveable as `npm run cli -- clips <list|show|add|link|delete>`.
+Tags, Configuration), one library module `src/lib/clips`, eight `clp_` tables from
+migrations 0155 and 0157. Driveable as
+`npm run cli -- clips <list|show|add|pin|unpin|colour|items|tick|untick|link|delete>`.
 
-Five decisions worth knowing, because each was a trap:
+All Clips is a **board or a list**, switched with `ViewModeSwitch` and remembered per
+device in `localStorage` — the same rows, two shapes, so neither is "the real one".
+Both draw the same `ClipsCard` and both show the pinned band, because pinning is in
+the repository's one `ORDER BY` rather than in either view.
+
+Six decisions worth knowing, because each was a trap:
+
+- **A clip's checklist is a table, not checkboxes in the body.** `sanitizeClipHtml`
+  removes `<input>` with its contents and refuses `style` outright — deliberately,
+  because a clip body is pasted email and a working form inside this app's origin is
+  worse than one in a mail client. Storing checklists as markup would mean reopening
+  that allowlist, and it would also mean rewriting the whole `content_html` column —
+  potentially hundreds of kilobytes — on every tick. So an item is a row in
+  `clp_clip_items` and a tick is one `UPDATE`. A clip has both a body and items.
+- **A card's colour is a key, never a hex.** `clp_clips.card_color` stores `'rose'`;
+  the tint is mixed from the running theme's tokens at render. A stored hex would be
+  the same pink card in all eight themes, two of which are light. The keys are
+  permanent, like an icon slot id — see `design.md` → *Tinted surfaces*.
 
 - **A clip is never deleted by anything but a reader deleting it.** `clp_clip_links`
   points *at* a journal entry and nothing points back, so deleting the entry leaves

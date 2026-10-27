@@ -181,5 +181,34 @@ export function containsTermAsWords(text: string, term: string): boolean {
     }
     if (allMatch) return true;
   }
+
+  // A punctuated acronym written out in full — "H.S.A." against the term "hsa".
+  //
+  // The loop above cannot catch it: `normalizeWords` splits on punctuation, so the
+  // text is ["h","s","a"] (three words) while the term is ["hsa"] (one), and three
+  // words never equal one however they are compared.
+  //
+  // So a second pass joins each run of adjacent SINGLE-LETTER words and asks whether
+  // the result is the term. Restricted to single letters on purpose: it is what makes
+  // this an acronym rule rather than a licence to ignore word boundaries. Joining
+  // whole words would make "we made a start" match "art" via "a"+"start", which is
+  // precisely the substring behaviour the test above exists to forbid.
+  //
+  // Only worth attempting for a single-word term — "health savings" is not something
+  // anyone writes as initials.
+  if (termWords.length === 1) {
+    for (let i = 0; i < textWords.length; i += 1) {
+      if (textWords[i].length !== 1) continue;
+
+      let joined = "";
+      for (let j = i; j < textWords.length && textWords[j].length === 1; j += 1) {
+        joined += textWords[j];
+        // Compared as it grows, so "h"+"s"+"a" is tested at each step and a longer
+        // run of initials cannot hide a shorter acronym sitting inside it.
+        if (joined.length > 1 && joined === termWords[0]) return true;
+      }
+    }
+  }
+
   return false;
 }

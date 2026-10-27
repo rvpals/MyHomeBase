@@ -1,23 +1,48 @@
 "use client";
 
-// All Clips: the filter block, the list, and the write/edit panel.
+// All Clips: the filter block, the clips themselves as a list or a board, and the
+// write/edit panel.
 //
 // Filters travel as search params, parsed in the route — so a filtered list
 // survives a refresh and can be bookmarked, per `modules.md` step 8. This component
 // only navigates; it does not hold them as client state.
+//
+// The List/Board choice is NOT a search param. It is a per-device preference about
+// how to look at the same rows, not part of what is being looked at — so it is
+// remembered in `localStorage`, the way the Location Manager's two switches are, and
+// a shared link shows the recipient their own preferred shape.
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { TreeIcon } from "@/components/tree-icons";
-import type { ClipSummary, ClipTaxonomyItem } from "@/lib/clips";
+import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";
+import type { ClipCardColor, ClipItem, ClipSummary, ClipTaxonomyItem } from "@/lib/clips";
+import { ClipsBoardView } from "./clips-board-view";
+import { ClipsCard } from "./clips-card";
+import { ClipsColorPicker } from "./clips-color-picker";
 import { ClipsEditor } from "./clips-editor";
 import { ClipsViewer } from "./clips-viewer";
-import { deleteClipAction, getClipAction } from "./clips-actions";
+import {
+  deleteClipAction,
+  getClipAction,
+  setClipColorAction,
+  setClipPinnedAction,
+  toggleClipItemAction,
+} from "./clips-actions";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+
+/** Where the List/Board choice is remembered, per device. */
+const VIEW_MODE_KEY = "myhomebase:clips-view";
+
+type ClipsViewMode = "board" | "list";
+
+const VIEW_MODE_OPTIONS: readonly ViewModeOption<ClipsViewMode>[] = [
+  { key: "board", label: "Board", hint: "Cards in balanced columns" },
+  { key: "list", label: "List", hint: "One card per row" },
+];
 
 export interface ClipsAllViewProps {
   clips: ClipSummary[];
@@ -42,6 +67,37 @@ export function ClipsAllView({
   const [editing, setEditing] = useState<number | undefined>(undefined);
   const [viewing, setViewing] = useState<number | undefined>(undefined);
   const [searchText, setSearchText] = useState(search);
+  const [recolouring, setRecolouring] = useState<number | undefined>(undefined);
+
+  // Board is the default, and the stored choice is read AFTER mount rather than
+  // during render: `localStorage` does not exist on the server, so reading it in the
+  // initial state would render one thing on the server and another in the browser.
+  const [viewMode, setViewMode] = useState<ClipsViewMode>("board");
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(VIEW_MODE_KEY);
+      // The stored choice is unknowable during render; one extra render is the
+      // price of correct hydration. Runs once on mount and never re-fires — the
+      // same pattern, and the same reason, as Admin → Locations → Location Manager.
+      if (stored === "board" || stored === "list") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- see above.
+        setViewMode(stored);
+      }
+    } catch {
+      // A browser with storage blocked still gets a working board — the choice
+      // simply does not persist. Never a reason to fail to draw the screen.
+    }
+  }, []);
+
+  function chooseViewMode(mode: ClipsViewMode) {
+    setViewMode(mode);
+    try {
+      window.localStorage.setItem(VIEW_MODE_KEY, mode);
+    } catch {
+      // As above.
+    }
+  }
 
   /** Rewrites one search param, dropping it when it is cleared. */
   function navigate(key: string, value: string) {
@@ -58,6 +114,29 @@ export function ClipsAllView({
     await deleteClipAction(id);
     router.refresh();
   }
+
+  async function handleTogglePin(id: number, isPinned: boolean) {
+    await setClipPinnedAction(id, isPinned);
+    // Refreshed rather than updated in place: pinning changes the clip's *position*
+    // (the band it sits in, and the order within it), which is the server's answer
+    // to give. A local flip would redraw the pin and leave the card where it was.
+    router.refresh();
+  }
+
+  async function handleRecolour(id: number, color: string) {
+    setRecolouring(undefined);
+    await setClipColorAction(id, color);
+    router.refresh();
+  }
+
+  async function handleToggleItem(itemId: number, isDone: boolean) {
+    // No refresh: the card has already shown the tick optimistically, and the action
+    // deliberately does not revalidate — see `toggleClipItemAction`.
+    await toggleClipItemAction(itemId, isDone);
+  }
+
+  const recolouringClip =
+    recolouring === undefined ? undefined : clips.find((clip) => clip.id === recolouring);
 
   return (
     <div className="space-y-4">
@@ -104,11 +183,22 @@ export function ClipsAllView({
         </div>
       </CollapsibleCard>
 
-      {!writing && editing === undefined && (
-        <Button variant="primary" onClick={() => setWriting(true)}>
-          Write a clip
-        </Button>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {!writing && editing === undefined ? (
+          <Button variant="primary" onClick={() => setWriting(true)}>
+            Write a clip
+          </Button>
+        ) : (
+          <span />
+        )}
+
+        <ViewModeSwitch
+          options={VIEW_MODE_OPTIONS}
+          value={viewMode}
+          onChange={chooseViewMode}
+          label="View"
+        />
+      </div>
 
       {writing && (
         <CollapsibleCard title="New clip">
@@ -124,69 +214,35 @@ export function ClipsAllView({
         </CollapsibleCard>
       )}
 
-      {clips.length === 0 ? (
-        <p className="text-sm text-muted">No clips yet.</p>
+      {recolouringClip && (
+        <CollapsibleCard title={`Colour — ${recolouringClip.title || "(untitled)"}`} defaultOpen>
+          <ClipsColorPicker
+            value={recolouringClip.color}
+            onChange={(color) => void handleRecolour(recolouringClip.id, color)}
+          />
+        </CollapsibleCard>
+      )}
+
+      {viewMode === "board" ? (
+        <ClipsBoardView
+          clips={clips}
+          onOpen={setViewing}
+          onEdit={setEditing}
+          onDelete={(id) => void handleDelete(id)}
+          onTogglePin={(id, isPinned) => void handleTogglePin(id, isPinned)}
+          onToggleItem={(itemId, isDone) => void handleToggleItem(itemId, isDone)}
+          onRecolour={setRecolouring}
+        />
       ) : (
-        // One column on a phone, two on a wide screen. `max-lg:` is not needed
-        // here because the single column IS the base and `lg:` adds the second —
-        // the direction design.md asks for, so a wide screen cannot regress.
-        <ul className="grid gap-3 lg:grid-cols-2">
-          {clips.map((clip) => (
-            <li
-              key={clip.id}
-              className="rounded-xl border border-line bg-paper-raised p-4"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-display text-base text-ink">
-                  {clip.title || "(untitled)"}
-                </h3>
-                {/* A bare glyph, not a slot: this is a STATE mark ("this clip is
-                    sealed"), and coding-guide.md keeps state glyphs and row actions
-                    off the slot registry. Only icons that mark a *place* get a slot. */}
-                {clip.isEncrypted && (
-                  <TreeIcon name="lock" className="h-4 w-4 shrink-0 text-muted" />
-                )}
-              </div>
-
-              {clip.excerpt && <p className="mt-1 text-sm text-muted">{clip.excerpt}</p>}
-
-              <div className="mt-2 flex flex-wrap gap-1 text-xs text-muted">
-                {[...clip.categories, ...clip.tags].map((name) => (
-                  <span key={name} className="rounded border border-line px-1.5 py-0.5">
-                    {name}
-                  </span>
-                ))}
-              </div>
-
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
-                {clip.imageCount > 0 && (
-                  <span>
-                    {clip.imageCount} image{clip.imageCount === 1 ? "" : "s"}
-                  </span>
-                )}
-                {clip.linkCount > 0 && (
-                  <span>
-                    attached to {clip.linkCount} entr{clip.linkCount === 1 ? "y" : "ies"}
-                  </span>
-                )}
-              </div>
-
-              <div className="mt-3 flex gap-2">
-                <Button variant="secondary" onClick={() => setViewing(clip.id)}>
-                  Open
-                </Button>
-                {!clip.isEncrypted && (
-                  <Button variant="secondary" onClick={() => setEditing(clip.id)}>
-                    Edit
-                  </Button>
-                )}
-                <Button variant="danger" onClick={() => handleDelete(clip.id)}>
-                  Delete
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <ClipsListView
+          clips={clips}
+          onOpen={setViewing}
+          onEdit={setEditing}
+          onDelete={(id) => void handleDelete(id)}
+          onTogglePin={(id, isPinned) => void handleTogglePin(id, isPinned)}
+          onToggleItem={(itemId, isDone) => void handleToggleItem(itemId, isDone)}
+          onRecolour={setRecolouring}
+        />
       )}
 
       {viewing !== undefined && (
@@ -205,6 +261,79 @@ export function ClipsAllView({
             }}
           />
         </CollapsibleCard>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The list shape: the same cards, one per row, with a pinned band.
+ *
+ * It draws `ClipsCard` rather than its own markup so the two views cannot drift into
+ * different chips or a different pin — they are two *layouts* of one card, which is
+ * exactly what `ViewModeSwitch` is for.
+ *
+ * One column on a phone, two on a wide screen. `max-lg:` is not needed because the
+ * single column IS the base and `lg:` adds the second — the direction design.md asks
+ * for, so a wide screen cannot regress.
+ */
+function ClipsListView({
+  clips,
+  onOpen,
+  onEdit,
+  onDelete,
+  onTogglePin,
+  onToggleItem,
+  onRecolour,
+}: {
+  clips: ClipSummary[];
+  onOpen: (id: number) => void;
+  onEdit: (id: number) => void;
+  onDelete: (id: number) => void;
+  onTogglePin: (id: number, isPinned: boolean) => void;
+  onToggleItem: (itemId: number, isDone: boolean) => void;
+  onRecolour: (id: number) => void;
+}) {
+  if (clips.length === 0) return <p className="text-sm text-muted">No clips yet.</p>;
+
+  const pinned = clips.filter((clip) => clip.isPinned);
+  const rest = clips.filter((clip) => !clip.isPinned);
+
+  function grid(rows: ClipSummary[]) {
+    return (
+      <ul className="grid gap-3 lg:grid-cols-2">
+        {rows.map((clip) => (
+          <li key={clip.id}>
+            <ClipsCard
+              clip={clip}
+              onOpen={onOpen}
+              onEdit={clip.isEncrypted ? undefined : onEdit}
+              onDelete={onDelete}
+              onTogglePin={onTogglePin}
+              onToggleItem={onToggleItem}
+              onRecolour={onRecolour}
+            />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {pinned.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Pinned</h2>
+          {grid(pinned)}
+        </section>
+      )}
+      {rest.length > 0 && (
+        <section>
+          {pinned.length > 0 && (
+            <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Others</h2>
+          )}
+          {grid(rest)}
+        </section>
       )}
     </div>
   );
@@ -269,7 +398,14 @@ function ClipsEditorLoader({
   onDone: () => void;
 }) {
   const [loaded, setLoaded] = useState<
-    { title: string; contentHtml: string; categories: string[]; tags: string[] } | undefined
+    {
+      title: string;
+      contentHtml: string;
+      categories: string[];
+      tags: string[];
+      color: ClipCardColor | "";
+      items: ClipItem[];
+    } | undefined
   >(undefined);
   const [error, setError] = useState("");
 
@@ -288,6 +424,8 @@ function ClipsEditorLoader({
           contentHtml: result.clip.contentHtml,
           categories: result.clip.categories,
           tags: result.clip.tags,
+          color: result.clip.color,
+          items: result.items ?? [],
         });
       } else {
         setError(result.error ?? "Could not load that clip.");
@@ -309,6 +447,8 @@ function ClipsEditorLoader({
       initialContentHtml={loaded.contentHtml}
       initialCategories={loaded.categories}
       initialTags={loaded.tags}
+      initialColor={loaded.color}
+      initialItems={loaded.items}
       categoryOptions={categories}
       tagOptions={tags}
       onSaved={onDone}

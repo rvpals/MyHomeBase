@@ -189,6 +189,19 @@ function fakeRepo(recycledCount = 0): JournalRepository {
               : !entry.categories.some((name) => (condition.values ?? []).includes(name));
           case "isPinned":
             return entry.isPinned === (condition.value === "true");
+          // Boolean fields compare against the strings "true"/"false", matching the
+          // `kind: "boolean"` branch of compileCondition in filters.ts — and matching
+          // its reading of anything that is not "false" as yes.
+          //
+          // These two cases are not optional padding. Without them the switch fell
+          // through to `default: return true`, so an `isLocked`/`isEncrypted`
+          // condition matched EVERY entry: the Unlocked-tab tests below were asking
+          // the fake a question it could not answer, and failing against correct
+          // production code.
+          case "isLocked":
+            return entry.isLocked === (condition.value !== "false");
+          case "isEncrypted":
+            return entry.isEncrypted === (condition.value !== "false");
           default:
             return true;
         }

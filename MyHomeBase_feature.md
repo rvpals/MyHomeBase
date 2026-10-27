@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (203 commits, 2026-07-12 to 2026-10-24) and `CHANGE_HISTORY.md`.
+project's git history (205 commits, 2026-07-12 to 2026-10-26) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -234,11 +234,18 @@ Import a CSV and analyse it.
 Credit-card spending by category.
 
 - **Dashboard** with "Interesting stats" and top-5 cards that link through.
-- **Transactions** grouped by billing cycle, with editable rows.
+- **Transactions** grouped by billing cycle, with editable rows and per-row Edit and
+  Delete buttons.
 - **Transaction Rules** grouped by type, re-runnable over transactions already imported,
   each saying *why* it matched (the wildcard is `%`).
-- **Automatic CSV import** from a folder, with post-import processing.
+- **Automatic CSV import** from a folder, with post-import processing. A statement
+  import is covered by a progress overlay and reports how many transactions landed,
+  alongside what was skipped as already imported and what was auto-categorised.
 - **Vendors** as entities rather than totals, with fetched icons, and **category icons**.
+- **Charts**: spend over time, a month-against-month category comparison, and
+  **Expense type By Month** — one month's spend as a donut beside a table that
+  names every category. It opens on the current month and steps through the calendar,
+  so a month with nothing in it says so rather than showing you an older one.
 
 ## Music Library
 

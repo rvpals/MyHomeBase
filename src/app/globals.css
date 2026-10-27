@@ -4762,3 +4762,67 @@ html[data-shell="tree"][data-viewport="compact"] .nav-progress-track {
   border: 0;
   border-top: 1px solid var(--line);
 }
+
+/* ---------------------------------------------------------------------------
+   Clip card tints (migration 0157)
+   ---------------------------------------------------------------------------
+
+   Seven surfaces a clip card can wear on the Clips board. A style hook and
+   nothing else: no padding, no radius, no border width, no position -- the card
+   keeps owning its geometry, exactly as `.card-raised` and `.dialog-frame` do, so
+   a tint can be added or removed without moving anything by a pixel. That is
+   design.md's "style hooks, not layout classes".
+
+   WHY THESE ARE MIXES AND NOT COLOURS. `clp_clips.card_color` stores a *key*
+   (`rose`, `ocean`), never a hex, because all nine theme tokens are swappable at
+   runtime and eight themes ship -- two of them light. A literal `#fecaca` would be
+   the same pink card in every one of them: unreadable on Daybreak, wrong against
+   every accent. So each tint is mixed from `--paper-raised`, the token the card
+   already sits on, and only shifted far enough to be told apart from its
+   neighbours.
+
+   WHY THE HUE IS A LITERAL INSIDE THE MIX. The hue has to come from *somewhere*,
+   and there is no theme token for "red" -- the nine tokens are structural roles,
+   not a palette. These literals are the same kind of exception design.md already
+   carves out for semantic red/green: the hue identifies the card, and a reader
+   who files a clip under "rose" expects it to stay rose when they switch themes.
+   The mix is what keeps it theme-driven: at 14% the surface, the lightness,
+   and therefore the contrast with `--ink`, are still the theme's.
+
+   WHY 14% AND 22%. 14% is the least that reads as a deliberate colour rather than
+   a rendering artefact on the dark themes; above roughly 25% the card starts
+   fighting `--brass` for attention and `--ink` loses contrast against it on the
+   light themes. The border sits a little stronger than the fill so the card still
+   has a defined edge at the low fill percentage.
+
+   The light themes get the same treatment and need no branching: `color-mix`
+   against whatever `--paper-raised` currently is produces a pale wash on a white
+   card and a deep one on a near-black card, which is the correct answer in both. */
+.clip-tint {
+  background-color: color-mix(in srgb, var(--clip-tint-hue) 14%, var(--paper-raised));
+  border-color: color-mix(in srgb, var(--clip-tint-hue) 22%, var(--line));
+}
+
+.clip-tint-rose {
+  --clip-tint-hue: #e11d48;
+}
+
+.clip-tint-amber {
+  --clip-tint-hue: #d97706;
+}
+
+.clip-tint-sage {
+  --clip-tint-hue: #15803d;
+}
+
+.clip-tint-ocean {
+  --clip-tint-hue: #0284c7;
+}
+
+.clip-tint-indigo {
+  --clip-tint-hue: #4f46e5;
+}
+
+.clip-tint-slate {
+  --clip-tint-hue: #475569;
+}

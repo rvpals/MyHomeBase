@@ -550,7 +550,10 @@ export const ICON_SLOTS: IconSlot[] = [
     label: "Home screen layout",
     group: "Journal sections",
     where: "Journal → section panel → Configuration → Home screen layout.",
-    defaultConcept: "home",
+    // `window`, not `home`: there is no `home` glyph, so this slot rendered nothing.
+    // See the note in journal-sections.ts. The two must agree — a slot's default has
+    // to render what the position rendered before it was slotted.
+    defaultConcept: "window",
     wired: true,
     namespace: "tree",
   },

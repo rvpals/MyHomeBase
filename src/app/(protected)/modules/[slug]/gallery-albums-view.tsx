@@ -170,6 +170,7 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
   // returns, keyed on the album's identity rather than patched into each handler.
   useEffect(() => {
     cullRun.reset();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to a prop or to browser-only data that is unknowable during render; runs on mount or when that input changes, not in a loop.
     setIsShowingCull(false);
   }, [openAlbum?.id]);
 
