@@ -6,6 +6,7 @@ import {
   MAX_CARD_IMAGE_BYTES,
   MAX_CATEGORY_ICON_BYTES,
   MAX_VENDOR_ICON_BYTES,
+  amountSignModeSchema,
   bulkTransactionEditSchema,
   saveAccountSchema,
   saveCategorySchema,
@@ -27,6 +28,7 @@ import type {
   SaveTransactionInput,
 } from "./schema";
 import type {
+  AmountSignMode,
   CardImage,
   CategoryIcon,
   CategoryTotal,
@@ -353,6 +355,30 @@ export function bulkEditTransactions(
   }
 
   return repo.bulkUpdateTransactions(validatedIds, validated);
+}
+
+/**
+ * Drives the sign of a selection's amounts, returning how many rows moved.
+ *
+ * This exists because amount is deliberately *not* bulk-editable: the sign is a
+ * per-row property, and the two realistic repairs are "this whole statement came
+ * in with the opposite convention" (`flip`) and "these rows should all be
+ * charges / all be refunds" (`positive` / `negative`). See AMOUNT_SIGN_MODES for
+ * why the distinction matters — totals are net, so a wrong sign is a double-sized
+ * error, not a cosmetic one.
+ *
+ * A row already on the wanted side isn't rewritten, so a forced direction can
+ * legitimately report fewer rows than were selected. `flip` always touches every
+ * row it finds. Ids that no longer exist are simply not counted, matching
+ * deleteTransactions: a stale selection shouldn't fail the rest of the batch.
+ */
+export function setTransactionAmountSigns(
+  repo: ExpenseRepository,
+  ids: number[],
+  mode: AmountSignMode,
+): number {
+  const validatedIds = dedupe(transactionIdsSchema.parse(ids));
+  return repo.setTransactionAmountSigns(validatedIds, amountSignModeSchema.parse(mode));
 }
 
 /** A selection can repeat an id; the SQL `IN (…)` shouldn't. */

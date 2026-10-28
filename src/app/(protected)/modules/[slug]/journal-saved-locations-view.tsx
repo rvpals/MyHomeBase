@@ -14,6 +14,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/button";
 import { LocationFilterChips } from "@/components/location-filter-chips";
 import { SavedLocationRow } from "@/components/saved-location-row";
 import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";
@@ -45,6 +46,65 @@ export interface JournalSavedLocationsViewProps {
   tagIcons: Record<string, string>;
   /** Where a place's entries live, e.g. `/modules/journal/saved-locations`. */
   basePath: string;
+  /**
+   * Whether this reader may open the Location Manager.
+   *
+   * The library is Admin → Locations' to own and that whole route redirects a
+   * non-admin to the home page, so the "Open" button would be a trap for most
+   * readers. It still renders for them — disabled, with a title saying why —
+   * because silently hiding it makes the screen look different for two people
+   * describing it to each other.
+   */
+  canOpenManager: boolean;
+}
+
+/** Where the Location Manager opens straight onto one place. */
+function managerEditHref(placeId: number) {
+  return `/admin/locations/manager?edit=${placeId}`;
+}
+
+/**
+ * "Open" — the hand-off from this read-only screen to the one that can edit.
+ *
+ * A link for an admin and a disabled `<button>` for everyone else, rather than
+ * one element that changes behaviour: `Button` ignores `disabled` when `href`
+ * is set (a link has no disabled state in HTML), so a disabled-looking link
+ * would still navigate.
+ */
+function OpenInManagerButton({
+  place,
+  canOpenManager,
+}: {
+  place: SavedLocation;
+  canOpenManager: boolean;
+}) {
+  const label = place.name || "unnamed place";
+
+  if (!canOpenManager) {
+    return (
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled
+        title="Only an administrator can edit the location library"
+        ariaLabel={`Open "${label}" in the Location Manager (administrators only)`}
+      >
+        Open
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      href={managerEditHref(place.id)}
+      title="Edit this place in the Location Manager"
+      ariaLabel={`Open "${label}" in the Location Manager`}
+    >
+      Open
+    </Button>
+  );
 }
 
 /**
@@ -91,6 +151,7 @@ export function JournalSavedLocationsView({
   categoryIcons,
   tagIcons,
   basePath,
+  canOpenManager,
 }: JournalSavedLocationsViewProps) {
   const [query, setQuery] = useState("");
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
@@ -183,14 +244,21 @@ export function JournalSavedLocationsView({
               <SavedLocationRow
                 place={place}
                 shape={view}
-                /* The count rides in `actions` — the slot this row already has
-                   for "controls acting on this place", which is exactly what a
-                   link to its entries is. No new prop on a shared component. */
+                /* Both controls ride in `actions` — the slot this row already
+                   has for "controls acting on this place", which is exactly
+                   what a link to its entries and a link to its editor are. No
+                   new prop on a shared component.
+
+                   Open sits left of the count so the badge stays the rightmost
+                   thing it has always been. */
                 actions={
-                  <EntryCountBadge
-                    count={entryCounts[place.id] ?? 0}
-                    href={`${basePath}/${place.id}`}
-                  />
+                  <div className="flex items-center gap-2">
+                    <OpenInManagerButton place={place} canOpenManager={canOpenManager} />
+                    <EntryCountBadge
+                      count={entryCounts[place.id] ?? 0}
+                      href={`${basePath}/${place.id}`}
+                    />
+                  </div>
                 }
               />
             </li>

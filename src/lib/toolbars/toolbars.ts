@@ -209,6 +209,10 @@ export function resolveToolbar(
         href: menuItem.href,
         icon: menuItem.icon,
         menuItemId: menuItem.id,
+        // Carried through rather than recomputed at the call site (0158): the
+        // stored row is the only thing that knows, and a component reaching back
+        // for it would be a second place deciding what a row does on click.
+        opensNewTab: item.opensNewTab,
       },
     ];
   });

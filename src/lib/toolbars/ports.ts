@@ -21,6 +21,8 @@ export interface ToolbarItemWrite {
   kind: ToolbarItem["kind"];
   menuItemId?: string;
   label?: string;
+  /** Open in a new tab rather than navigating this one (0158). `menu-item` only. */
+  opensNewTab?: boolean;
 }
 
 export interface ToolbarRepository {

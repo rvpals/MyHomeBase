@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import {
   countLocationsByCategory,
   countLocationsByTag,
@@ -24,12 +25,20 @@ export default async function LocationManagerPage() {
   // reading them from the same two calls keeps this screen and the Meta Data
   // one from disagreeing about which lists exist.
   return (
-    <LocationManagerView
-      locations={listSavedLocations(deps.sysLocationRepo)}
-      categoryOptions={countLocationsByCategory(deps.sysLocationRepo).map((row) => row.name)}
-      tagOptions={countLocationsByTag(deps.sysLocationRepo).map((row) => row.name)}
-      categoryIcons={locationTaxonomyIconMap("category")}
-      tagIcons={locationTaxonomyIconMap("tag")}
-    />
+    // The view reads `?edit=<id>` — how Journal → Saved Locations hands a place
+    // over to be corrected — and `useSearchParams` must sit under a Suspense
+    // boundary or it opts the whole route out of static rendering at build time.
+    //
+    // No fallback worth drawing: the data is already in hand, so the boundary
+    // resolves on the first paint and anything here would be a flash.
+    <Suspense>
+      <LocationManagerView
+        locations={listSavedLocations(deps.sysLocationRepo)}
+        categoryOptions={countLocationsByCategory(deps.sysLocationRepo).map((row) => row.name)}
+        tagOptions={countLocationsByTag(deps.sysLocationRepo).map((row) => row.name)}
+        categoryIcons={locationTaxonomyIconMap("category")}
+        tagIcons={locationTaxonomyIconMap("tag")}
+      />
+    </Suspense>
   );
 }

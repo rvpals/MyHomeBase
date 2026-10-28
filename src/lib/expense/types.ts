@@ -207,3 +207,26 @@ export interface VendorTotal {
    */
   isDerived: boolean;
 }
+
+/**
+ * What a sign operation should do to each selected amount.
+ *
+ * Sign is meaningful here, not cosmetic: a **debit (a charge) is stored
+ * positive and a credit (a refund) negative** — the convention set at import in
+ * `csv-import.ts`. Every total is a plain signed SUM with no ABS(), so a wrong
+ * sign moves a category total by *twice* the amount, and `month-breakdown.ts`
+ * goes further and classifies a category as spend purely by `totalCents > 0`.
+ *
+ * Hence two modes, because they repair two different mistakes:
+ * - `flip`     negates whatever each row holds. Self-reversing, and the right
+ *              tool for a statement imported with the issuer's opposite
+ *              convention — the same job `invertAmounts` does at import time.
+ *              On a *mixed* selection it corrects the wrong rows and breaks the
+ *              right ones, so it is deliberately not the only option.
+ * - `positive` / `negative` force a direction, leaving rows that already agree
+ *              untouched. These are what you want when a selection is mixed and
+ *              you know which way it should go.
+ */
+export const AMOUNT_SIGN_MODES = ["flip", "positive", "negative"] as const;
+
+export type AmountSignMode = (typeof AMOUNT_SIGN_MODES)[number];

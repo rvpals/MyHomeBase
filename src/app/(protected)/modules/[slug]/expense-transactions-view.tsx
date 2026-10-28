@@ -16,6 +16,7 @@ import {
   groupTransactions,
   isTransactionGroupBy,
   parseMoneyToCents,
+  type AmountSignMode,
   type BulkTransactionEditInput,
   type CreditCardAccount,
   type ExpenseCategory,
@@ -30,6 +31,7 @@ import {
   deleteTransactionAction,
   deleteTransactionsAction,
   saveTransactionAction,
+  setTransactionAmountSignsAction,
 } from "./expense-actions";
 import { expenseSectionHref } from "./expense-sections";
 import {
@@ -657,6 +659,47 @@ export function ExpenseTransactionsView({
   // (see vendorIconUrlsByName) since a row's spelling need not match the saved one.
   const vendorIconUrls = vendorIconUrlsByName(vendors);
 
+  /**
+   * Flips or forces the sign of the selected amounts.
+   *
+   * Worth confirming even though `flip` is self-reversing: amounts drive every
+   * total as a *net* sum, so a mis-click moves a category by twice the amount.
+   * The confirm names the row count and, for a forced direction, warns that the
+   * count reported back can be smaller — rows already on the wanted side don't
+   * move.
+   */
+  async function handleAmountSign(
+    mode: AmountSignMode,
+    rows: ExpenseTransaction[],
+    clearSelection: () => void,
+  ) {
+    const what =
+      mode === "flip"
+        ? `Flip the sign on ${rows.length} transaction(s)?`
+        : `Make ${rows.length} selected transaction(s) ${mode}? Rows already ${mode} are left as they are.`;
+    if (!window.confirm(what)) return;
+    setIsBulkBusy(true);
+    try {
+      const result = await setTransactionAmountSignsAction(
+        rows.map((row) => row.id),
+        mode,
+      );
+      if (!result.ok) {
+        window.alert(result.error);
+        return;
+      }
+      setBulkResult(
+        mode === "flip"
+          ? `Flipped the sign on ${result.count} transaction(s).`
+          : `Made ${result.count} transaction(s) ${mode}.`,
+      );
+      clearSelection();
+      router.refresh();
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }
+
   async function handleBulkDelete(rows: ExpenseTransaction[], clearSelection: () => void) {
     if (!window.confirm(`Delete ${rows.length} transaction(s)? This can't be undone.`)) return;
     setIsBulkBusy(true);
@@ -862,6 +905,30 @@ export function ExpenseTransactionsView({
               onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
             >
               Bulk edit
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={isBulkBusy}
+              onClick={() => handleAmountSign("flip", selectedRows, clearSelection)}
+            >
+              Flip sign
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={isBulkBusy}
+              onClick={() => handleAmountSign("positive", selectedRows, clearSelection)}
+            >
+              Make +
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={isBulkBusy}
+              onClick={() => handleAmountSign("negative", selectedRows, clearSelection)}
+            >
+              Make −
             </Button>
             <Button
               size="sm"

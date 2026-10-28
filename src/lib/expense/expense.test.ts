@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bulkEditTransactions,
+  setTransactionAmountSigns,
   clearAccountImage,
   clearCategoryIcon,
   countUnprocessed,
@@ -220,6 +221,24 @@ function fakeRepo(): ExpenseRepository {
       const before = transactions.length;
       transactions = transactions.filter((transaction) => !ids.includes(transaction.id));
       return before - transactions.length;
+    },
+    setTransactionAmountSigns(ids, mode) {
+      let changed = 0;
+      transactions = transactions.map((transaction) => {
+        if (!ids.includes(transaction.id)) return transaction;
+        // Mirrors the SQL guard: a forced direction skips a row that already
+        // agrees, so the count stays honest.
+        const wanted =
+          mode === "flip"
+            ? -transaction.amountCents
+            : mode === "positive"
+              ? Math.abs(transaction.amountCents)
+              : -Math.abs(transaction.amountCents);
+        if (wanted === transaction.amountCents) return transaction;
+        changed += 1;
+        return { ...transaction, amountCents: wanted };
+      });
+      return changed;
     },
     bulkUpdateTransactions(ids, changes) {
       let changed = 0;
@@ -936,6 +955,98 @@ describe("deleteTransactions", () => {
 
   it("rejects an empty selection", () => {
     expect(() => deleteTransactions(fakeRepo(), [])).toThrow(/at least one transaction/);
+  });
+});
+
+describe("setTransactionAmountSigns", () => {
+  const amounts = (repo: ExpenseRepository) =>
+    listTransactions(repo)
+      .sort((left, right) => left.id - right.id)
+      .map((transaction) => transaction.amountCents);
+
+  it("flips every selected row and leaves the rest alone", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    const changed = setTransactionAmountSigns(repo, [transactions[0].id, transactions[2].id], "flip");
+
+    expect(changed).toBe(2);
+    expect(amounts(repo)).toEqual([-1000, 2000, -3000]);
+  });
+
+  it("flips back to the original on a second pass", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+    const ids = transactions.map((transaction) => transaction.id);
+
+    setTransactionAmountSigns(repo, ids, "flip");
+    setTransactionAmountSigns(repo, ids, "flip");
+
+    expect(amounts(repo)).toEqual([1000, 2000, 3000]);
+  });
+
+  it("forces negative, counting only the rows that moved", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+    // Leave GAMMA already negative, so a mixed selection is the realistic case.
+    setTransactionAmountSigns(repo, [transactions[2].id], "flip");
+
+    const changed = setTransactionAmountSigns(
+      repo,
+      transactions.map((transaction) => transaction.id),
+      "negative",
+    );
+
+    // ALPHA and BETA moved; GAMMA was already negative and is not counted.
+    expect(changed).toBe(2);
+    expect(amounts(repo)).toEqual([-1000, -2000, -3000]);
+  });
+
+  it("forces positive, counting only the rows that moved", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+    setTransactionAmountSigns(repo, [transactions[1].id], "flip");
+
+    const changed = setTransactionAmountSigns(
+      repo,
+      transactions.map((transaction) => transaction.id),
+      "positive",
+    );
+
+    expect(changed).toBe(1);
+    expect(amounts(repo)).toEqual([1000, 2000, 3000]);
+  });
+
+  it("counts a repeated id once", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    expect(
+      setTransactionAmountSigns(repo, [transactions[0].id, transactions[0].id], "flip"),
+    ).toBe(1);
+    expect(amounts(repo)).toEqual([-1000, 2000, 3000]);
+  });
+
+  it("ignores an id that no longer exists rather than failing the batch", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    expect(setTransactionAmountSigns(repo, [transactions[0].id, 9999], "flip")).toBe(1);
+  });
+
+  it("rejects an empty selection", () => {
+    expect(() => setTransactionAmountSigns(fakeRepo(), [], "flip")).toThrow(
+      /at least one transaction/,
+    );
+  });
+
+  it("rejects an unknown mode", () => {
+    const repo = fakeRepo();
+    const { transactions } = seedThree(repo);
+
+    expect(() =>
+      setTransactionAmountSigns(repo, [transactions[0].id], "sideways" as never),
+    ).toThrow();
   });
 });
 

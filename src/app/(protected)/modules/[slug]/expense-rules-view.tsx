@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { IconSelect } from "@/components/icon-select";
+import { Modal } from "@/components/modal";
 import { Progress3D } from "@/components/progress-3d";
 import {
   ALL_RULE_TYPES_FILTER,
@@ -227,224 +228,229 @@ function RuleForm({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-line bg-paper-raised p-3">
-      <p className="text-sm font-medium text-ink">{editing ? `Edit rule #${editing.id}` : "New rule"}</p>
-      {error && <p className="text-sm text-red-400">{error}</p>}
-
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">Name</span>
-        <input
-          value={form.name}
-          onChange={(event) => setForm({ ...form, name: event.target.value })}
-          placeholder="TGI Friday's"
-          className={INPUT_CLASS}
-        />
-      </label>
-
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">
-          Description <span className="font-normal text-muted">(optional)</span>
-        </span>
-        <textarea
-          value={form.description}
-          onChange={(event) => setForm({ ...form, description: event.target.value })}
-          rows={2}
-          placeholder="Why this rule exists — e.g. the card prints this restaurant under three different names."
-          className={INPUT_CLASS}
-        />
-      </label>
-
-      <div className="block text-sm">
-        <span className="mb-1 block font-medium text-ink">
-          Type <span className="font-normal text-muted">(optional)</span>
-        </span>
-        {/* Select plus a + rather than free text: the curated list is the point
-            of grouping, and a typo would silently create a near-duplicate group.
-            The + is the escape hatch, so adding a type never means leaving for
-            Meta Data and losing the half-filled form. */}
-        <div className="flex items-center gap-2">
-          <select
-            value={form.typeName}
-            onChange={(event) => setForm({ ...form, typeName: event.target.value })}
-            aria-label="Transaction rule type"
-            className={`${INPUT_CLASS} w-56`}
-          >
-            <option value="">{UNTYPED_RULE_LABEL}</option>
-            {ruleTypes.map((type) => (
-              <option key={type.name} value={type.name}>
-                {type.name}
-              </option>
-            ))}
-            {/* A rule may name a type that was since deleted from the curated
-                list. Without this the select would silently fall back to
-                Untyped and re-save the rule as untyped. */}
-            {form.typeName !== "" &&
-              !ruleTypes.some((type) => type.name === form.typeName) && (
-                <option value={form.typeName}>{form.typeName}</option>
-              )}
-          </select>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={handleAddType}
-            title="Add a new transaction rule type"
-            ariaLabel="Add a new transaction rule type"
-          >
-            +
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className="block text-sm sm:col-span-2">
-          <span className="mb-1 block font-medium text-ink">When the description matches</span>
-          <input
-            value={form.pattern}
-            onChange={(event) => setForm({ ...form, pattern: event.target.value })}
-            placeholder="%TGI%"
-            className={`${INPUT_CLASS} font-mono`}
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Priority</span>
-          <input
-            type="number"
-            value={form.priority}
-            onChange={(event) => setForm({ ...form, priority: Number(event.target.value) })}
-            className={INPUT_CLASS}
-          />
-        </label>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium text-ink">Then set</span>
-        {form.actions.map((action, index) => (
-          <div key={index} className="flex flex-wrap items-center gap-2">
-            <select
-              value={action.fieldName}
-              onChange={(event) =>
-                updateAction(index, {
-                  fieldName: event.target.value as RuleActionField,
-                  // Seed a valid status so the field is never saved empty.
-                  fieldValue: event.target.value === "status" ? "reconciled" : "",
-                })
-              }
-              className={`${INPUT_CLASS} w-32`}
-            >
-              {RULE_ACTION_FIELDS.map((field) => (
-                <option key={field} value={field}>
-                  {RULE_ACTION_FIELD_LABELS[field]}
-                </option>
-              ))}
-            </select>
-            <span className="text-muted">=</span>
-            {action.fieldName === "status" ? (
-              <select
-                value={action.fieldValue}
-                onChange={(event) => updateAction(index, { fieldValue: event.target.value })}
-                className={`${INPUT_CLASS} w-40`}
-              >
-                {TRANSACTION_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            ) : action.fieldName === "categoryName" ? (
-              // A rule may name a category that doesn't exist yet — it's created
-              // when the rule first assigns it — so free text stays allowed here.
-              <div className="w-56">
-                <IconSelect
-                  options={categoryIconSelectOptions(categories)}
-                  value={action.fieldValue}
-                  onChange={(fieldValue) => updateAction(index, { fieldValue })}
-                  placeholder="Restaurant"
-                  ariaLabel="Category to set"
-                />
-              </div>
-            ) : action.fieldName === "vendor" ? (
-              // Same deal as the category above, and free text matters more here:
-              // the saved list is only the vendors you've curated under Meta Data,
-              // while the name a rule tidies *to* is often one you haven't saved.
-              // Picking from the list is the shortcut, not the constraint.
-              <div className="w-56">
-                <IconSelect
-                  options={vendorIconSelectOptions(vendors)}
-                  value={action.fieldValue}
-                  onChange={(fieldValue) => updateAction(index, { fieldValue })}
-                  placeholder="TGI Friday"
-                  ariaLabel="Vendor to set"
-                />
-              </div>
-            ) : (
-              <input
-                value={action.fieldValue}
-                onChange={(event) => updateAction(index, { fieldValue: event.target.value })}
-                placeholder="value"
-                className={`${INPUT_CLASS} w-56`}
-              />
-            )}
-            {form.actions.length > 1 && (
-              <button
-                type="button"
-                onClick={() => removeAction(index)}
-                aria-label="Remove this assignment"
-                className="text-xs text-muted hover:text-red-400"
-              >
-                Remove
-              </button>
-            )}
-          </div>
-        ))}
-        <div>
-          <Button size="sm" variant="secondary" onClick={addAction}>
-            + Add another field
-          </Button>
-        </div>
-      </div>
-
-      <label className="flex items-center gap-2 text-sm text-ink">
-        <input
-          type="checkbox"
-          checked={form.isEnabled}
-          onChange={(event) => setForm({ ...form, isEnabled: event.target.checked })}
-        />
-        Enabled
-      </label>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={handlePreview}
-          disabled={isChecking || form.pattern.trim() === ""}
-        >
-          {isChecking ? "Checking…" : "Test this pattern"}
-        </Button>
-        {preview && (
-          <span className="text-xs text-muted">
-            Matches <strong className="text-ink">{preview.matchCount}</strong> existing transaction(s)
-            {preview.samples.length > 0 && (
-              <>
-                {" "}
-                — e.g. <span className="font-mono">{preview.samples.slice(0, 2).join(", ")}</span>
-              </>
-            )}
-          </span>
-        )}
-      </div>
-
-      <div className="flex gap-2">
-        <Button size="sm" onClick={handleSave} disabled={isSaving}>
-          {isSaving ? "Saving…" : editing ? "Save rule" : "Add rule"}
-        </Button>
-        {editing && (
+    <Modal
+      title={editing ? `Edit rule #${editing.id}` : "New rule"}
+      size="lg"
+      onClose={onDone}
+      isBusy={isSaving}
+      footer={
+        <>
           <Button size="sm" variant="secondary" onClick={onDone} disabled={isSaving}>
             Cancel
           </Button>
-        )}
+          <Button size="sm" onClick={handleSave} disabled={isSaving}>
+            {isSaving ? "Saving…" : editing ? "Save rule" : "Add rule"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">Name</span>
+          <input
+            value={form.name}
+            onChange={(event) => setForm({ ...form, name: event.target.value })}
+            placeholder="TGI Friday's"
+            className={INPUT_CLASS}
+          />
+        </label>
+
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">
+            Description <span className="font-normal text-muted">(optional)</span>
+          </span>
+          <textarea
+            value={form.description}
+            onChange={(event) => setForm({ ...form, description: event.target.value })}
+            rows={2}
+            placeholder="Why this rule exists — e.g. the card prints this restaurant under three different names."
+            className={INPUT_CLASS}
+          />
+        </label>
+
+        <div className="block text-sm">
+          <span className="mb-1 block font-medium text-ink">
+            Type <span className="font-normal text-muted">(optional)</span>
+          </span>
+          {/* Select plus a + rather than free text: the curated list is the point
+              of grouping, and a typo would silently create a near-duplicate group.
+              The + is the escape hatch, so adding a type never means leaving for
+              Meta Data and losing the half-filled form. */}
+          <div className="flex items-center gap-2">
+            <select
+              value={form.typeName}
+              onChange={(event) => setForm({ ...form, typeName: event.target.value })}
+              aria-label="Transaction rule type"
+              className={`${INPUT_CLASS} w-56`}
+            >
+              <option value="">{UNTYPED_RULE_LABEL}</option>
+              {ruleTypes.map((type) => (
+                <option key={type.name} value={type.name}>
+                  {type.name}
+                </option>
+              ))}
+              {/* A rule may name a type that was since deleted from the curated
+                  list. Without this the select would silently fall back to
+                  Untyped and re-save the rule as untyped. */}
+              {form.typeName !== "" &&
+                !ruleTypes.some((type) => type.name === form.typeName) && (
+                  <option value={form.typeName}>{form.typeName}</option>
+                )}
+            </select>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleAddType}
+              title="Add a new transaction rule type"
+              ariaLabel="Add a new transaction rule type"
+            >
+              +
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block text-sm sm:col-span-2">
+            <span className="mb-1 block font-medium text-ink">When the description matches</span>
+            <input
+              value={form.pattern}
+              onChange={(event) => setForm({ ...form, pattern: event.target.value })}
+              placeholder="%TGI%"
+              className={`${INPUT_CLASS} font-mono`}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Priority</span>
+            <input
+              type="number"
+              value={form.priority}
+              onChange={(event) => setForm({ ...form, priority: Number(event.target.value) })}
+              className={INPUT_CLASS}
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <span className="text-sm font-medium text-ink">Then set</span>
+          {form.actions.map((action, index) => (
+            <div key={index} className="flex flex-wrap items-center gap-2">
+              <select
+                value={action.fieldName}
+                onChange={(event) =>
+                  updateAction(index, {
+                    fieldName: event.target.value as RuleActionField,
+                    // Seed a valid status so the field is never saved empty.
+                    fieldValue: event.target.value === "status" ? "reconciled" : "",
+                  })
+                }
+                className={`${INPUT_CLASS} w-32`}
+              >
+                {RULE_ACTION_FIELDS.map((field) => (
+                  <option key={field} value={field}>
+                    {RULE_ACTION_FIELD_LABELS[field]}
+                  </option>
+                ))}
+              </select>
+              <span className="text-muted">=</span>
+              {action.fieldName === "status" ? (
+                <select
+                  value={action.fieldValue}
+                  onChange={(event) => updateAction(index, { fieldValue: event.target.value })}
+                  className={`${INPUT_CLASS} w-40`}
+                >
+                  {TRANSACTION_STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              ) : action.fieldName === "categoryName" ? (
+                // A rule may name a category that doesn't exist yet — it's created
+                // when the rule first assigns it — so free text stays allowed here.
+                <div className="w-56">
+                  <IconSelect
+                    options={categoryIconSelectOptions(categories)}
+                    value={action.fieldValue}
+                    onChange={(fieldValue) => updateAction(index, { fieldValue })}
+                    placeholder="Restaurant"
+                    ariaLabel="Category to set"
+                  />
+                </div>
+              ) : action.fieldName === "vendor" ? (
+                // Same deal as the category above, and free text matters more here:
+                // the saved list is only the vendors you've curated under Meta Data,
+                // while the name a rule tidies *to* is often one you haven't saved.
+                // Picking from the list is the shortcut, not the constraint.
+                <div className="w-56">
+                  <IconSelect
+                    options={vendorIconSelectOptions(vendors)}
+                    value={action.fieldValue}
+                    onChange={(fieldValue) => updateAction(index, { fieldValue })}
+                    placeholder="TGI Friday"
+                    ariaLabel="Vendor to set"
+                  />
+                </div>
+              ) : (
+                <input
+                  value={action.fieldValue}
+                  onChange={(event) => updateAction(index, { fieldValue: event.target.value })}
+                  placeholder="value"
+                  className={`${INPUT_CLASS} w-56`}
+                />
+              )}
+              {form.actions.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeAction(index)}
+                  aria-label="Remove this assignment"
+                  className="text-xs text-muted hover:text-red-400"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
+          <div>
+            <Button size="sm" variant="secondary" onClick={addAction}>
+              + Add another field
+            </Button>
+          </div>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={form.isEnabled}
+            onChange={(event) => setForm({ ...form, isEnabled: event.target.checked })}
+          />
+          Enabled
+        </label>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handlePreview}
+            disabled={isChecking || form.pattern.trim() === ""}
+          >
+            {isChecking ? "Checking…" : "Test this pattern"}
+          </Button>
+          {preview && (
+            <span className="text-xs text-muted">
+              Matches <strong className="text-ink">{preview.matchCount}</strong> existing transaction(s)
+              {preview.samples.length > 0 && (
+                <>
+                  {" "}
+                  — e.g. <span className="font-mono">{preview.samples.slice(0, 2).join(", ")}</span>
+                </>
+              )}
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -688,9 +694,24 @@ export function ExpenseRulesView({
   /** Seeds "When the description matches" — the raw statement line to match on. */
   prefillPattern?: string;
 }) {
-  const [editing, setEditing] = useState<PostImportRule | undefined>(undefined);
+  // Which rule the dialog is open on, if any: a rule to edit, or `"new"` for a
+  // blank one. `undefined` keeps it closed.
+  const [editor, setEditor] = useState<PostImportRule | "new" | undefined>(() =>
+    // Arriving from Transactions → "Create a rule" carries the seed values in
+    // the query string, and opening prefilled is the whole point of that link.
+    prefillName || prefillDescription || prefillPattern ? "new" : undefined,
+  );
   // A rule action stores a category *name*, so its icon is looked up once here.
   const categoryIconUrls = categoryIconUrlsByName(categories);
+
+  const editing = editor === "new" ? undefined : editor;
+  // The query-string seed belongs to the dialog this screen *opened with*. Once
+  // that one is closed, "+ New Transaction Rule" must give a blank form rather
+  // than re-seeding from a stale URL, so the prefill is spent after first use.
+  const [isPrefillSpent, setIsPrefillSpent] = useState(false);
+  const seed = isPrefillSpent
+    ? {}
+    : { name: prefillName, description: prefillDescription, pattern: prefillPattern };
 
   return (
     <div className="flex flex-col gap-4">
@@ -706,27 +727,40 @@ export function ExpenseRulesView({
 
       <CleanupRunner unprocessedCount={unprocessedCount} />
 
-      <RuleForm
-        key={
-          editing?.id ??
-          `new:${prefillName ?? ""}:${prefillDescription ?? ""}:${prefillPattern ?? ""}`
-        }
-        categories={categories}
-        vendors={vendors}
-        ruleTypes={ruleTypes}
-        editing={editing}
-        prefillName={prefillName}
-        prefillDescription={prefillDescription}
-        prefillPattern={prefillPattern}
-        onDone={() => setEditing(undefined)}
-      />
+      {editor && (
+        <RuleForm
+          key={
+            editing?.id ??
+            `new:${seed.name ?? ""}:${seed.description ?? ""}:${seed.pattern ?? ""}`
+          }
+          categories={categories}
+          vendors={vendors}
+          ruleTypes={ruleTypes}
+          editing={editing}
+          prefillName={seed.name}
+          prefillDescription={seed.description}
+          prefillPattern={seed.pattern}
+          onDone={() => {
+            setEditor(undefined);
+            setIsPrefillSpent(true);
+          }}
+        />
+      )}
 
-      <CollapsibleCard title="Transaction Rules List" defaultOpen>
+      <CollapsibleCard
+        title="Transaction Rules List"
+        defaultOpen
+        headerAction={
+          <Button size="sm" onClick={() => setEditor("new")}>
+            + New Transaction Rule
+          </Button>
+        }
+      >
         <RulesList
           rules={rules}
           ruleTypes={ruleTypes}
           categoryIconUrls={categoryIconUrls}
-          onEdit={setEditing}
+          onEdit={setEditor}
         />
       </CollapsibleCard>
     </div>

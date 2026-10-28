@@ -39,6 +39,7 @@ import {
   runCleanupBatch,
   setAccountImage,
   setCategoryIcon,
+  setTransactionAmountSigns,
   setVendorIcon,
   updateAccount,
   updateRule,
@@ -46,6 +47,7 @@ import {
   upsertCategory,
   upsertRuleType,
   upsertVendor,
+  type AmountSignMode,
   type AutoImportRunSummary,
   type BulkTransactionEditInput,
   type ExpenseImageUploadInput,
@@ -358,6 +360,25 @@ export async function bulkEditTransactionsAction(
     return { ok: true, count };
   } catch (error) {
     return toErrorResult(error, "Failed to apply the changes.");
+  }
+}
+
+/**
+ * Flips, or forces, the sign of every selected amount. `count` is the number of
+ * rows that actually moved, which for a forced direction can be fewer than were
+ * selected — rows already on the wanted side are left alone.
+ */
+export async function setTransactionAmountSignsAction(
+  ids: number[],
+  mode: AmountSignMode,
+): Promise<BulkActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const count = setTransactionAmountSigns(deps.expenseRepo, ids, mode);
+    revalidatePath(EXPENSE_MODULE_PATH);
+    return { ok: true, count };
+  } catch (error) {
+    return toErrorResult(error, "Failed to change the amount signs.");
   }
 }
 

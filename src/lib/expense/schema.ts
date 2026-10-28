@@ -9,7 +9,7 @@ import {
   MAX_STATEMENT_CLOSE_DAY,
   MIN_STATEMENT_CLOSE_DAY,
 } from "./billing-cycle";
-import { RULE_ACTION_FIELDS, TRANSACTION_STATUSES } from "./types";
+import { AMOUNT_SIGN_MODES, RULE_ACTION_FIELDS, TRANSACTION_STATUSES } from "./types";
 
 // zod is the single source of truth for every shape crossing a boundary (server
 // actions, CLI, CSV import).
@@ -163,6 +163,13 @@ export type BulkTransactionEditData = z.output<typeof bulkTransactionEditSchema>
 export const transactionIdsSchema = z
   .array(z.number().int().positive())
   .min(1, "Select at least one transaction.");
+
+/**
+ * Which way to drive the sign of a selection's amounts. Validated here rather
+ * than trusted from the caller, so the CLI and a server action get the same
+ * guarantee — see AMOUNT_SIGN_MODES for why the sign carries real meaning.
+ */
+export const amountSignModeSchema = z.enum(AMOUNT_SIGN_MODES);
 
 export const ruleActionFieldSchema = z.enum(RULE_ACTION_FIELDS);
 

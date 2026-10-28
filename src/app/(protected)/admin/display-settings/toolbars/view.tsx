@@ -707,6 +707,7 @@ function ToolbarItems({
   const [moduleSlug, setModuleSlug] = useState("");
   const [menuItemId, setMenuItemId] = useState("");
   const [label, setLabel] = useState("");
+  const [opensNewTab, setOpensNewTab] = useState(false);
   const [draggingId, setDraggingId] = useState<number | undefined>();
   const [dropTargetId, setDropTargetId] = useState<number | undefined>();
 
@@ -734,11 +735,19 @@ function ToolbarItems({
         menuItemId: kind === "menu-item" ? menuItemId : undefined,
         // The ornamental kinds carry no label; the schema rejects one outright.
         label: isOrnamentalKind(kind) ? undefined : label || undefined,
+        // Likewise for the new-tab flag: a separator and a spacer are not
+        // clickable, so sending it on one is rejected rather than ignored (0158).
+        opensNewTab: kind === "menu-item" ? opensNewTab : false,
       }),
     );
     if (ok) {
       setMenuItemId("");
       setLabel("");
+      // Deliberately reset, unlike the module above it. The flag is the unusual
+      // choice, and leaving it on would quietly apply it to the next shortcut an
+      // admin adds -- a setting invisible on the bar itself is the wrong one to
+      // make sticky.
+      setOpensNewTab(false);
     }
   }
 
@@ -777,7 +786,7 @@ function ToolbarItems({
         A <strong>screen</strong> is a shortcut. A <strong>separator</strong> draws a
         dividing line between two groups. A <strong>space</strong> is invisible and
         pushes what follows to the far end. New items are added at the end of the list;
-        use the arrows to move one.
+        use the arrows to move one, or <strong>✕</strong> to remove it.
       </p>
 
       {toolbar.items.length === 0 ? (
@@ -787,6 +796,15 @@ function ToolbarItems({
           <ul className="mt-4 divide-y divide-line rounded-xl border border-line">
             {toolbar.items.map((item, index) => {
               const target = item.menuItemId ? byId.get(item.menuItemId) : undefined;
+              // What the remove button calls this row. Ornamental rows have no name
+              // of their own, so they are named by what they are -- "Remove" alone
+              // would be three identically-labelled buttons on a bar using both.
+              const itemName =
+                item.kind === "spacer"
+                  ? "flexible space"
+                  : item.kind === "separator"
+                    ? "separator"
+                    : (item.label ?? target?.title ?? "this item");
               const isDragging = draggingId === item.id;
               const isDropTarget = dropTargetId === item.id && draggingId !== item.id;
 
@@ -836,12 +854,28 @@ function ToolbarItems({
                               // drawn on the real toolbar; saying so here is the only
                               // place an admin can find out and remove it.
                               `Missing screen (${item.menuItemId}) — not shown on the toolbar`}
+                          {/*
+                            Said here because the bar itself cannot say it: a toolbar
+                            row is a 9x9 glyph, so this list is the only place the
+                            setting is visible after the item has been added.
+                          */}
+                          {item.opensNewTab ? (
+                            <span className="text-brass-dark"> · opens in a new tab</span>
+                          ) : null}
                         </p>
                       </>
                     )}
                   </div>
+                  {/*
+                    Always visible, not revealed on hover. A phone has no hover, so
+                    the previous `opacity-0 group-hover:opacity-100` left every one
+                    of these controls unreachable on compact -- including the only
+                    way to remove a row. `design.md` requires this screen to work at
+                    both widths, and a control that cannot be reached is not a
+                    narrow-screen styling problem but a missing feature.
+                  */}
                   <div
-                    className="flex shrink-0 gap-1 opacity-0 transition-opacity motion-reduce:transition-none group-hover:opacity-100 group-focus-within:opacity-100"
+                    className="flex shrink-0 gap-1"
                     draggable={false}
                     onDragStart={(event) => {
                       event.preventDefault();
@@ -865,13 +899,25 @@ function ToolbarItems({
                     >
                       ↓
                     </Button>
+                    {/*
+                      A glyph, not the word "Remove": three controls sit in this row
+                      and the words crowded them off a narrow screen. `ariaLabel`
+                      carries the real name -- the x is decoration, so it is hidden
+                      from the accessible name rather than read out as "times".
+
+                      No confirmation. Re-adding a row is two clicks from the form
+                      directly below, nothing is lost but the row's position, and no
+                      other control on this screen confirms.
+                    */}
                     <Button
                       variant="danger"
                       size="sm"
+                      ariaLabel={`Remove ${itemName}`}
+                      title={`Remove ${itemName}`}
                       disabled={isBusy}
                       onClick={() => void run(() => removeToolbarItemAction(toolbar.id, item.id))}
                     >
-                      Remove
+                      <span aria-hidden>✕</span>
                     </Button>
                   </div>
                 </li>
@@ -879,7 +925,7 @@ function ToolbarItems({
             })}
           </ul>
           <p className="mt-4 text-xs text-muted">
-            Drag an item to rearrange, or use the arrows that appear on hover.
+            Drag an item to rearrange, or use the arrows.
           </p>
         </>
       )}
@@ -972,12 +1018,32 @@ function ToolbarItems({
           ) : null}
         </div>
 
+        {/*
+          Screen only. A separator draws a line and a spacer takes up slack --
+          neither is clickable, so neither has anywhere to open, and the schema
+          rejects the flag on them rather than storing something inert. Hidden
+          rather than disabled for the same reason the Module and Screen selects
+          above are: a control that can never apply is noise, not information.
+        */}
         {kind === "menu-item" ? (
-          <p className="mt-2 text-xs text-muted">
-            The name is the tooltip — a toolbar row is its icon alone, so nothing else
-            says what it opens. Leave it empty to use the screen&apos;s own name, and
-            renaming it on the Menu Items screen will update this toolbar too.
-          </p>
+          <>
+            <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={opensNewTab}
+                onChange={(event) => setOpensNewTab(event.target.checked)}
+              />
+              Open in a new tab
+              <span className="text-xs text-muted">
+                — for a screen you want beside your work rather than instead of it
+              </span>
+            </label>
+            <p className="mt-2 text-xs text-muted">
+              The name is the tooltip — a toolbar row is its icon alone, so nothing else
+              says what it opens. Leave it empty to use the screen&apos;s own name, and
+              renaming it on the Menu Items screen will update this toolbar too.
+            </p>
+          </>
         ) : null}
 
         <div className="mt-3">

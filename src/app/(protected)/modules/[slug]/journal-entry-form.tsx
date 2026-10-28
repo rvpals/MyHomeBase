@@ -828,42 +828,60 @@ export function JournalEntryForm({
 
       {/* The content field, with no card around it: it is the entry, so it reads
           as the page rather than as one more titled section. The "Content" label
-          is gone with the card — the placeholder already says what the box is for,
-          and the textarea keeps its `aria-label` so the accessible name survives.
+          is gone with the card — the hint row below names the box instead, and
+          the textarea keeps its `aria-label` so the accessible name survives.
 
-          The two controls float over the field's top-right corner instead of
-          sitting in a card header. `absolute` against the `relative` wrapper
-          below, `z-10` to clear the texture underlay, and `pointer-events-auto`
-          inside a `pointer-events-none` strip so the gap between the buttons
-          still lets a click through to the text. */}
-      <div className="relative">
-        <div className="pointer-events-none absolute right-2 top-2 z-10 flex flex-wrap items-center justify-end gap-2">
-          {canFullscreen && (
+          The two controls sit in a thin row *above* the field, in normal flow.
+          They used to float over its top-right corner, which put them on top of
+          the first line or two of the entry: a textarea has no inline layout to
+          intrude on, so there is no way to make the text flow around them and
+          anything under a button was both hidden and unclickable. A row costs
+          one line of height and obscures nothing. No card comes back with it —
+          it is an unboxed strip, the same shape as the Save toolbar below. */}
+      <div>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="text-sm text-muted">Write the content below</span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {canFullscreen && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setIsFullscreen(true)}
+                title="Show just the content box, filling the screen"
+                ariaLabel="Show the content box full screen"
+                className="!px-2 !py-1 !shadow-sm"
+              >
+                <TreeIcon name="window" className="h-4 w-4" />
+              </Button>
+            )}
+            {/* Icon-only, so unlike the old text pill it *needs* `ariaLabel` —
+                there is no visible word left to be the accessible name, and the
+                two no longer disagree the way they would have when the label
+                read "Handwriting". On/off is carried by the variant swap and,
+                for a screen reader, by `ariaPressed`: this is a toggle, not an
+                action. Same pattern as the pin button in the Save toolbar.
+
+                `window` and the quill are the nearest concepts the glyph table
+                has; neither is a drawing of "expand" or "cursive". Both are
+                actions on this box rather than places in the app, so they stay
+                bare `TreeIcon`s with no icon slot — exactly like the pin, lock
+                and encrypt buttons on this same form. */}
             <Button
               size="sm"
-              variant="secondary"
-              onClick={() => setIsFullscreen(true)}
-              title="Show just the content box, filling the screen"
-              className="pointer-events-auto !shadow-sm"
+              variant={isHandwriting ? "primary" : "secondary"}
+              onClick={() => setIsHandwriting((on) => !on)}
+              ariaPressed={isHandwriting}
+              title={
+                isHandwriting
+                  ? "Writing in cursive — click for the plain font."
+                  : "Writing in the plain font — click for cursive."
+              }
+              ariaLabel={isHandwriting ? "Turn handwriting off" : "Turn handwriting on"}
+              className="!px-2 !py-1 !shadow-sm"
             >
-              Full screen
+              <TreeIcon name="new-journal" className="h-4 w-4" />
             </Button>
-          )}
-          {/* On/off is carried by the variant swap. Deliberately no
-              `ariaLabel`: `Button` renders it as `aria-label`, which would
-              *replace* the visible "Handwriting" text and leave the accessible
-              name not matching the label. `Button` also whitelists only
-              `ariaExpanded`/`ariaControls`, so `aria-pressed` isn't available
-              — the hint lives in `title`, as its doc prescribes. */}
-          <Button
-            size="sm"
-            variant={isHandwriting ? "primary" : "secondary"}
-            onClick={() => setIsHandwriting((on) => !on)}
-            title="Using cursive font"
-            className="pointer-events-auto !shadow-sm"
-          >
-            Handwriting
-          </Button>
+          </div>
         </div>
 
         {/* A toggle over the same textarea, not a preview pane: the writer keeps

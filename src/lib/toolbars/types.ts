@@ -140,6 +140,18 @@ export interface ToolbarItem {
    * see `TOOLBAR_ITEM_KINDS`.)
    */
   label?: string;
+  /**
+   * Open this shortcut in a new tab instead of navigating the current one.
+   *
+   * Only meaningful on a `menu-item` row — the ornamental kinds are not clickable,
+   * so they have nowhere to open. The schema rejects it on them outright, in the
+   * same cross-field rule that already rejects a label there (migration 0158).
+   *
+   * Optional here and `NOT NULL DEFAULT 0` in the table, which is not a
+   * contradiction: "not set" and "same tab" are the same thing, so an absent value
+   * and `false` mean exactly one behaviour. There is no third state to carry.
+   */
+  opensNewTab?: boolean;
   sortOrder: number;
 }
 
@@ -228,6 +240,14 @@ export interface ResolvedToolbarItem {
   icon?: string;
   /** The menu item id, so a caller can derive the icon slot. */
   menuItemId?: string;
+  /**
+   * Whether this shortcut opens in a new tab (migration 0158).
+   *
+   * Carried through to the renderer rather than recomputed there: the stored row is
+   * the only thing that knows, and a component reaching back for it would be the
+   * second place deciding what a row does on click.
+   */
+  opensNewTab?: boolean;
 }
 
 /**

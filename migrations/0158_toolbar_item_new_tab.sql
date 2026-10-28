@@ -1,0 +1,41 @@
+-- Personal toolbars: a shortcut that opens in a NEW TAB.
+--
+-- WHAT THIS ADDS. Today every `menu-item` row on a toolbar is an in-app <Link>: it
+-- navigates the current tab, which is what a shortcut to a screen you are about to
+-- work in should do. This column is for the other case -- a reference screen you want
+-- BESIDE what you are doing rather than instead of it. A toolbar row with
+-- `opens_new_tab = 1` renders with `target="_blank"`, so clicking it leaves the
+-- current screen where it is.
+--
+-- WHY A COLUMN ON THE ROW AND NOT A TOOLBAR-WIDE SETTING. It is a property of the
+-- DESTINATION, not of the bar. One bar routinely carries both: the screens you move
+-- between, and the one or two you keep open alongside. A per-bar switch would force a
+-- second toolbar to hold a single new-tab shortcut, which is the kind of structure
+-- nobody would choose if the storage were not pushing them into it.
+--
+-- WHY IT IS MEANINGFUL ONLY ON `menu-item`. A separator draws a line and a spacer
+-- takes up slack; neither is clickable, so neither has anywhere to open. The column is
+-- NOT NULL DEFAULT 0, so an ornamental row stores 0 and means nothing by it -- the
+-- same shape `menu_item_id` and `label` already have, where the cross-field rule lives
+-- in `toolbarItemSchema` rather than in a CHECK. A CHECK here would have to name
+-- `kind`, which is the sort of multi-column constraint that makes a later kind
+-- un-addable without another table rebuild.
+--
+-- WHY AN ADDITIVE ALTER AND NOT COPY-RENAME-DROP. This adds a column; it does not
+-- change a CHECK. SQLite supports `ADD COLUMN` directly, so the rebuild 0127 and 0153
+-- needed does not apply -- this is the same one-line form 0130 used to add
+-- `texture_id` to the sibling table. `coding-guide.md` reserves the rebuild for
+-- constraint changes precisely so an additive column stays cheap.
+--
+-- WHY `NOT NULL DEFAULT 0` AND NOT NULLABLE. "Not set" and "same tab" are the same
+-- thing here, and there is no third state to represent. Every existing row keeps
+-- exactly the behaviour it has today without an UPDATE, because 0 IS today's
+-- behaviour. A nullable column would add a null case for every reader of the row to
+-- handle, to express nothing.
+--
+-- No new table, no new 3-letter prefix, no DEFAULT_MODULES change, and no index. This
+-- is one more property on chrome that already exists, read only as part of the row it
+-- sits on.
+
+ALTER TABLE sys_toolbar_items
+  ADD COLUMN opens_new_tab INTEGER NOT NULL DEFAULT 0;

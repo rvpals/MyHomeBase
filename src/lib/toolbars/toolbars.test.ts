@@ -133,8 +133,37 @@ describe("resolveToolbar", () => {
         href: "/modules/journal/locations",
         icon: undefined,
         menuItemId: "journal_section_locations",
+        // The fixture leaves it unset, which is a row stored before 0158 as well as
+        // the ordinary case. It must stay falsy rather than becoming `true` by
+        // accident — that would turn every existing shortcut into a new tab.
+        opensNewTab: undefined,
       },
     ]);
+  });
+
+  // Migration 0158. Resolving is what carries the flag from the stored row to the
+  // renderer; without this the column could be written and read and still never
+  // reach the link.
+  it("carries a new-tab shortcut through to the resolved row", () => {
+    const resolved = resolveToolbar(
+      toolbar({
+        items: [item({ id: 1, menuItemId: "journal_section_main", opensNewTab: true })],
+      }),
+      MENU_ITEMS,
+      VISIBLE,
+    );
+
+    expect(resolved?.items[0].opensNewTab).toBe(true);
+  });
+
+  it("leaves an ordinary shortcut not opening a new tab", () => {
+    const resolved = resolveToolbar(
+      toolbar({ items: [item({ id: 1, menuItemId: "journal_section_main" })] }),
+      MENU_ITEMS,
+      VISIBLE,
+    );
+
+    expect(resolved?.items[0].opensNewTab).toBeFalsy();
   });
 
   it("prefers the row's own label over the menu item's title", () => {
@@ -690,6 +719,55 @@ describe("addToolbarItem", () => {
         KNOWN_IDS,
       ),
     ).toThrow(/no toolbar/i);
+  });
+
+  // Migration 0158. The flag is only meaningful on a shortcut, so the success path
+  // and the four ways to get it wrong are both pinned here.
+  it("accepts a shortcut that opens in a new tab", () => {
+    const added = addToolbarItem(
+      fakeRepo([toolbar()]),
+      1,
+      { kind: "menu-item", menuItemId: "journal_section_main", opensNewTab: true },
+      KNOWN_IDS,
+    );
+
+    expect(added.opensNewTab).toBe(true);
+  });
+
+  it("defaults a shortcut to opening in the current tab", () => {
+    // Absent must mean `false` rather than `undefined` reaching storage: the column
+    // is NOT NULL, and every caller that does not care omits the field.
+    const added = addToolbarItem(
+      fakeRepo([toolbar()]),
+      1,
+      { kind: "menu-item", menuItemId: "journal_section_main" },
+      KNOWN_IDS,
+    );
+
+    expect(added.opensNewTab).toBe(false);
+  });
+
+  it("rejects ornament asking to open a tab", () => {
+    for (const kind of ["separator", "spacer"] as const) {
+      expect(
+        () => addToolbarItem(fakeRepo([toolbar()]), 1, { kind, opensNewTab: true }, KNOWN_IDS),
+        kind,
+      ).toThrow(/not clickable/i);
+    }
+  });
+
+  it("accepts ornament that explicitly does not open a tab", () => {
+    // `false` is not "carrying a setting" — it is the absence of one, and the form
+    // posts it for every kind. Rejecting it would make the ornamental kinds
+    // un-addable from a form that sends the field unconditionally.
+    const repo = fakeRepo([toolbar()]);
+
+    expect(() =>
+      addToolbarItem(repo, 1, { kind: "separator", opensNewTab: false }, KNOWN_IDS),
+    ).not.toThrow();
+    expect(() =>
+      addToolbarItem(repo, 1, { kind: "spacer", opensNewTab: false }, KNOWN_IDS),
+    ).not.toThrow();
   });
 });
 

@@ -1082,7 +1082,16 @@ function DayEntriesPanel({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button href={`/modules/journal?date=${date}`} variant="secondary" size="sm">
+          {/* The New Entry section, seeded with the day being viewed — `?date=`
+              is the same param this calendar reads for the open day, and the
+              section hands it to the form as its starting date. Pointing at
+              `/modules/journal` instead (which this did) lands on the module
+              home screen, which ignores the param. */}
+          <Button
+            href={`/modules/journal/new-entry?date=${date}`}
+            variant="secondary"
+            size="sm"
+          >
             New entry
           </Button>
           <Button variant="secondary" size="sm" onClick={onClose} ariaLabel="Close this day">

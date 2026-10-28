@@ -1,5 +1,76 @@
 # Change History
 
+## 2026-10-28 — Journal entry content row, toolbar new-tab shortcuts, expense sign tools, location hand-off
+
+**One migration: 0158** (`sys_toolbar_items.opens_new_tab`, an additive
+`NOT NULL DEFAULT 0` column). It must be applied on the NAS before the Toolbars screen is
+opened, or adding and listing shortcuts fails with "no such column".
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not
+invoked, and nothing was loaded in a browser. Everything below is **unverified on
+screen** — `Testing_List.md` carries items for each part.
+
+### Journal: the Content field's two buttons no longer sit on the text
+
+- **A thin row above the Content box** now reads "Write the content below", with the two
+  controls at its right end as small icon-only buttons: **Full screen** (a window glyph)
+  and **Handwriting** (a quill). They used to float over the box's top-right corner, which
+  put them on top of the first line or two of the entry — hidden, and unclickable.
+- **Why not wrap the text around them.** The field is a plain `<textarea>`, whose value
+  is one flat text node drawn by the browser's own editor; there is no inline layout to
+  float a box into, so no CSS can carve a hole out of its text. Doing it for real would
+  mean moving Content onto the rich-text editor and storing HTML, which touches search,
+  Top Words, the topic graph and exports.
+- **Handwriting is now announced as a toggle** (`aria-pressed`), and both buttons carry an
+  accessible name, because with no visible word left the icon alone would give a screen
+  reader nothing to read. No icon slots were added: these act on the box rather than mark
+  a place, like the pin and lock buttons on the same form.
+- Only [journal-entry-form.tsx](src/app/(protected)/modules/[slug]/journal-entry-form.tsx)
+  changed for this.
+
+### Toolbars: a shortcut that opens in a new tab (migration 0158)
+
+- **Open in a new tab** checkbox when adding a shortcut, for a reference screen you want
+  beside your work rather than instead of it. It renders with `target="_blank"` and
+  `rel="noopener noreferrer"`, and is never marked as the current page. It appears only
+  for a screen shortcut; a separator or a spacer has nowhere to open and the schema
+  rejects the flag on them. The CLI's `add-item --new-tab` is the other way in.
+- **The items list says so** — a shortcut that opens in a new tab is marked, since the
+  bar itself is only a glyph and this list is the one place the setting is visible.
+- **Remove is now a ✕ that is always visible.** It was revealed on hover, which left
+  every control in the row unreachable on a phone — including the only way to remove a
+  row. It is named after the row ("Remove Journal", "Remove separator") and still asks
+  nothing, since re-adding is two clicks.
+- The checkbox resets after each add rather than staying on, so a setting that is
+  invisible on the bar cannot silently apply to the next shortcut.
+
+### Expense: fix the sign of a selection
+
+- **Flip sign / Make + / Make −** on the Transactions bulk bar. A charge is stored
+  positive and a refund negative, and totals are a plain signed sum, so a wrong sign moves
+  a category by twice the amount. *Flip* repairs a statement imported with the issuer's
+  opposite convention; *Make +* and *Make −* force a direction on a mixed selection and
+  leave rows that already agree alone, so the count reported can be smaller than the
+  selection. Each asks first, naming the row count.
+- The logic is `setTransactionAmountSigns` in `src/lib/expense/` with new tests; the
+  server action authorises with `requireModuleAccess` like the other Expense actions.
+  **No CLI command was added for it**, so this one is reachable from the web app only.
+- **New rule / Edit rule is now a dialog** (`size="lg"`) instead of a form card, opened by
+  **+ New Transaction Rule** on the list card and by each row's Edit, and open on arrival
+  when Transactions → *Create a rule* seeded the query string. "+ New" always gives a
+  blank form, never the last rule edited.
+
+### Journal ⇄ Location Manager, and the calendar's New entry
+
+- **Saved Locations → Open** hands a place to the Location Manager, which opens straight
+  onto that place's editor (`?edit=<id>`) and drops the param on close, so a refresh or
+  Back does not reopen it. For a non-administrator the button is shown disabled with a
+  title saying why, rather than hidden, so two people describing the screen see the
+  same thing.
+- **Calendar → New entry now opens the New Entry form on the day being viewed.** It used
+  to link to the Journal home screen, which ignores the date. The date is accepted only
+  when it is a plain `YYYY-MM-DD`; anything else falls back to today.
+
 ## 2026-10-26 — Expense charts by month, import feedback, and a run of correctness fixes
 
 **No migration.** Everything here reads tables that already exist; the release still

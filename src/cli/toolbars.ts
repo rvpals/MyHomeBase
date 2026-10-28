@@ -31,7 +31,7 @@ const USAGE = `Usage:
                [--border <colour>] [--text <colour>] [--full-mode-only <0|1>]
                [--visible <0|1>]
   toolbars delete <id>
-  toolbars add-item <toolbarId> --screen <menuItemId> [--label <text>]
+  toolbars add-item <toolbarId> --screen <menuItemId> [--label <text>] [--new-tab]
   toolbars add-item <toolbarId> --separator
   toolbars add-item <toolbarId> --space
   toolbars remove-item <itemId>
@@ -42,6 +42,11 @@ theme, which is the default and keeps the bar in step with a theme change.
 --separator draws a dividing line between two groups and takes no room along the
 bar. --space is invisible and takes all the slack, pushing whatever follows it to
 the far end. They are different items; a bar can use both.
+
+--new-tab makes a screen shortcut open in a new tab instead of navigating the
+current one -- for a reference screen you want beside your work rather than
+instead of it. It applies to --screen only; a separator and a space are not
+clickable, so passing it with either is rejected.
 
 Items are appended to the end of the toolbar, in the order you add them.
 
@@ -103,7 +108,11 @@ function listCommand(): void {
         // A row whose menu item is gone is not drawn on the real toolbar. Saying so
         // here is the only way to find out it is there in order to remove it.
         const where = target ? target.href : `MISSING (${item.menuItemId}) — not shown`;
-        console.log(`    #${item.id} ${item.label ?? target?.title ?? "?"}  ${where}`);
+        // Said here because nothing else can say it: the bar draws a row as a
+        // single glyph, so this listing and the admin screen are the only places
+        // the setting is visible once the item exists.
+        const newTab = item.opensNewTab ? "  [new tab]" : "";
+        console.log(`    #${item.id} ${item.label ?? target?.title ?? "?"}  ${where}${newTab}`);
       }
     }
   }
@@ -194,6 +203,9 @@ function addItemCommand(args: string[]): void {
       // The ornamental kinds carry no label — the schema rejects one, so `--label`
       // is read only where it means something.
       label: isOrnamentalKind(kind) ? undefined : optionValue(args, "--label"),
+      // Likewise read only where it means something: the schema rejects it on an
+      // ornamental kind rather than storing something inert (0158).
+      opensNewTab: isOrnamentalKind(kind) ? undefined : args.includes("--new-tab"),
     },
     knownMenuItemIds(),
   );

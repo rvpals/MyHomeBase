@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (205 commits, 2026-07-12 to 2026-10-26) and `CHANGE_HISTORY.md`.
+project's git history (205 commits, 2026-07-12 to 2026-10-28) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -152,10 +152,13 @@ The largest module — fifteen sections.
   library at a strength you tune, and its text can take a colour of your choosing (the
   theme's own ink by default). Configuration is split into Location, general and
   entry-screen cards.
+- **A one-line row above the Content box** carries two icon buttons — **Full screen** and
+  **Handwriting** (cursive, announced as a toggle) — so neither sits on the text.
 - **Home-screen Top Words** card whose length — 1 to 100 words, ten by default — is a
   Preferences setting, alongside the words you have excluded from it.
 - **Calendar** view with per-day entry lists, Delete (to the recycle bin) from the day
-  list, and **jump to the next day that has an entry**.
+  list, **jump to the next day that has an entry**, and a **New entry** button that opens
+  the form on the day you are looking at.
 
 ### Entries
 
@@ -176,6 +179,9 @@ rows, which can be edited and re-run.
   duplicate detection.
 - Categories and tags that carry icons — shown in the entry form's saved-place picker too,
   whose places list in two columns on a desktop.
+- **Saved Locations is read-only and hands off to the Location Manager**: each place's
+  **Open** button lands on that place's editor (disabled, with a reason, for anyone who
+  is not an administrator).
 
 ### Topics
 
@@ -235,9 +241,11 @@ Credit-card spending by category.
 
 - **Dashboard** with "Interesting stats" and top-5 cards that link through.
 - **Transactions** grouped by billing cycle, with editable rows and per-row Edit and
-  Delete buttons.
+  Delete buttons. A selection can have its amounts' **sign fixed in bulk** — Flip, Make +
+  or Make − — for a statement imported with the opposite convention.
 - **Transaction Rules** grouped by type, re-runnable over transactions already imported,
-  each saying *why* it matched (the wildcard is `%`).
+  each saying *why* it matched (the wildcard is `%`). A rule is created and edited in a
+  dialog.
 - **Automatic CSV import** from a folder, with post-import processing. A statement
   import is covered by a progress overlay and reports how many transactions landed,
   alongside what was skipped as already imported and what was auto-categorised.
@@ -321,8 +329,8 @@ down.
 - **Configuration** — module and application configuration (including the photo-culling
   ceiling), **Backup Data**.
 - **Display Settings** — Color Themes, Icons (tabbed), Script Fonts, App Texture,
-  Dashboard Widgets, Floating Components, Personal Toolbars, Menu Items, Card Frames,
-  Border Weight, Chrome Style, Scratchpad Categories.
+  Dashboard Widgets, Floating Components, Personal Toolbars (a shortcut can **open in a
+  new tab**), Menu Items, Card Frames, Border Weight, Chrome Style, Scratchpad Categories.
 - **User Management** — admin-only, including setting another user's avatar and editing
   anyone's preferences.
 - **Daily Quote** — all quotes, add a quote, import from a newsletter. A quote can be

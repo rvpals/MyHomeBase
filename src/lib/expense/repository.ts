@@ -18,6 +18,7 @@ import type {
   VendorWriteData,
 } from "./schema";
 import type {
+  AmountSignMode,
   CardImage,
   CategoryIcon,
   CategoryTotal,
@@ -598,6 +599,34 @@ export class SqliteExpenseRepository implements ExpenseRepository {
              WHERE id IN (${placeholders(chunk.length)})`,
           )
           .run(...values, ...chunk);
+        changed += result.changes;
+      }
+      return changed;
+    })();
+  }
+
+  setTransactionAmountSigns(ids: number[], mode: AmountSignMode): number {
+    // Arithmetic on each row's own value, so there is no bound parameter for the
+    // amount — unlike bulkUpdateTransactions, which binds one literal for all.
+    //
+    // The forced directions carry a guard (`WHERE … AND amount_cents > 0`) so a
+    // row already on the wanted side is skipped rather than rewritten. That is
+    // what makes the reported count honest: it is the number of rows that
+    // actually moved, not the size of the selection.
+    const assignment = mode === "flip" ? "-amount_cents" : "ABS(amount_cents)";
+    const sign = mode === "negative" ? "-" : "";
+    const guard =
+      mode === "flip" ? "" : ` AND amount_cents ${mode === "negative" ? ">" : "<"} 0`;
+
+    return this.db.transaction(() => {
+      let changed = 0;
+      for (const chunk of chunkIds(ids)) {
+        const result = this.db
+          .prepare(
+            `UPDATE exp_transactions SET amount_cents = ${sign}${assignment}
+             WHERE id IN (${placeholders(chunk.length)})${guard}`,
+          )
+          .run(chunk);
         changed += result.changes;
       }
       return changed;

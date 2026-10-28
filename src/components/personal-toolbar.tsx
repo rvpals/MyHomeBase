@@ -64,16 +64,35 @@ function ToolbarRow({ item, isActive }: { item: ResolvedToolbarItem; isActive: b
   }
 
 
+  // A new-tab shortcut (migration 0158) leaves the current screen where it is, so
+  // it is never "where you are" — highlighting it as the current page would be a
+  // lie even when an already-open tab happens to be on that route. Folded into one
+  // flag rather than tested twice, so the ring and the `aria-current` cannot drift.
+  const marksCurrentPage = isActive && !item.opensNewTab;
+
   return (
     <Link
       href={item.href ?? "#"}
       // The label is the tooltip as well as the accessible name: the bar is
       // 44px thick, so a row is its glyph alone and nothing on screen names it.
-      title={item.label}
-      aria-label={item.label}
-      aria-current={isActive ? "page" : undefined}
+      // A new-tab row says so in the tooltip, because nothing else on a 9x9 button
+      // distinguishes it from one that navigates in place.
+      title={item.opensNewTab && item.label ? `${item.label} (opens in a new tab)` : item.label}
+      aria-label={
+        item.opensNewTab && item.label ? `${item.label} (opens in a new tab)` : item.label
+      }
+      aria-current={marksCurrentPage ? "page" : undefined}
+      // `rel` alongside `target`: `noopener` is the one that matters, since without
+      // it the opened tab gets a handle on this one through `window.opener`. These
+      // are same-origin app routes, so it is hygiene rather than a fix for a live
+      // hole -- but it is the default a new `target="_blank"` ships with here,
+      // rather than something added after someone notices.
+      target={item.opensNewTab ? "_blank" : undefined}
+      rel={item.opensNewTab ? "noopener noreferrer" : undefined}
       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md transition-colors ${
-        isActive ? "bg-black/15 ring-1 ring-current/30" : "hover:bg-black/10 active:bg-black/20"
+        marksCurrentPage
+          ? "bg-black/15 ring-1 ring-current/30"
+          : "hover:bg-black/10 active:bg-black/20"
       }`}
     >
       <ItemIcon item={item} />

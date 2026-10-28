@@ -8,6 +8,7 @@ import type {
   VendorWriteData,
 } from "./schema";
 import type {
+  AmountSignMode,
   CardImage,
   CategoryIcon,
   CategoryTotal,
@@ -93,6 +94,17 @@ export interface ExpenseRepository {
    * affected.
    */
   bulkUpdateTransactions(ids: number[], changes: BulkTransactionEditData): number;
+  /**
+   * Drives the sign of every listed row's amount, returning how many rows the
+   * statement actually changed.
+   *
+   * Separate from `bulkUpdateTransactions` because that one writes a single
+   * literal to every row, whereas this is per-row arithmetic on the row's own
+   * current value (`amount_cents = -amount_cents`). A forced direction reports
+   * only the rows that genuinely moved — rows already on the wanted side are
+   * left alone and not counted.
+   */
+  setTransactionAmountSigns(ids: number[], mode: AmountSignMode): number;
   /** True when an identical row already exists — used to skip re-imports. */
   transactionExists(input: {
     transactionAccountId: number;

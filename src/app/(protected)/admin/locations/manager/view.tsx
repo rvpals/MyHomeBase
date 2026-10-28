@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Comments } from "@/components/comments";
@@ -112,6 +112,18 @@ const VENN_BASIS_STORAGE_KEY = "myhomebase:admin-location-manager-venn-basis";
  * wanting different answers is the normal case, not a conflict to resolve.
  */
 const VIEW_STORAGE_KEY = "myhomebase:admin-location-manager-view";
+
+/**
+ * `?edit=<id>` — open straight onto one place's editor.
+ *
+ * How another screen hands a place over to be corrected. Journal → Saved
+ * Locations lists the same library read-only and sends its "Open" button here,
+ * because this screen is the only one that writes.
+ *
+ * A query param rather than a route: the editor is a popup over this list, not
+ * a page, and the list behind it is the same list either way.
+ */
+const EDIT_PARAM = "edit";
 
 /**
  * How much room the overview map takes.
@@ -874,6 +886,8 @@ export function LocationManagerView({
   tagIcons: Record<string, string>;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState("");
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
   const [activeTags, setActiveTags] = useState<string[]>([]);
@@ -940,6 +954,46 @@ export function LocationManagerView({
       setVennBasis(storedBasis);
     }
   }, []);
+
+  /**
+   * `?edit=<id>` opens that place's editor.
+   *
+   * Keyed on the param and on `locations` rather than running once on mount:
+   * the id is matched against the server's full library, so arriving before
+   * that list has repainted — or following a second `?edit=` link while already
+   * here — still lands on the right row.
+   *
+   * An id that matches nothing is ignored rather than reported. It means the
+   * place was deleted since the link was made, and the list behind this popup
+   * already shows the truth.
+   */
+  const editParam = searchParams.get(EDIT_PARAM);
+  useEffect(() => {
+    if (editParam === null) return;
+    const wanted = Number(editParam);
+    if (!Number.isInteger(wanted)) return;
+    const place = locations.find((row) => row.id === wanted);
+    if (!place) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing state to the URL, which is unknowable during render; runs when the param or the library changes, not in a loop.
+    setEditing(place);
+  }, [editParam, locations]);
+
+  /**
+   * Closes the editor and drops `?edit=` with it.
+   *
+   * Without the second half the popup would reopen on a refresh or a back, and
+   * the URL would keep claiming to be about a place the reader has finished
+   * with. `replace` rather than `push` so closing a popup doesn't become a
+   * history entry to walk back through.
+   */
+  const closeEditor = useCallback(() => {
+    setEditing(undefined);
+    if (editParam === null) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete(EDIT_PARAM);
+    const rest = next.toString();
+    router.replace(rest === "" ? pathname : `${pathname}?${rest}`, { scroll: false });
+  }, [editParam, searchParams, router, pathname]);
 
   function chooseView(next: LocationListView) {
     setView(next);
@@ -1275,7 +1329,7 @@ export function LocationManagerView({
           tagOptions={tagOptions}
           categoryIcons={categoryIcons}
           tagIcons={tagIcons}
-          onClose={() => setEditing(undefined)}
+          onClose={closeEditor}
           onSaved={reload}
           actions={ADMIN_EDIT_LOCATION_ACTIONS}
         />

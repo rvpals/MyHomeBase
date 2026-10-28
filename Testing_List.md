@@ -146,6 +146,32 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-28 — Release (Journal entry content row, toolbar new-tab shortcuts, expense sign tools, location hand-off)
+
+**Migration 0158 must be applied on the NAS first** — items 5–10 fail with "no such column"
+until it is. Items 1–4 are the Content row on the entry form; **item 3 is phone-only**.
+Items 11–15 are Expense and 16–19 are Journal ⇄ Location Manager and the Calendar.
+
+- [ ] **1.** Journal → New Entry: above the Content box there is a thin row reading "Write the content below", with two small icon buttons at its right end, and nothing sits on top of the text box
+- [ ] **2.** Type a long entry: the first line of text is fully visible and clickable, with no button over it — in the plain font, in Handwriting, and with a content texture picked
+- [ ] **3.** Phone: the row stays on one line and neither icon button wraps or gets pushed off the edge
+- [ ] **4.** The window icon opens the Content box full screen; the quill icon switches to cursive and shows as pressed, and clicking it again returns to the plain font. Hover each for its tooltip. Repeat on Edit entry
+- [ ] **5.** Admin → Display Settings → Personal Toolbars: adding a screen shortcut offers an **Open in a new tab** checkbox; a separator or spacer does not show it
+- [ ] **6.** Add a shortcut with it ticked: clicking it on the bar opens a new browser tab and leaves the current screen where it was
+- [ ] **7.** That shortcut's row in the items list says "opens in a new tab"; a normal shortcut's row does not
+- [ ] **8.** Add a second shortcut straight after: the checkbox has reset to unticked
+- [ ] **9.** Each item row has an always-visible **✕**; on a phone it is reachable without hovering, and it removes that row
+- [ ] **10.** Existing toolbar shortcuts still open in the same tab, as before the migration
+- [ ] **11.** Expense → Transactions: select some rows — the bulk bar offers **Flip sign**, **Make +** and **Make −**
+- [ ] **12.** Flip sign on a few rows: it confirms with the row count, then every selected amount changes sign and the totals move accordingly
+- [ ] **13.** Make + on a mixed selection: only the negative rows change, and the message reports that smaller number
+- [ ] **14.** Expense → Transaction Rules: **+ New Transaction Rule** opens a dialog with a blank form, and a row's **Edit** opens the same dialog on that rule
+- [ ] **15.** Transactions → *Create a rule* lands on Transaction Rules with the dialog already open and the form pre-filled
+- [ ] **16.** Journal → Saved Locations: each place has an **Open** button; as an administrator it opens Admin → Locations → Manager directly on that place's editor
+- [ ] **17.** Close that editor, then refresh or press Back: it does not reopen
+- [ ] **18.** As a non-administrator the **Open** button is shown but disabled, with a tooltip saying only an administrator can edit the library
+- [ ] **19.** Journal → Calendar: pick a day other than today and press **New entry** — the New Entry form opens with that day's date, not today's
+
 ## 2026-10-26 — Release (Expense charts by month, import feedback, correctness fixes)
 
 **No migration for these items.** Items 1–6 are Expense → Charts, 7–10 Expense → Import and

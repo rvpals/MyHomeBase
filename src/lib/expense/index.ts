@@ -1,8 +1,10 @@
 export {
   TRANSACTION_STATUSES,
+  AMOUNT_SIGN_MODES,
   RULE_ACTION_FIELDS,
   RULE_ACTION_FIELD_LABELS,
   type TransactionStatus,
+  type AmountSignMode,
   type CreditCardAccount,
   type ExpenseCategory,
   type ExpenseRuleType,
@@ -97,6 +99,7 @@ export {
   deleteTransaction,
   deleteTransactions,
   bulkEditTransactions,
+  setTransactionAmountSigns,
   listRuleTypes,
   upsertRuleType,
   deleteRuleType,

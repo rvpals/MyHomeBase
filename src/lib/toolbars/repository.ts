@@ -24,6 +24,7 @@ interface ItemRow {
   kind: string;
   menu_item_id: string | null;
   label: string | null;
+  opens_new_tab: number;
   sort_order: number;
 }
 
@@ -52,12 +53,14 @@ function toItem(row: ItemRow): ToolbarItem {
     kind: row.kind as ToolbarItem["kind"],
     menuItemId: row.menu_item_id ?? undefined,
     label: row.label ?? undefined,
+    // 0/1 in the table; the domain gets a boolean, so no caller handles an integer.
+    opensNewTab: row.opens_new_tab !== 0,
     sortOrder: row.sort_order,
   };
 }
 
 const TOOLBAR_COLUMNS = `id, name, background_color, border_color, text_color, texture_id, texture_opacity, edge, full_mode_only, is_visible, sort_order`;
-const ITEM_COLUMNS = `id, toolbar_id, kind, menu_item_id, label, sort_order`;
+const ITEM_COLUMNS = `id, toolbar_id, kind, menu_item_id, label, opens_new_tab, sort_order`;
 
 export class SqliteToolbarRepository implements ToolbarRepository {
   constructor(private readonly db: Database.Database) {}
@@ -159,14 +162,12 @@ export class SqliteToolbarRepository implements ToolbarRepository {
 
     const result = this.db
       .prepare(
-        `INSERT INTO sys_toolbar_items (toolbar_id, kind, menu_item_id, label, sort_order)
-         VALUES (@toolbarId, @kind, @menuItemId, @label, @sortOrder)`,
+        `INSERT INTO sys_toolbar_items (toolbar_id, kind, menu_item_id, label, opens_new_tab, sort_order)
+         VALUES (@toolbarId, @kind, @menuItemId, @label, @opensNewTab, @sortOrder)`,
       )
       .run({
         toolbarId,
-        kind: item.kind,
-        menuItemId: item.menuItemId ?? null,
-        label: item.label ?? null,
+        ...this.bindItem(item),
         sortOrder: next.next,
       });
 
@@ -179,15 +180,14 @@ export class SqliteToolbarRepository implements ToolbarRepository {
   updateItem(itemId: number, item: ToolbarItemWrite): void {
     this.db
       .prepare(
-        `UPDATE sys_toolbar_items SET kind = @kind, menu_item_id = @menuItemId, label = @label
+        `UPDATE sys_toolbar_items SET
+           kind = @kind,
+           menu_item_id = @menuItemId,
+           label = @label,
+           opens_new_tab = @opensNewTab
          WHERE id = @id`,
       )
-      .run({
-        id: itemId,
-        kind: item.kind,
-        menuItemId: item.menuItemId ?? null,
-        label: item.label ?? null,
-      });
+      .run({ id: itemId, ...this.bindItem(item) });
   }
 
   removeItem(itemId: number): void {
@@ -208,6 +208,22 @@ export class SqliteToolbarRepository implements ToolbarRepository {
     this.db.transaction((ids: number[]) => {
       ids.forEach((itemId, index) => statement.run(index, itemId, toolbarId));
     })(itemIds);
+  }
+
+  /**
+   * Shared binding for a row, so the INSERT and the UPDATE can't disagree.
+   *
+   * Extracted when 0158 added a fourth field: two parallel literals were already
+   * one edit away from an UPDATE that silently dropped a column the INSERT set.
+   */
+  private bindItem(item: ToolbarItemWrite) {
+    return {
+      kind: item.kind,
+      menuItemId: item.menuItemId ?? null,
+      label: item.label ?? null,
+      // SQLite has no boolean, same conversion the toolbar's own flags make below.
+      opensNewTab: item.opensNewTab ? 1 : 0,
+    };
   }
 
   /** Shared binding, so the INSERT and the UPDATE can't disagree about nulls. */

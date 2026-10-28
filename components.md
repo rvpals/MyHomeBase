@@ -909,6 +909,11 @@ site change: a `Modal` you already render picks it up.
 **Used by:** `DataGrid`'s record view and "Show SQL" dialog
 [data-grid.tsx](src/components/data-grid.tsx), the Expense bulk-edit dialog
 [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx),
+the Expense **New rule / Edit rule** form
+[expense-rules-view.tsx](src/app/(protected)/modules/[slug]/expense-rules-view.tsx) —
+`size="lg"`, opened by the **+ New Transaction Rule** button on the Transaction Rules
+List card's `headerAction` and by each row's **Edit**; it also opens on arrival when
+Transactions → *Create a rule* seeded the query string,
 the ticker viewer [ticker-viewer.tsx](src/components/ticker-viewer.tsx) — the only
 caller of `size="window"` — and the Journal Calendar day list's per-row **Delete**
 confirmation

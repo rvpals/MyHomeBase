@@ -25,6 +25,9 @@ import { JournalEntryForm } from "./journal-entry-form";
 /** This section's own route, for returning to a blank form after a clone is saved. */
 const NEW_ENTRY_PATH = "/modules/journal/new-entry";
 
+/** What `<input type="date">` accepts, and what the calendar's day cells emit. */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 export function JournalNewEntryView({
   categoryOptions,
   tagOptions,
@@ -34,6 +37,7 @@ export function JournalNewEntryView({
   locationCategoryOptions = [],
   locationTagOptions = [],
   cloneSeed,
+  selectedDate,
 }: {
   categoryOptions: string[];
   tagOptions: string[];
@@ -51,8 +55,20 @@ export function JournalNewEntryView({
    * the form and says so in the heading.
    */
   cloneSeed?: JournalEntryCloneSeed;
+  /**
+   * Set when the reader arrived from the Calendar day panel's "New entry"
+   * button (?date=), so the form opens on the day they were looking at instead
+   * of on today's date. Ignored unless it is an ISO `YYYY-MM-DD` string: the
+   * form's date input would reject anything else and show blank, which is worse
+   * than falling back to the clock.
+   */
+  selectedDate?: string;
 }) {
   const router = useRouter();
+  // Only a plain ISO date reaches the form. `?date=` is a raw query string, so
+  // it has to be checked here rather than trusted — the section deliberately
+  // leaves it unvalidated, as the other Journal params are.
+  const seededDate = selectedDate && ISO_DATE.test(selectedDate) ? selectedDate : undefined;
 
   return (
     // `defaultOpen` because the form is the only thing on the page — arriving
@@ -75,14 +91,28 @@ export function JournalNewEntryView({
         // same screen. The form seeds its state in a lazy initialiser, which
         // runs once per mount -- without this key, navigating from ?clone=12 to
         // ?clone=34 would keep the first entry's values on screen.
-        key={cloneSeed ? `clone-${cloneSeed.sourceEntryId}` : "blank"}
+        // The date is in the key too, for the same reason the clone id is:
+        // arriving from one day's panel and then another's is a navigation
+        // within this route, and the lazy initialiser would otherwise keep the
+        // first day on screen.
+        key={`${cloneSeed ? `clone-${cloneSeed.sourceEntryId}` : "blank"}-${seededDate ?? "today"}`}
         initialValues={
-          cloneSeed
+          cloneSeed || seededDate
             ? {
-                title: cloneSeed.title,
-                placeName: cloneSeed.placeName,
-                categories: cloneSeed.categories,
-                tags: cloneSeed.tags,
+                ...(cloneSeed
+                  ? {
+                      title: cloneSeed.title,
+                      placeName: cloneSeed.placeName,
+                      categories: cloneSeed.categories,
+                      tags: cloneSeed.tags,
+                    }
+                  : {}),
+                // Only the date. The time still comes from the clock on mount,
+                // because the day panel says nothing about it — and a clone
+                // carries no date of its own (`cloneSeedFromEntry` leaves the
+                // date and time to be filled in fresh), so the two never
+                // disagree about which day the form opens on.
+                ...(seededDate ? { date: seededDate } : {}),
               }
             : undefined
         }

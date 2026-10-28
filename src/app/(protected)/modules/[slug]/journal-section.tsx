@@ -248,6 +248,11 @@ function SectionBody({
       return (
         <JournalNewEntryView
           cloneSeed={cloneSeed}
+          // ?date= — set by the Calendar day panel's "New entry" button, so the
+          // form opens on the day the reader was looking at rather than today.
+          // Left as the raw string: the form only uses it when it parses as a
+          // date input value, and anything else falls through to the clock.
+          selectedDate={selectedDate}
           categoryOptions={listCategories(deps.journalRepo).map((category) => category.name)}
           tagOptions={listTags(deps.journalRepo).map((tag) => tag.name)}
           preferences={preferences}
@@ -302,6 +307,9 @@ function SectionBody({
           categoryIcons={locationTaxonomyIconMap("category")}
           tagIcons={locationTaxonomyIconMap("tag")}
           basePath="/modules/journal/saved-locations"
+          /* The Location Manager is behind the admin-only route, so only an
+             admin gets a working "Open". Everyone else sees it disabled. */
+          canOpenManager={isAdmin}
         />
       );
     }

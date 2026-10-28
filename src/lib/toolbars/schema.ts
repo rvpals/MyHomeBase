@@ -123,6 +123,11 @@ export const toolbarItemSchema = z
       .trim()
       .max(MAX_TOOLBAR_LABEL_LENGTH, `Keep the label to ${MAX_TOOLBAR_LABEL_LENGTH} characters.`)
       .optional(),
+    // Migration 0158. `.default(false)` rather than required, for the reason the
+    // toolbar's `textureOpacity` gives: every caller that does not care — an older
+    // form post, a CLI `add-item` with no flag — gets the table's own default
+    // without having to name it.
+    opensNewTab: z.boolean({ message: "Open in a new tab must be true or false." }).default(false),
   })
   .superRefine((value, ctx) => {
     if (value.kind === "menu-item" && !value.menuItemId) {
@@ -130,6 +135,20 @@ export const toolbarItemSchema = z
         code: z.ZodIssueCode.custom,
         path: ["menuItemId"],
         message: "Pick the screen this item opens.",
+      });
+    }
+    // A separator draws a line and a spacer takes up slack; neither is clickable,
+    // so neither has anywhere to open. Checked here and not as a table CHECK for
+    // the reason 0158 records: a CHECK naming `kind` would make a later item kind
+    // un-addable without rebuilding the table.
+    if (isOrnamentalKind(value.kind) && value.opensNewTab) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["opensNewTab"],
+        message:
+          value.kind === "separator"
+            ? "A separator is not clickable, so it cannot open a tab."
+            : "A spacer is not clickable, so it cannot open a tab.",
       });
     }
     if (isOrnamentalKind(value.kind) && (value.menuItemId || value.label)) {
