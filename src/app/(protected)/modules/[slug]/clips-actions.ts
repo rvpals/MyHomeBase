@@ -5,16 +5,21 @@ import {
   addClipImage,
   createClip,
   decryptClip,
-  deleteClip,
   deleteClipCategory,
   deleteClipTag,
+  deleteRecycledClipsForever,
+  emptyClipsRecycleBin,
   encryptClip,
   getClip,
+  getClipsSettings,
   linkClip,
   listClipItems,
   listClips,
   listClipsForTarget,
+  listRecycledClips,
   openClip,
+  recycleClips,
+  restoreRecycledClips,
   saveClipCategory,
   saveClipItems,
   saveClipTag,
@@ -31,6 +36,7 @@ import {
   type ClipSummary,
   type CreateClipInput,
   type EncryptClipInput,
+  type RecycledClip,
   type ResolvedClipLink,
   type UpdateClipInput,
 } from "@/lib/clips";
@@ -44,6 +50,9 @@ import { requireAdmin, requireModuleAccess } from "../../require-access";
 const ACCESS_MODULE_SLUG = "clips";
 
 const CLIPS_PATH = "/modules/clips";
+
+/** The bin's own route, revalidated alongside the list whenever a clip moves. */
+const RECYCLED_PATH = "/modules/clips/recycled";
 
 export interface ActionResult {
   ok: boolean;
@@ -129,14 +138,80 @@ export async function updateClipAction(input: UpdateClipInput): Promise<ClipResu
   }
 }
 
+/**
+ * Deletes a clip by moving it to the recycle bin (migration 0161).
+ *
+ * Kept under its old name because that is what the button does from the reader's
+ * side — Delete. What changed is that it is now recoverable: the clip lands in
+ * Clips → Recycled Clips, and only purging it from there destroys anything.
+ */
 export async function deleteClipAction(id: number): Promise<ActionResult> {
   try {
     await requireModuleAccess(ACCESS_MODULE_SLUG);
-    deleteClip(deps.clipsRepo, id);
+    recycleClips(deps.clipsRepo, [id]);
     revalidatePath(CLIPS_PATH);
+    revalidatePath(RECYCLED_PATH);
     return { ok: true };
   } catch (error) {
     return toErrorResult(error, "Could not delete that clip.");
+  }
+}
+
+// The recycle bin (migration 0161).
+//
+// Both paths are revalidated by every one of these: a clip moving in or out
+// changes the Home screen's list AND the bin's, and refreshing only the screen
+// the reader is standing on leaves the other stale behind their back.
+
+export interface RecycledClipsResult extends ActionResult {
+  clips?: RecycledClip[];
+}
+
+export async function listRecycledClipsAction(): Promise<RecycledClipsResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const settings = getClipsSettings(deps.moduleRepo, deps.moduleSettingsRepo);
+    return { ok: true, clips: listRecycledClips(deps.clipsRepo, settings.excerptChars) };
+  } catch (error) {
+    return toErrorResult(error, "Could not load the recycle bin.");
+  }
+}
+
+/** Puts binned clips back. Takes `recycledId`s, not clip ids — see `RecycledClip`. */
+export async function restoreRecycledClipsAction(recycledIds: number[]): Promise<ActionResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    restoreRecycledClips(deps.clipsRepo, recycledIds);
+    revalidatePath(CLIPS_PATH);
+    revalidatePath(RECYCLED_PATH);
+    return { ok: true };
+  } catch (error) {
+    return toErrorResult(error, "Could not restore that clip.");
+  }
+}
+
+/** Destroys binned clips. There is no undo past this point. */
+export async function deleteRecycledClipsForeverAction(
+  recycledIds: number[],
+): Promise<ActionResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    deleteRecycledClipsForever(deps.clipsRepo, recycledIds);
+    revalidatePath(RECYCLED_PATH);
+    return { ok: true };
+  } catch (error) {
+    return toErrorResult(error, "Could not delete that clip.");
+  }
+}
+
+export async function emptyClipsRecycleBinAction(): Promise<ActionResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    emptyClipsRecycleBin(deps.clipsRepo);
+    revalidatePath(RECYCLED_PATH);
+    return { ok: true };
+  } catch (error) {
+    return toErrorResult(error, "Could not empty the recycle bin.");
   }
 }
 

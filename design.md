@@ -960,6 +960,17 @@ mutually exclusive reservations — `horizontal` reserves no side column, so it 
 fall through to the tree's 260px `padding-left` or every page indents past a column that
 isn't drawn.
 
+**Both bands dock to the top edge as one block.** `NavTabs` and `SectionStrip` render
+inside one sticky wrapper (`.shell-topnav`, `position: sticky; top: 0; z-index: 30`), not
+as two independently-sticky bars. Sticking only the tab row — which is what shipped first
+— left the section chips in normal flow, so scrolling a long table slid the chips naming
+the current section out from under a tab row that stayed put, and the table below the fold
+had nothing on screen saying which section it was. Sticking each band separately would
+mean the strip hardcoding the row's height, a number the admin's bevel, border width and
+font settings all move. The wrapper has no `overflow`, deliberately: the `More ▾` and
+section-group menus are absolutely positioned children and a scroll container would clip
+them.
+
 **The collapse preference is left untouched under `horizontal`.** There is no column to
 collapse, so `data-navtree` is simply not set, and the reader's stored `«` state survives
 for when they switch back.

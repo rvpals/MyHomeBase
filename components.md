@@ -95,6 +95,7 @@ pattern instead of inventing one.
 | [`TickerLogo`](#tickerlogo) | A stock/ETF logo, or a monogram fallback | [src/components/ticker-logo.tsx](src/components/ticker-logo.tsx) | yes |
 | [`FileDropzone`](#filedropzone) | Drag-and-drop file picker — **one** file | [src/components/file-dropzone.tsx](src/components/file-dropzone.tsx) | yes |
 | [`MultiFileDropzone`](#multifiledropzone) | **Several files at once** — drop zone plus the chosen list, each removable | [src/components/multi-file-dropzone.tsx](src/components/multi-file-dropzone.tsx) | yes |
+| [`FileUploaderZone`](#fileuploaderzone) | **An attachment editor** — the files a record already holds, above a dropzone for new ones | [src/components/file-uploader-zone.tsx](src/components/file-uploader-zone.tsx) | yes |
 | [`CsvMappingTable`](#csvmappingtable) | Map a CSV's columns to target fields | [src/components/csv-mapping-table.tsx](src/components/csv-mapping-table.tsx) | yes |
 | [`CsvImportPanel`](#csvimportpanel) | **A whole CSV import screen** — drop, map, save the mapping, import | [src/components/csv-import-panel.tsx](src/components/csv-import-panel.tsx) | yes |
 | [`FilterCriteriaRow`](#filtercriteriarow) | **One line of a filter builder** — column, operator, value(s), remove | [src/components/filter-criteria-row.tsx](src/components/filter-criteria-row.tsx) | yes |
@@ -422,6 +423,7 @@ and an optional "Show SQL" re-run dialog. Do not build another table.
 | `render` | `(row: T) => ReactNode` | The cell UI. |
 | `value?` | `(row: T) => CellValue` | **The important one.** Raw primitive used for sort, search, filter, CSV export and the footer total. A column participates in those *only* when this is supplied. |
 | `sortable?` | `boolean` | Set `false` to keep `value` but disable sorting. |
+| `hint?` | `string` | What the column *means* — a unit, a sign convention, where the value comes from. Renders as a [`Comments`](#comments) mark beside the column name on the wide header and in both compact layouts; the record modal prints it inline instead, since `Comments` opens its own `Modal`. For meaning, not formatting: *"a charge is positive, a refund negative"* earns one; *"currency"* does not. |
 | `className?` | `string` | Applied to both header and body cells. |
 | `aggregate?` | `"sum" \| "avg" \| "min" \| "max" \| "count"` | Show a rollup in the table footer. Requires `value`. |
 | `formatAggregate?` | `(result: number) => ReactNode` | Formats that total, e.g. `(cents) => formatCents(cents)`. Defaults to `toLocaleString()`. |
@@ -451,7 +453,7 @@ and an optional "Show SQL" re-run dialog. Do not build another table.
 | `defaultDensity?` | `Density` | `"normal"` | |
 | `stickyHeader?` | `boolean` | `true` | |
 | `maxHeight?` | `string` | `"70vh"` | Pass `""` to remove the cap. |
-| `enableSelection?` | `boolean` | `false` | Adds a checkbox column. Forwarded to the compact layout, so bulk actions survive below 1024px. |
+| `enableSelection?` | `boolean` | `false` | Adds a checkbox column **and a "Select" toggle** in the toolbar. Forwarded to the compact layout, so bulk actions survive below 1024px. |
 | `renderSelectionActions?` | `(selectedRows: T[], clearSelection: () => void) => ReactNode` | — | Bulk actions in the toolbar. Select-all covers the whole filtered set. |
 | `enableRecordView?` | `boolean` | `true` | Per-row button opening the whole record in a `Modal`. |
 | `recordViewTitle?` | `(row: T) => string` | `"Record"` | Heading for that modal. |
@@ -545,6 +547,38 @@ Expense transactions grid
 `renderSelectionActions` gets the selected rows plus a `clearSelection` callback — keep
 hold of that callback if the action opens a dialog, and call it once the write lands so
 the ticks don't outlive the rows they referred to.
+
+**The "Select" toggle makes the whole row a hit target.** It appears whenever
+`enableSelection` is set — no call-site change, no opt-out prop — in the toolbar when
+there is one, and in the standalone selection strip when `showToolbar={false}` means
+there isn't (Admin → Security → Visits is the grid that shape exists for). It carries a
+[`Comments`](#comments) mark beside it carrying the explanation below in the user's own
+words ([data-grid-select-help.tsx](src/components/data-grid-select-help.tsx), a leaf
+module so both layouts can show the same copy without turning the grids' types-only
+import cycle into a runtime one). While it's on,
+a click anywhere on a row that isn't an interactive control ticks that row's checkbox,
+which is what ticking twenty rows should cost instead of twenty trips to a 13px box at
+the left edge. Clicking it again restores normal rows **and keeps the ticks** — collect a
+selection, switch back, read the table with it still held.
+
+Three things about it are deliberate:
+
+- **It suspends `onRowClick` while on.** Seven grids pass both, and on those a row click
+  opens the record. Rather than hide the toggle there, the mode wins for as long as it's
+  on; the row-opening click comes back when it's off. Row buttons (Edit, Delete, Create
+  Rule), links and form controls keep working either way — `isInteractiveTarget` walks up
+  from the click target to the row, because the click usually lands on a `<span>` or an
+  `<svg>` *inside* the button rather than the button itself.
+- **Clearing the selection turns it off**, including via the `clearSelection` a caller's
+  bulk action is handed. The mode exists to collect a set; once that set is gone, leaving
+  it on would quietly keep swallowing row clicks.
+- **It is not persisted.** The grid saves column layout and density to localStorage; this
+  is a transient mode like the open filter row, and a grid that silently ate row clicks
+  after a reload would read as broken.
+
+The compact layout carries the same toggle in its selection bar, where tapping a card
+body ticks it — the aiming problem is worse on a touch screen, since the checkbox there
+is a 16px box in a card corner.
 
 **Selection needs real row identity, and `getRowKey` is where that bites.** A grid over
 rows the caller *owns* (a transaction, a user) has an `id` to hand back. A grid over
@@ -1673,6 +1707,8 @@ const tabs: TabItem[] = [
 [stock-dashboard-view.tsx](src/app/(protected)/modules/[slug]/stock-dashboard-view.tsx)
 *(the Portfolio Summary card's Summary / History / Playback split — the headline total
 sits above the strip, so it stays readable on all three tabs)*;
+the Clips home screen's Most Recent / All clips split, seeded from `?tab=`
+[clips-main-view.tsx](<src/app/(protected)/modules/[slug]/clips-main-view.tsx>);
 the About screen's Application / Change History split
 [admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx); the Expense module's
 Charts and Analysis Main / Monthly comparison / Expense type By Month split
@@ -1776,7 +1812,9 @@ genuinely are the same height; use this when they are not.
 | `deal` | `(items: T[], count: number) => T[][]` | — | Splits them into columns. Must return exactly `count` arrays. |
 | `renderItem` | `(item: T) => ReactNode` | — | Draws one card. |
 | `itemKey` | `(item: T) => string \| number` | — | A stable key per item. |
-| `columns` | `MasonryColumns` — `{ compact, wide }` | `{ compact: 1, wide: 3 }` | Columns below and above 1024px. `wide` supports 1–5, `compact` 1–2. |
+| `columns` | `MasonryColumns` — `{ compact, wide }` | `{ compact: 1, wide: 3 }` | Columns below and above 1024px. `wide` supports 1–5, `compact` 1–2. Ignored above 1024px when `minColumnWidth` is set. |
+| `minColumnWidth?` | `number` (px) | — | **Fixed-width mode.** Fits as many columns of at least this width as the space allows, instead of a fixed count. Below 1024px the board is always `columns.compact`. |
+| `maxColumns?` | `number` | `6` | Ceiling for `minColumnWidth` mode. Ignored without it. |
 | `className?` | `string` | | |
 
 ```tsx
@@ -1800,6 +1838,19 @@ The estimate is computed from data, on the server, so the board is correct on it
 first paint. Measuring real rendered heights would be exact but needs a layout pass,
 a re-deal on resize, and cards visibly jumping between columns after paint.
 
+### Fixed columns or fixed width
+
+Without `minColumnWidth` the board draws `columns.wide` columns that stretch to fill
+— three fat cards on a 4K monitor. With it, a column is a fixed size and a wider
+window shows *more* cards rather than bigger ones; Clips uses 280px on both its
+boards so a card is the same size on either screen.
+
+That mode measures its own width with a `ResizeObserver` and derives the count from
+it, because `repeat(auto-fill, minmax(…))` never reports how many columns it made and
+`deal` has to know the count to balance by height. CSS can do fixed-width columns or
+balanced heights, not both. The server render and the first paint fall back to the
+`columns` classes, so nothing flashes empty.
+
 ### Why not CSS `columns`
 
 CSS multi-column fills column one to the bottom, then column two — so eight cards
@@ -1816,10 +1867,9 @@ column's order is preserved, and re-dealing would mean reading the viewport duri
 render, which `design.md` reserves for when the small screen needs a genuinely
 *different* component rather than a restyled one.
 
-**Used by:** Clips — the board mode of All Clips
-[clips-board-view.tsx](<src/app/(protected)/modules/[slug]/clips-board-view.tsx>) and
-the Clips home screen's "Most recent"
-[clips-main-view.tsx](<src/app/(protected)/modules/[slug]/clips-main-view.tsx>).
+**Used by:** Clips — the board mode of the home screen, under both its tabs
+[clips-board-view.tsx](<src/app/(protected)/modules/[slug]/clips-board-view.tsx>),
+drawn from [clips-main-view.tsx](<src/app/(protected)/modules/[slug]/clips-main-view.tsx>).
 
 ---
 
@@ -3195,7 +3245,9 @@ A dropdown whose options carry a small image beside the label. **This is why it
 exists:** neither a native `<select>` nor a `<datalist>` can render an image in its
 options, so any picker that needs one uses this instead of hand-rolling a combobox.
 By default it's a *combobox*, not a strict picker — typing filters the list and also
-commits what you type, so a value that isn't in the list is still allowed.
+commits what you type, so a value that isn't in the list is still allowed. That is easy
+to miss when the field looks like a dropdown, so pass `createLabel` to surface it as an
+explicit `+ Create "…"` row.
 
 - **Source:** [src/components/icon-select.tsx](src/components/icon-select.tsx)
 - **Import:** `import { IconSelect, type IconSelectOption } from "@/components/icon-select";`
@@ -3207,6 +3259,7 @@ commits what you type, so a value that isn't in the list is still allowed.
 | `value` | `string` | Matched against `options` to show the label + leading icon. |
 | `onChange` | `(value: string) => void` | Raises the value itself, not a change event — it can't take a plain input's handler. |
 | `allowFreeText?` | `boolean` | Default `true` (typing filters *and* commits). `false` makes it a strict picker: typing only filters. |
+| `createLabel?` | `string` | The word for what gets made, e.g. `"category"`. Adds a trailing `+ Create "…"` row when the typed text matches no option's label (case-insensitively). Ignored unless `allowFreeText`. It only *advertises* the free-text behaviour — committing the value is all it does, so the caller still has to persist the new name. |
 | `clearLabel?` | `string` | Adds a first row that sets `""`, e.g. `"— uncategorised —"`. Omit when empty isn't a real choice. |
 | `placeholder?` | `string` | |
 | `disabled?` | `boolean` | |
@@ -6197,7 +6250,53 @@ Like `FileDropzone` it never reads a file's contents; the caller decides how.
 | `label?` | `string` | Prompt inside the zone. |
 | `disabled?` | `boolean` | |
 | `dedupeByName?` | `boolean` | Default `true`. Refuses a file whose name is already listed — dropping one twice would import its rows twice under one source name. |
+| `size?` | `"normal" \| "tall"` | Default `"normal"` (`min-h-24`). `"tall"` (`min-h-48`) is for a screen where dropping files **is** the task and the zone is a main target rather than one field of a form — the Document Library's editor, where it fills its own column. Opt-in, so the import screens keep the height they were designed around. |
 | `className?` | `string` | Merged last. |
+
+## FileUploaderZone
+
+An attachment editor: the files a record **already holds**, above a dropzone for the
+ones being added.
+
+A wrapper around [`MultiFileDropzone`](#multifiledropzone) rather than a replacement for
+it. That component owns the *pending* list — drop some, spot a wrong one, remove it,
+drop more — and is already the picker the HSA editor and CSV import use. What it cannot
+know about is the other half of an edit: files that are already stored somewhere, which
+have an id, a size and a download link rather than a `File` object, and whose removal is
+a server round-trip rather than a splice.
+
+So this composes the two halves into the thing an editor actually needs, and leaves
+`MultiFileDropzone` doing exactly what it already did. Reach for that one when nothing
+is stored yet (an import screen); reach for this one when editing a record that already
+has files.
+
+Like both dropzones it **never reads a file's contents and never uploads anything** —
+the caller decides what a removal means and when an upload happens.
+
+**Used by:** Documents → New / Edit document
+([documents-editor-view.tsx](src/app/(protected)/modules/[slug]/documents-editor-view.tsx)),
+where the pending files are posted to a route handler after the document is saved.
+
+- **Source:** [src/components/file-uploader-zone.tsx](src/components/file-uploader-zone.tsx)
+- **Import:** `import { FileUploaderZone, type AttachedFile } from "@/components/file-uploader-zone";`
+
+| Prop | Type | Notes |
+|---|---|---|
+| `attached` | `AttachedFile[]` | `{ id, name, byteSize, href }` — files already on the server. Empty renders no list at all rather than an empty box. |
+| `onRemoveAttached` | `(id: number) => void` | Intent only. The caller confirms and talks to the server. |
+| `pending` | `File[]` | The not-yet-uploaded list. **Controlled** — forwarded straight to `MultiFileDropzone`. |
+| `onPendingChange` | `(files: File[]) => void` | |
+| `maxFiles?` | `number` | Counts `attached` **and** `pending`. At the limit the dropzone disables itself and says so. |
+| `maxFileBytes?` | `number` | Names any pending file that is over it, in red, before the upload is attempted. |
+| `accept?` / `label?` / `disabled?` | `string` / `string` / `boolean` | Forwarded. |
+| `size?` | `"normal" \| "tall"` | Forwarded to [`MultiFileDropzone`](#multifiledropzone). Default `"normal"`. |
+| `className?` | `string` | Merged last. |
+
+Both limits are a **courtesy, not the boundary** — the module's zod schema enforces them
+server-side, because a client check is advice and a boundary check is the rule.
+
+A stored file is rendered as a real `<a>`, not a button: opening one is navigation, and
+a reader expects middle-click and "save link as" to work.
 
 ## PersonalToolbars
 

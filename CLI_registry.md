@@ -100,7 +100,8 @@ alongside its row here.
 | [`recipes`](#recipes) | read (writes with `--add`/`--made`/`--delete`) | no |
 | [`hsa`](#hsa) | read (writes with `--add`/`--reimburse`/`--delete`/the card flags) | no |
 | [`todo`](#todo) | read (writes with `--add`/`--done`/`--delete`/the list flags) | no |
-| [`clips`](#clips) | read (writes with `add`/`pin`/`colour`/`items`/`tick`/`link`/`delete`) | no |
+| [`clips`](#clips) | read (writes with `add`/`pin`/`colour`/`items`/`tick`/`link`/`delete`/`restore`; destroys with `delete --forever`/`purge`/`empty-bin`) | no |
+| [`list-documents`](#list-documents) | read (writes a file with `--zip`) | no |
 | [`menu-items`](#menu-items) | read (writes with `set`/`reset`) | no |
 | [`toolbars`](#toolbars) | read (writes with `add`/`set`/`delete`/the item flags) | no |
 
@@ -1287,6 +1288,37 @@ one question per line.
 **Exit code** — 1 for an unknown class, a non-numeric `--exam`, or an exam id that
 does not exist.
 
+## `list-documents`
+
+Reads the Document Library from the terminal — the same use-cases the web app calls,
+through the same `index.ts` and the same `deps`.
+
+```
+npm run cli -- list-documents
+npm run cli -- list-documents --search lease
+npm run cli -- list-documents --category Insurance --tag car
+npm run cli -- list-documents --id 17
+npm run cli -- list-documents --id 17 --zip ./lease.zip
+```
+
+Without `--id` it prints the list: one line per document with its attachment count and
+total size, and the limits in force at the end. The three filters are the same ones the
+home screen's URL carries, parsed with the module's own `documentFilterSchema`.
+
+`--id` prints one document in full — its taxonomy, and every attachment with the path it
+occupies on the share. That path is the thing worth having from a terminal: it is how
+you check whether a file the UI reports as missing is actually gone.
+
+`--zip` writes that document's attachments to a single archive, the same bytes the
+**Download all** button streams to a browser. A file missing from the share is **named
+and skipped**, not fatal — exactly as the route behaves.
+
+When no document folder is set the list still works and says so: documents can be filed
+before the folder exists, only attaching is refused.
+
+Adding this command required **no change to `src/lib/documents`**, which is the property
+`ARCHITECTURE.md` asks of every use-case.
+
 ## `clips`
 
 Reads and writes the Clips module from the terminal — the same use-cases the web
@@ -1308,13 +1340,32 @@ npm run cli -- clips tick --item 7
 npm run cli -- clips untick --item 7
 npm run cli -- clips link --id 3 --entry 42
 npm run cli -- clips delete --id 3
+npm run cli -- clips delete --id 3 --forever
+npm run cli -- clips recycled
+npm run cli -- clips restore --recycled 5
+npm run cli -- clips purge --recycled 5
+npm run cli -- clips empty-bin
 ```
 
 **Input** — `list` takes `--search`, `--category` and `--tag` (each optional;
 category and tag are comma-separated and AND together). `show --id <n>` needs
 `--password` when the clip is sealed. `add` takes `--title`, `--content` (HTML),
 `--categories`, `--tags` and `--colour`. `link --id <n> --entry <n>` attaches a clip
-to a journal entry. `delete --id <n>` is irreversible — there is no recycle bin here.
+to a journal entry.
+
+`delete --id <n>` **moves the clip to the recycle bin** (migration 0161), matching
+the web app's Delete button. `--forever` destroys it in one step instead, skipping
+the bin — deliberately a flag you have to type.
+
+`recycled` lists the bin, newest deleted first, with `--chars <n>` bounding the
+excerpt (default 120). Each line leads with the **bin id** (`#5`), which is what
+`restore --recycled <n>` and `purge --recycled <n>` take — *not* the clip's own id,
+which is printed after it. The same clip can sit in the bin twice, and only the bin
+id tells those copies apart. `empty-bin` purges everything and reports the count.
+
+A restore puts the clip back at its original id when that id is still free, which
+is what keeps an existing journal link pointing at the right clip; otherwise it
+comes back under a new id and the link is left pointing at nothing.
 
 `pin`/`unpin --id <n>` move a clip in and out of the board's pinned band.
 `colour --id <n> --colour <key>` takes one of `rose`, `amber`, `sage`, `ocean`,
@@ -1335,7 +1386,9 @@ flag taking a base64 blob on argv would be unusable.
 
 **Calls** — `listClips`, `getClip`, `openClip`, `createClip`, `setClipPinned`,
 `setClipColor`, `listClipItems`, `saveClipItems`, `toggleClipItem`, `linkClip`,
-`deleteClip`, `clipHtmlToText` on `deps.clipsRepo`.
+`recycleClips`, `listRecycledClips`, `restoreRecycledClips`,
+`deleteRecycledClipsForever`, `emptyClipsRecycleBin`, `deleteClip`,
+`clipHtmlToText` on `deps.clipsRepo`.
 
 **Output** — `list` prints one line per clip (id, title, and bracketed marks for
 `locked`, image and link counts), with the excerpt and taxonomy indented beneath.

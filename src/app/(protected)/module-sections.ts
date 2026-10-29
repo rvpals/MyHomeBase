@@ -62,6 +62,12 @@ import {
   clipsSectionHref,
 } from "./modules/[slug]/clips-sections";
 import {
+  DOCUMENTS_SECTIONS,
+  DOCUMENTS_SECTION_ICONS,
+  DOCUMENTS_SECTION_INFO,
+  documentsSectionHref,
+} from "./modules/[slug]/documents-sections";
+import {
   JOURNAL_CONFIGURATION_SECTIONS,
   JOURNAL_DATA_MANAGEMENT_SECTIONS,
   JOURNAL_SECTIONS,
@@ -198,6 +204,15 @@ const SECTION_BUILDERS: Record<string, () => TreeSection[]> = {
   // keep, so there are no group labels to flatten.
   clips: () =>
     toSections(CLIPS_SECTIONS, CLIPS_SECTION_INFO, CLIPS_SECTION_ICONS, clipsSectionHref),
+  // Flat as well: three sections. `new` and `edit` are deliberately absent — they are
+  // routes the editor opens at, not destinations, so the tree never offers them.
+  documents: () =>
+    toSections(
+      DOCUMENTS_SECTIONS,
+      DOCUMENTS_SECTION_INFO,
+      DOCUMENTS_SECTION_ICONS,
+      documentsSectionHref,
+    ),
 };
 
 /**

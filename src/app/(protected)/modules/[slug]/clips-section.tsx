@@ -1,11 +1,17 @@
 import { CollapsibleCard } from "@/components/collapsible-card";
-import { getClipsSettings, listClipCategories, listClips, listClipTags } from "@/lib/clips";
+import {
+  getClipsSettings,
+  listClipCategories,
+  listClips,
+  listClipTags,
+  listRecycledClips,
+} from "@/lib/clips";
 import { deps } from "@/lib/wiring";
-import { ClipsAllView } from "./clips-all-view";
 import { ClipsConfigurationView } from "./clips-configuration-view";
 import { ClipsInstructions } from "./clips-instructions";
 import { ClipsMainView } from "./clips-main-view";
 import { ClipsMetadataView } from "./clips-metadata-view";
+import { ClipsRecycledView } from "./clips-recycled-view";
 import { ClipsShell } from "./clips-shell";
 import { CLIPS_SECTION_INFO, type ClipsSection as ClipsSectionName } from "./clips-sections";
 
@@ -19,6 +25,7 @@ export async function ClipsSection({
   category,
   tag,
   isAdmin = false,
+  requestedTab,
 }: {
   section: ClipsSectionName;
   /** The list's filters, parsed from search params by the route so they survive a
@@ -28,6 +35,8 @@ export async function ClipsSection({
   tag?: string;
   /** Whether this reader may change the module-wide settings. */
   isAdmin?: boolean;
+  /** From `?tab=` — which of the home screen's two tabs opens. */
+  requestedTab?: string;
 }) {
   const info = CLIPS_SECTION_INFO[section];
 
@@ -38,7 +47,7 @@ export async function ClipsSection({
   // Loaded only for the section that renders it. `listClips` projects away the
   // bodies and never touches the image blobs, so even the unfiltered list is cheap.
   const clips =
-    section === "all" || section === "main"
+    section === "main"
       ? listClips(deps.clipsRepo, {
           search: search ?? "",
           categories: category ? [category] : [],
@@ -49,9 +58,14 @@ export async function ClipsSection({
 
   // Both lists feed the filter chips AND the editor's pick-or-type boxes, from one
   // read — so the two can never offer different vocabularies.
+  // The bin, read only for its own section. It cuts its excerpts to the same
+  // configured length the list and the board use, from the same settings read.
+  const recycled =
+    section === "recycled" ? listRecycledClips(deps.clipsRepo, settings.excerptChars) : [];
+
   const categories =
-    section === "all" || section === "metadata" ? listClipCategories(deps.clipsRepo) : [];
-  const tags = section === "all" || section === "metadata" ? listClipTags(deps.clipsRepo) : [];
+    section === "main" || section === "metadata" ? listClipCategories(deps.clipsRepo) : [];
+  const tags = section === "main" || section === "metadata" ? listClipTags(deps.clipsRepo) : [];
 
   return (
     // The two-tier shell: the navigation tree on a wide screen, the shared bottom
@@ -69,20 +83,21 @@ export async function ClipsSection({
         </CollapsibleCard>
 
         <div className="mt-4">
-          {section === "main" && <ClipsMainView clips={clips.slice(0, 6)} total={clips.length} />}
-          {section === "all" && (
-            <ClipsAllView
+          {section === "main" && (
+            <ClipsMainView
               clips={clips}
               categories={categories}
               tags={tags}
               search={search ?? ""}
               category={category ?? ""}
               tag={tag ?? ""}
+              initialTab={requestedTab}
             />
           )}
           {section === "metadata" && (
             <ClipsMetadataView categories={categories} tags={tags} />
           )}
+          {section === "recycled" && <ClipsRecycledView clips={recycled} />}
           {section === "configuration" && (
             <ClipsConfigurationView excerptChars={settings.excerptChars} canEdit={isAdmin} />
           )}

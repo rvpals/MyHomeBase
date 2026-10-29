@@ -43,6 +43,7 @@ import {
   formatCents,
   todayIso,
   vendorIconFor,
+  vendorIconSelectOptions,
   vendorIconUrlsByName,
 } from "./expense-shared";
 
@@ -113,11 +114,13 @@ const emptyForm = (accountId: number) => ({
 function TransactionForm({
   accounts,
   categories,
+  vendors,
   editing,
   onDone,
 }: {
   accounts: CreditCardAccount[];
   categories: ExpenseCategory[];
+  vendors: ExpenseVendor[];
   editing?: ExpenseTransaction;
   onDone: () => void;
 }) {
@@ -249,11 +252,20 @@ function TransactionForm({
 
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-ink">Vendor</span>
-          <input
+          {/*
+            Typing filters the saved vendors so an existing one takes two
+            keystrokes, but free text still commits: the saved list is only what
+            has been curated under Meta Data, and most vendors on a statement
+            were never saved. The list is the shortcut, not the constraint.
+          */}
+          <IconSelect
+            options={vendorIconSelectOptions(vendors)}
             value={form.vendor}
-            onChange={(event) => update("vendor", event.target.value)}
-            placeholder="Tidy name, e.g. TGI Friday"
-            className={INPUT_CLASS}
+            onChange={(vendor) => update("vendor", vendor)}
+            createLabel="vendor"
+            clearLabel="— no vendor —"
+            placeholder="Pick one, or type a new name"
+            ariaLabel="Vendor"
           />
         </label>
         <label className="block text-sm">
@@ -262,8 +274,11 @@ function TransactionForm({
             options={categoryIconSelectOptions(categories)}
             value={form.categoryName}
             onChange={(categoryName) => update("categoryName", categoryName)}
+            // Saving registers a name that isn't on the list yet, so typing one
+            // here is how a category gets created. The row just makes that visible.
+            createLabel="category"
             clearLabel={`— ${UNCATEGORISED_LABEL} —`}
-            placeholder="Leave blank to categorise later"
+            placeholder="Pick one, or type a new name"
             ariaLabel="Category"
           />
         </label>
@@ -335,12 +350,14 @@ function BulkEditDialog({
   selected,
   accounts,
   categories,
+  vendors,
   onCancel,
   onApplied,
 }: {
   selected: ExpenseTransaction[];
   accounts: CreditCardAccount[];
   categories: ExpenseCategory[];
+  vendors: ExpenseVendor[];
   onCancel: () => void;
   onApplied: (count: number) => void;
 }) {
@@ -451,10 +468,28 @@ function BulkEditDialog({
           options={categoryIconSelectOptions(categories)}
           value={values.categoryName}
           onChange={(categoryName) => updateValue("categoryName", categoryName)}
+          createLabel="category"
           clearLabel="— clear the category —"
           disabled={!isEnabled}
           placeholder={isEnabled ? "Leave blank to clear this field" : ""}
           ariaLabel="Category"
+          className="disabled:opacity-40"
+        />
+      );
+    }
+    if (field === "vendor") {
+      // Same as the category above: IconSelect raises the value itself, so it
+      // can't take `shared`'s change event.
+      return (
+        <IconSelect
+          options={vendorIconSelectOptions(vendors)}
+          value={values.vendor}
+          onChange={(vendor) => updateValue("vendor", vendor)}
+          createLabel="vendor"
+          clearLabel="— clear the vendor —"
+          disabled={!isEnabled}
+          placeholder={isEnabled ? "Leave blank to clear this field" : ""}
+          ariaLabel="Vendor"
           className="disabled:opacity-40"
         />
       );
@@ -778,12 +813,16 @@ export function ExpenseTransactionsView({
     {
       key: "transactionDate",
       header: "Date",
+      hint:
+        "The date the purchase happened, as the statement reports it. Sorting, filters and the monthly charts all key off this one, not Posted.",
       value: (row) => row.transactionDate,
       render: (row) => row.transactionDate,
     },
     {
       key: "postingDate",
       header: "Posted",
+      hint:
+        "When the charge settled on the card. Often a day or two after Date, and blank when the import did not supply it. Deliberately ignored when skipping already-imported rows.",
       value: (row) => row.postingDate,
       // Blank is normal — plenty of statements omit it — so say so rather than
       // leaving a cell that looks like a rendering fault.
@@ -792,12 +831,16 @@ export function ExpenseTransactionsView({
     {
       key: "description",
       header: "Description",
+      hint:
+        "The raw text from the statement. Post-import rules match against this to set the vendor and category, so editing it can change what future rules do.",
       value: (row) => row.transactionDescription,
       render: (row) => row.transactionDescription,
     },
     {
       key: "vendor",
       header: "Vendor",
+      hint:
+        "Who was paid. Usually filled in by a post-import rule from the Description rather than typed.",
       value: (row) => row.vendor,
       render: (row) =>
         row.vendor === "" ? (
@@ -812,6 +855,8 @@ export function ExpenseTransactionsView({
     {
       key: "category",
       header: "Category",
+      hint:
+        "What the spend counts as. Drives the category totals and the charts; blank means uncategorised and it still counts toward the overall total.",
       value: (row) => row.categoryName,
       render: (row) =>
         row.categoryName === "" ? (
@@ -828,6 +873,8 @@ export function ExpenseTransactionsView({
     {
       key: "amount",
       header: "Amount",
+      hint:
+        "A charge is POSITIVE, a refund or credit NEGATIVE. Totals are net sums, so a refund subtracts — and a wrong sign moves a total by twice the amount. Use Flip sign / Make + / Make − on a selection to correct it.",
       value: (row) => row.amountCents,
       render: (row) => (
         <span className={row.amountCents < 0 ? "text-emerald-400" : "text-ink"}>
@@ -840,10 +887,19 @@ export function ExpenseTransactionsView({
       aggregate: "sum",
       formatAggregate: (cents) => formatCents(cents),
     },
-    { key: "status", header: "Status", value: (row) => row.status, render: (row) => row.status },
+    {
+      key: "status",
+      header: "Status",
+      hint:
+        "Where the row sits in the reconciliation workflow: new, reconciled or irreconcilable. Separate from Processed, which is about the rules engine.",
+      value: (row) => row.status,
+      render: (row) => row.status,
+    },
     {
       key: "processed",
       header: "Processed",
+      hint:
+        "Whether the post-import rules have been run over this row yet. Not a payment or reconciliation state — that is Status.",
       value: (row) => (row.processed ? "yes" : "no"),
       render: (row) =>
         row.processed ? (
@@ -855,6 +911,8 @@ export function ExpenseTransactionsView({
     {
       key: "account",
       header: "Account",
+      hint:
+        "Which credit card the transaction belongs to. Part of what makes a row count as already imported.",
       value: (row) => accountName(row.transactionAccountId),
       render: (row) => {
         const account = accounts.find((candidate) => candidate.id === row.transactionAccountId);
@@ -866,7 +924,13 @@ export function ExpenseTransactionsView({
         );
       },
     },
-    { key: "note", header: "Note", value: (row) => row.note, render: (row) => row.note },
+    {
+      key: "note",
+      header: "Note",
+      hint: "Your own free text. Never set by an import or a rule, so it is safe from a re-import.",
+      value: (row) => row.note,
+      render: (row) => row.note,
+    },
   ];
 
   // The rollup is pure and the row list is stable between renders, so this only
@@ -964,6 +1028,7 @@ export function ExpenseTransactionsView({
             key={editing?.id ?? "new"}
             accounts={accounts}
             categories={categories}
+            vendors={vendors}
             editing={editing}
             onDone={() => {
               setEditing(undefined);
@@ -1038,6 +1103,7 @@ export function ExpenseTransactionsView({
           selected={bulkEdit.rows}
           accounts={accounts}
           categories={categories}
+          vendors={vendors}
           onCancel={() => setBulkEdit(undefined)}
           onApplied={(count) => {
             setBulkResult(`Updated ${count} transaction(s).`);

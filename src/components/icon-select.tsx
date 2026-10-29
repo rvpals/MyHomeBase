@@ -31,6 +31,16 @@ export interface IconSelectProps {
    */
   allowFreeText?: boolean;
   /**
+   * Offer a trailing `+ Create "…"` row when what's typed matches no option.
+   * Off by default, and ignored unless `allowFreeText` — a strict picker has
+   * nothing to create. It only makes the existing behaviour visible: free text
+   * already commits as you type, so this row says so rather than adding power.
+   *
+   * The word for what gets made, e.g. "category". Whether anything is actually
+   * persisted is the caller's business — this component only raises the value.
+   */
+  createLabel?: string;
+  /**
    * When set, adds a first row that clears the value to `""` — e.g.
    * "— uncategorised —". Omit it when empty isn't a meaningful choice.
    */
@@ -45,6 +55,9 @@ export interface IconSelectProps {
   className?: string;
 }
 
+/** A row in the list: either an option to pick, or the create action. */
+type Row = IconSelectOption & { isCreate?: boolean };
+
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
@@ -58,6 +71,7 @@ export function IconSelect({
   value,
   onChange,
   allowFreeText = true,
+  createLabel,
   clearLabel,
   placeholder,
   disabled = false,
@@ -78,10 +92,23 @@ export function IconSelect({
       ? options
       : options.filter((option) => option.label.toLowerCase().includes(query.toLowerCase()));
 
+  // The create row appears only for text that is genuinely new: non-empty, and
+  // matching no option's label. Compared case-insensitively against the *whole*
+  // option list rather than `filtered`, so a name that differs only in case
+  // can't be offered as a creation and quietly make a near-duplicate.
+  const typed = (query ?? "").trim();
+  const isNewName =
+    createLabel !== undefined &&
+    allowFreeText &&
+    typed !== "" &&
+    !options.some((option) => option.label.toLowerCase() === typed.toLowerCase());
+
   // With a clear row present it's index 0 and the options shift down by one, so
   // rows are addressed through one list rather than two sets of index maths.
-  const rows: IconSelectOption[] =
-    clearLabel === undefined ? filtered : [{ value: "", label: clearLabel }, ...filtered];
+  // The create row, when shown, is always last.
+  const rows: Row[] =
+    clearLabel === undefined ? [...filtered] : [{ value: "", label: clearLabel }, ...filtered];
+  if (isNewName) rows.push({ value: typed, label: typed, isCreate: true });
 
   const displayText = query ?? (selected?.label ?? value);
 
@@ -98,7 +125,7 @@ export function IconSelect({
     setHighlightedIndex(current >= 0 ? current : 0);
   }
 
-  function commit(option: IconSelectOption) {
+  function commit(option: Row) {
     onChange(option.value);
     close();
   }
@@ -141,10 +168,14 @@ export function IconSelect({
         readOnly={!allowFreeText}
         onChange={(event) => {
           if (!allowFreeText) return;
-          setQuery(event.target.value);
-          onChange(event.target.value);
+          const text = event.target.value;
+          setQuery(text);
+          onChange(text);
           setIsOpen(true);
-          setHighlightedIndex(0);
+          // Skip the clear row when there's something typed: Enter on a freshly
+          // typed name must keep that name, not blank the field. With nothing
+          // typed every row is a real option, so row 0 is the right landing spot.
+          setHighlightedIndex(clearLabel !== undefined && text.trim() !== "" ? 1 : 0);
         }}
         onFocus={open}
         onClick={open}
@@ -192,7 +223,7 @@ export function IconSelect({
               const isHighlighted = index === highlightedIndex;
               const isSelected = row.value === value;
               return (
-                <li key={`${row.value}-${index}`}>
+                <li key={`${row.isCreate ? "create" : "option"}-${row.value}-${index}`}>
                   <button
                     type="button"
                     role="option"
@@ -206,8 +237,22 @@ export function IconSelect({
                       isHighlighted ? "bg-brass-soft text-brass-dark" : "text-ink"
                     }`}
                   >
-                    <OptionIcon iconUrl={row.iconUrl} label={row.label} />
-                    <span className={row.value === "" ? "text-muted" : ""}>{row.label}</span>
+                    {row.isCreate ? (
+                      <>
+                        <span aria-hidden="true" className="text-muted">
+                          +
+                        </span>
+                        <span>
+                          Create {createLabel}{" "}
+                          <span className="font-semibold">&ldquo;{row.label}&rdquo;</span>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <OptionIcon iconUrl={row.iconUrl} label={row.label} />
+                        <span className={row.value === "" ? "text-muted" : ""}>{row.label}</span>
+                      </>
+                    )}
                   </button>
                 </li>
               );

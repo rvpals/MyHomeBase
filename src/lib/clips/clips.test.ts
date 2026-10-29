@@ -39,6 +39,7 @@ import type {
   ClipLinkModule,
   ClipSummary,
   ClipTaxonomyItem,
+  RecycledClip,
 } from "./types";
 import { CLIP_MAX_IMAGES, type ClipCardColor } from "./schema";
 
@@ -47,7 +48,7 @@ import { CLIP_MAX_IMAGES, type ClipCardColor } from "./schema";
  * ARCHITECTURE.md — it is readable, reusable across these tests, and does not
  * couple them to call order.
  */
-class FakeClipsRepository implements ClipsRepository {
+export class FakeClipsRepository implements ClipsRepository {
   clips = new Map<number, Clip>();
   images: ClipImage[] = [];
   links: ClipLink[] = [];
@@ -151,6 +152,93 @@ class FakeClipsRepository implements ClipsRepository {
     this.images = this.images.filter((i) => i.clipId !== id);
     this.links = this.links.filter((l) => l.clipId !== id);
     this.items = this.items.filter((i) => i.clipId !== id);
+  }
+
+  // Recycle bin (migration 0161). Modelled rather than stubbed, because
+  // `recycle.test.ts` drives round trips through this same fake — a restore has
+  // to actually put back what the recycle took, or the tests prove nothing.
+
+  /** The bin: the clip as it was, plus its children and the bin's own key. */
+  recycled: Array<{
+    recycledId: number;
+    clip: Clip;
+    images: ClipImage[];
+    links: ClipLink[];
+    items: ClipItem[];
+    deletedAt: string;
+  }> = [];
+  private nextRecycledId = 1;
+
+  recycleClips(ids: number[]): number {
+    let moved = 0;
+    for (const id of ids) {
+      const clip = this.clips.get(id);
+      // An id already gone is skipped, not an error — the count stays honest.
+      if (!clip) continue;
+      this.recycled.push({
+        recycledId: this.nextRecycledId++,
+        clip,
+        images: this.images.filter((i) => i.clipId === id),
+        links: this.links.filter((l) => l.clipId === id),
+        items: this.items.filter((i) => i.clipId === id),
+        deletedAt: this.stamp,
+      });
+      this.deleteClip(id);
+      moved += 1;
+    }
+    return moved;
+  }
+
+  listRecycledClips(excerptChars: number): RecycledClip[] {
+    return [...this.recycled]
+      .reverse() // newest deleted first
+      .map((row) => ({
+        ...toClipSummary(row.clip, row.images.length, row.links.length, row.items, excerptChars),
+        recycledId: row.recycledId,
+        deletedAt: row.deletedAt,
+      }));
+  }
+
+  restoreRecycledClips(recycledIds: number[]): number {
+    let restored = 0;
+    for (const recycledId of recycledIds) {
+      const index = this.recycled.findIndex((r) => r.recycledId === recycledId);
+      if (index === -1) continue;
+      const row = this.recycled[index];
+
+      // The original id when it is free, a fresh one when it has been taken —
+      // the behaviour the real repository gets from two INSERTs.
+      const id = this.clips.has(row.clip.id) ? this.nextId++ : row.clip.id;
+      this.clips.set(id, { ...row.clip, id });
+      this.images.push(...row.images.map((i) => ({ ...i, clipId: id })));
+      this.links.push(...row.links.map((l) => ({ ...l, clipId: id })));
+      this.items.push(...row.items.map((i) => ({ ...i, clipId: id })));
+
+      this.recycled.splice(index, 1);
+      restored += 1;
+    }
+    return restored;
+  }
+
+  deleteRecycledClipsForever(recycledIds: number[]): number {
+    let deleted = 0;
+    for (const recycledId of recycledIds) {
+      const index = this.recycled.findIndex((r) => r.recycledId === recycledId);
+      if (index === -1) continue;
+      this.recycled.splice(index, 1);
+      deleted += 1;
+    }
+    return deleted;
+  }
+
+  emptyClipsRecycleBin(): number {
+    const deleted = this.recycled.length;
+    this.recycled = [];
+    return deleted;
+  }
+
+  countRecycledClips(): number {
+    return this.recycled.length;
   }
 
   setClipPinned(id: number, isPinned: boolean): Clip {

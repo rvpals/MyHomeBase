@@ -22,6 +22,7 @@ import type {
   ClipLinkModule,
   ClipSummary,
   ClipTaxonomyItem,
+  RecycledClip,
 } from "./types";
 
 interface ClipRow {
@@ -37,6 +38,30 @@ interface ClipRow {
   created_by: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * A row of `clp_recycled_clips` (migration 0161).
+ *
+ * `ClipRow` plus the bin's two columns, written out rather than extended: the
+ * meaning of `id` differs between the two — here it is the bin's own key and
+ * `clip_id` is what `ClipRow.id` means — and an `extends` would hide that.
+ */
+interface RecycledClipRow {
+  id: number;
+  clip_id: number;
+  title: string;
+  content_html: string;
+  is_encrypted: number;
+  title_encrypted: string;
+  content_encrypted: string;
+  password_hint: string;
+  is_pinned: number;
+  card_color: string;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string;
 }
 
 interface ItemRow {
@@ -345,6 +370,391 @@ export class SqliteClipsRepository implements ClipsRepository {
       this.db.prepare("DELETE FROM clp_clip_items WHERE clip_id = ?").run(id);
       this.db.prepare("DELETE FROM clp_clips WHERE id = ?").run(id);
     })();
+  }
+
+  // Recycle bin (migration 0161)
+  //
+  // Six tables in, six tables out. The column lists below are written out in full
+  // rather than built with `SELECT *` on purpose: migration 0089 records what
+  // happens to a mirror that drifts from its source — a column missing from the
+  // copy is silently dropped on the way back in, and nothing fails until someone
+  // restores a clip and finds its colour gone.
+
+  recycleClips(ids: number[]): number {
+    if (ids.length === 0) return 0;
+
+    // The encryption columns travel with the clip. Leaving them out would bin the
+    // blanked title and body and drop the ciphertext, so a restored clip would be
+    // unreadable forever with nothing to say why.
+    const insertParent = this.db.prepare(
+      `INSERT INTO clp_recycled_clips (
+         clip_id, title, content_html, is_encrypted, title_encrypted,
+         content_encrypted, password_hint, is_pinned, card_color, created_by,
+         created_at, updated_at
+       )
+       SELECT id, title, content_html, is_encrypted, title_encrypted,
+              content_encrypted, password_hint, is_pinned, card_color, created_by,
+              created_at, updated_at
+       FROM clp_clips WHERE id = ?`,
+    );
+
+    // Each child is re-keyed onto the new parent id, which is why clips are moved
+    // one at a time rather than in one set-based INSERT..SELECT: last_insert_rowid()
+    // is only unambiguous for a single-row insert. Same reasoning as the journal's
+    // `recycleEntries`.
+    const copyCategories = this.db.prepare(
+      `INSERT INTO clp_recycled_clip_categories (recycled_clip_id, category_name)
+       SELECT ?, category_name FROM clp_clip_categories WHERE clip_id = ?`,
+    );
+    const copyTags = this.db.prepare(
+      `INSERT INTO clp_recycled_clip_tags (recycled_clip_id, tag_name)
+       SELECT ?, tag_name FROM clp_clip_tags WHERE clip_id = ?`,
+    );
+    // Bytes and all — see migration 0161 for why the alternative (orphaning the
+    // rows in clp_clip_images) would leave a deleted clip's screenshots live at
+    // /api/clips/images/<id>.
+    const copyImages = this.db.prepare(
+      `INSERT INTO clp_recycled_clip_images
+         (recycled_clip_id, image_data, mime_type, width, height, byte_size, sort_order, created_at)
+       SELECT ?, image_data, mime_type, width, height, byte_size, sort_order, created_at
+       FROM clp_clip_images WHERE clip_id = ?`,
+    );
+    const copyItems = this.db.prepare(
+      `INSERT INTO clp_recycled_clip_items
+         (recycled_clip_id, text, is_done, done_at, sort_order, created_at)
+       SELECT ?, text, is_done, done_at, sort_order, created_at
+       FROM clp_clip_items WHERE clip_id = ?`,
+    );
+    const copyLinks = this.db.prepare(
+      `INSERT INTO clp_recycled_clip_links
+         (recycled_clip_id, target_module, target_id, created_at)
+       SELECT ?, target_module, target_id, created_at
+       FROM clp_clip_links WHERE clip_id = ?`,
+    );
+
+    let moved = 0;
+    this.db.transaction(() => {
+      for (const id of ids) {
+        // An id that has already gone copies no row here, so the whole move for it
+        // is skipped and the count the caller reports stays honest.
+        const result = insertParent.run(id);
+        if (result.changes === 0) continue;
+
+        const recycledId = Number(result.lastInsertRowid);
+        copyCategories.run(recycledId, id);
+        copyTags.run(recycledId, id);
+        copyImages.run(recycledId, id);
+        copyItems.run(recycledId, id);
+        copyLinks.run(recycledId, id);
+
+        // The same six-table cascade `deleteClip` runs, in the same order, so the
+        // two paths cannot drift on which tables a clip owns.
+        this.db.prepare("DELETE FROM clp_clip_categories WHERE clip_id = ?").run(id);
+        this.db.prepare("DELETE FROM clp_clip_tags WHERE clip_id = ?").run(id);
+        this.db.prepare("DELETE FROM clp_clip_images WHERE clip_id = ?").run(id);
+        this.db.prepare("DELETE FROM clp_clip_links WHERE clip_id = ?").run(id);
+        this.db.prepare("DELETE FROM clp_clip_items WHERE clip_id = ?").run(id);
+        this.db.prepare("DELETE FROM clp_clips WHERE id = ?").run(id);
+        moved += 1;
+      }
+    })();
+
+    return moved;
+  }
+
+  listRecycledClips(excerptChars: number): RecycledClip[] {
+    // The same bounded-prefix read `listClips` does, for the same reason: a binned
+    // pasted email is as large as a live one, and the list shows two lines of it.
+    const sourceChars = Math.min(
+      EXCERPT_SOURCE_CHARS,
+      Math.max(1, Math.floor(excerptChars * EXCERPT_MARKUP_FACTOR)),
+    );
+
+    const rows = this.db
+      .prepare(
+        `SELECT r.id AS recycled_id, r.clip_id, r.title, r.is_encrypted, r.is_pinned,
+                r.card_color, r.created_at, r.updated_at, r.deleted_at,
+                substr(r.content_html, 1, ${sourceChars}) AS excerpt_source,
+                (SELECT COUNT(*) FROM clp_recycled_clip_images i
+                  WHERE i.recycled_clip_id = r.id) AS image_count,
+                (SELECT COUNT(*) FROM clp_recycled_clip_links l
+                  WHERE l.recycled_clip_id = r.id) AS link_count
+         FROM clp_recycled_clips r
+         ORDER BY r.deleted_at DESC, r.id DESC`,
+      )
+      .all() as Array<{
+      recycled_id: number;
+      clip_id: number;
+      title: string;
+      is_encrypted: number;
+      is_pinned: number;
+      card_color: string;
+      created_at: string;
+      updated_at: string;
+      deleted_at: string;
+      excerpt_source: string;
+      image_count: number;
+      link_count: number;
+    }>;
+
+    if (rows.length === 0) return [];
+
+    const recycledIds = rows.map((row) => row.recycled_id);
+    const categories = this.recycledTaxonomy("clp_recycled_clip_categories", "category_name");
+    const tags = this.recycledTaxonomy("clp_recycled_clip_tags", "tag_name");
+    const items = this.recycledItems(recycledIds);
+
+    return rows.map((row) => ({
+      recycledId: row.recycled_id,
+      // The id it had, and will get back if it is still free. Not the handle for
+      // restore or purge — see `RecycledClip`.
+      id: row.clip_id,
+      title: displayTitle(row.title, row.is_encrypted === 1),
+      excerpt: row.is_encrypted === 1 ? "" : buildClipExcerpt(row.excerpt_source, excerptChars),
+      isEncrypted: row.is_encrypted === 1,
+      isPinned: row.is_pinned === 1,
+      color: toCardColor(row.card_color),
+      categories: categories.get(row.recycled_id) ?? [],
+      tags: tags.get(row.recycled_id) ?? [],
+      items: items.get(row.recycled_id) ?? [],
+      imageCount: row.image_count,
+      linkCount: row.link_count,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      deletedAt: row.deleted_at,
+    }));
+  }
+
+  /**
+   * The bin's categories (or tags) in one query, keyed by `recycled_clip_id`.
+   *
+   * The mirror of `taxonomyByClip`, and separate from it because the key column
+   * differs. Reads the whole bin rather than filtering by id: the bin is small by
+   * nature — anything large has been emptied — and the live version makes the same
+   * trade for the same reason.
+   */
+  private recycledTaxonomy(table: string, column: string): Map<number, string[]> {
+    const rows = this.db
+      .prepare(
+        `SELECT recycled_clip_id, ${column} AS name FROM ${table}
+         ORDER BY ${column} COLLATE NOCASE`,
+      )
+      .all() as Array<{ recycled_clip_id: number; name: string }>;
+
+    const map = new Map<number, string[]>();
+    for (const row of rows) {
+      const list = map.get(row.recycled_clip_id);
+      if (list) list.push(row.name);
+      else map.set(row.recycled_clip_id, [row.name]);
+    }
+    return map;
+  }
+
+  /** The bin's checklists in one query — the mirror of `listClipItemsForClips`. */
+  private recycledItems(recycledIds: number[]): Map<number, ClipItem[]> {
+    const map = new Map<number, ClipItem[]>();
+    if (recycledIds.length === 0) return map;
+
+    const rows = this.db
+      .prepare(
+        `SELECT id, recycled_clip_id, text, is_done, done_at, sort_order, created_at
+         FROM clp_recycled_clip_items
+         WHERE recycled_clip_id IN (${recycledIds.map(() => "?").join(", ")})
+         ORDER BY sort_order, id`,
+      )
+      .all(...recycledIds) as Array<{
+      id: number;
+      recycled_clip_id: number;
+      text: string;
+      is_done: number;
+      done_at: string | null;
+      sort_order: number;
+      created_at: string;
+    }>;
+
+    for (const row of rows) {
+      const item: ClipItem = {
+        id: row.id,
+        // The parent it hangs off while binned. A binned item's `clipId` is the
+        // bin's key, not a live clip's — nothing may tick it, and the card in the
+        // bin is read-only for exactly that reason.
+        clipId: row.recycled_clip_id,
+        text: row.text,
+        isDone: row.is_done === 1,
+        doneAt: row.done_at ?? undefined,
+        sortOrder: row.sort_order,
+        createdAt: row.created_at,
+      };
+      const list = map.get(row.recycled_clip_id);
+      if (list) list.push(item);
+      else map.set(row.recycled_clip_id, [item]);
+    }
+    return map;
+  }
+
+  restoreRecycledClips(recycledIds: number[]): number {
+    if (recycledIds.length === 0) return 0;
+
+    const readParent = this.db.prepare("SELECT * FROM clp_recycled_clips WHERE id = ?");
+    const idTaken = this.db.prepare("SELECT 1 FROM clp_clips WHERE id = ?");
+
+    // Two inserts, differing only in whether they name `id`. Restoring at the
+    // original id keeps any existing clp_clip_links row — and the journal badge it
+    // draws — pointing at the right clip; letting SQLite assign one is the fallback
+    // when that id has been taken since.
+    const insertAtId = this.db.prepare(
+      `INSERT INTO clp_clips (
+         id, title, content_html, is_encrypted, title_encrypted, content_encrypted,
+         password_hint, is_pinned, card_color, created_by, created_at, updated_at
+       ) VALUES (
+         @id, @title, @content_html, @is_encrypted, @title_encrypted, @content_encrypted,
+         @password_hint, @is_pinned, @card_color, @created_by, @created_at, @updated_at
+       )`,
+    );
+    const insertFresh = this.db.prepare(
+      `INSERT INTO clp_clips (
+         title, content_html, is_encrypted, title_encrypted, content_encrypted,
+         password_hint, is_pinned, card_color, created_by, created_at, updated_at
+       ) VALUES (
+         @title, @content_html, @is_encrypted, @title_encrypted, @content_encrypted,
+         @password_hint, @is_pinned, @card_color, @created_by, @created_at, @updated_at
+       )`,
+    );
+
+    // INSERT OR IGNORE on the two taxonomy tables, because both carry a UNIQUE
+    // index on (clip_id, name): restoring at the original id, into a row the
+    // category list has since been rebuilt around, must not fail the transaction.
+    const restoreCategories = this.db.prepare(
+      `INSERT OR IGNORE INTO clp_clip_categories (clip_id, category_name)
+       SELECT ?, category_name FROM clp_recycled_clip_categories WHERE recycled_clip_id = ?`,
+    );
+    const restoreTags = this.db.prepare(
+      `INSERT OR IGNORE INTO clp_clip_tags (clip_id, tag_name)
+       SELECT ?, tag_name FROM clp_recycled_clip_tags WHERE recycled_clip_id = ?`,
+    );
+    const restoreImages = this.db.prepare(
+      `INSERT INTO clp_clip_images
+         (clip_id, image_data, mime_type, width, height, byte_size, sort_order, created_at)
+       SELECT ?, image_data, mime_type, width, height, byte_size, sort_order, created_at
+       FROM clp_recycled_clip_images WHERE recycled_clip_id = ? ORDER BY sort_order, id`,
+    );
+    const restoreItems = this.db.prepare(
+      `INSERT INTO clp_clip_items (clip_id, text, is_done, done_at, sort_order, created_at)
+       SELECT ?, text, is_done, done_at, sort_order, created_at
+       FROM clp_recycled_clip_items WHERE recycled_clip_id = ? ORDER BY sort_order, id`,
+    );
+    const restoreLinks = this.db.prepare(
+      `INSERT OR IGNORE INTO clp_clip_links (clip_id, target_module, target_id, created_at)
+       SELECT ?, target_module, target_id, created_at
+       FROM clp_recycled_clip_links WHERE recycled_clip_id = ?`,
+    );
+
+    let restored = 0;
+    this.db.transaction(() => {
+      for (const recycledId of recycledIds) {
+        const row = readParent.get(recycledId) as RecycledClipRow | undefined;
+        if (!row) continue;
+
+        const params = {
+          title: row.title,
+          content_html: row.content_html,
+          is_encrypted: row.is_encrypted,
+          title_encrypted: row.title_encrypted,
+          content_encrypted: row.content_encrypted,
+          password_hint: row.password_hint,
+          is_pinned: row.is_pinned,
+          card_color: row.card_color,
+          created_by: row.created_by,
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+        };
+
+        const clipId = idTaken.get(row.clip_id)
+          ? Number(insertFresh.run(params).lastInsertRowid)
+          : Number(insertAtId.run({ ...params, id: row.clip_id }).lastInsertRowid);
+
+        restoreCategories.run(clipId, recycledId);
+        restoreTags.run(clipId, recycledId);
+        restoreImages.run(clipId, recycledId);
+        restoreItems.run(clipId, recycledId);
+        restoreLinks.run(clipId, recycledId);
+
+        // The bin row and its children go in the same transaction as the restore:
+        // a clip must not exist in both places at once, or the next restore would
+        // make a second copy of it.
+        this.purgeRecycledRow(recycledId);
+        restored += 1;
+      }
+    })();
+
+    return restored;
+  }
+
+  /**
+   * Removes one bin row and its five children.
+   *
+   * Private, and shared by restore and purge, so there is exactly one list of the
+   * bin's tables. A restore that forgot a child table would leave rows behind that
+   * the next `emptyClipsRecycleBin` would not reach, since that works from the
+   * parent ids.
+   */
+  private purgeRecycledRow(recycledId: number): void {
+    this.db
+      .prepare("DELETE FROM clp_recycled_clip_categories WHERE recycled_clip_id = ?")
+      .run(recycledId);
+    this.db.prepare("DELETE FROM clp_recycled_clip_tags WHERE recycled_clip_id = ?").run(recycledId);
+    this.db
+      .prepare("DELETE FROM clp_recycled_clip_images WHERE recycled_clip_id = ?")
+      .run(recycledId);
+    this.db
+      .prepare("DELETE FROM clp_recycled_clip_items WHERE recycled_clip_id = ?")
+      .run(recycledId);
+    this.db
+      .prepare("DELETE FROM clp_recycled_clip_links WHERE recycled_clip_id = ?")
+      .run(recycledId);
+    this.db.prepare("DELETE FROM clp_recycled_clips WHERE id = ?").run(recycledId);
+  }
+
+  deleteRecycledClipsForever(recycledIds: number[]): number {
+    if (recycledIds.length === 0) return 0;
+
+    const exists = this.db.prepare("SELECT 1 FROM clp_recycled_clips WHERE id = ?");
+
+    let deleted = 0;
+    this.db.transaction(() => {
+      for (const recycledId of recycledIds) {
+        // Checked first so the count reports rows that were actually there, rather
+        // than counting a purge of something already gone.
+        if (!exists.get(recycledId)) continue;
+        this.purgeRecycledRow(recycledId);
+        deleted += 1;
+      }
+    })();
+
+    return deleted;
+  }
+
+  emptyClipsRecycleBin(): number {
+    let deleted = 0;
+    this.db.transaction(() => {
+      deleted = this.countRecycledClips();
+      // Unqualified deletes rather than a loop over `purgeRecycledRow`: emptying is
+      // the one operation that takes every row, so there is no id to follow.
+      this.db.prepare("DELETE FROM clp_recycled_clip_categories").run();
+      this.db.prepare("DELETE FROM clp_recycled_clip_tags").run();
+      this.db.prepare("DELETE FROM clp_recycled_clip_images").run();
+      this.db.prepare("DELETE FROM clp_recycled_clip_items").run();
+      this.db.prepare("DELETE FROM clp_recycled_clip_links").run();
+      this.db.prepare("DELETE FROM clp_recycled_clips").run();
+    })();
+    return deleted;
+  }
+
+  countRecycledClips(): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS n FROM clp_recycled_clips").get() as {
+      n: number;
+    };
+    return row.n;
   }
 
   // Board

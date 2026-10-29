@@ -241,7 +241,9 @@ Credit-card spending by category.
 
 - **Dashboard** with "Interesting stats" and top-5 cards that link through.
 - **Transactions** grouped by billing cycle, with editable rows and per-row Edit and
-  Delete buttons. A selection can have its amounts' **sign fixed in bulk** — Flip, Make +
+  Delete buttons. Column headers carry a **hint** mark saying what the column means
+  (Amount spells out the sign convention), and **Vendor** is a picker over the saved
+  vendors that still accepts a new name. A selection can have its amounts' **sign fixed in bulk** — Flip, Make +
   or Make − — for a statement imported with the opposite convention.
 - **Transaction Rules** grouped by type, re-runnable over transactions already imported,
   each saying *why* it matched (the wildcard is `%`). A rule is created and edited in a
@@ -306,14 +308,18 @@ against three bots), **Pac-Man** and **Bridge**.
 Rich-text notes that stand on their own — paste an email, keep a reference, jot something
 down.
 
-- **Home screen** — how many clips are kept and the most recent few.
-- **All Clips** — a filtering card (text, category, tag, carried in the URL so a filtered
-  list survives a refresh), a write/edit panel and the clip cards. Writing keeps headings,
+- **Home screen** — two tabs, **Most recent** and **All clips**: a filtering card (text,
+  category, tag, carried in the URL so a filtered list survives a refresh), a write/edit
+  panel and the clip cards, on a board whose columns are a fixed width so a wider window
+  shows more cards. Writing keeps headings,
   lists, links and **tables** from a paste and drops the sender's fonts and colours so a clip
   reads in the app's theme, telling you what it removed. Pasted images are stored separately
   and resized. Tables are preserved but their rows and columns cannot be edited.
 - **Categories & Tags** — two managed lists, as the Journal has, creatable inline while
   writing, each with an uploadable icon.
+- **Recycled Clips** — deleting a clip moves it to a bin with its categories, tags, images,
+  checklist and journal links, and a sealed clip stays sealed. Restore it, delete it for
+  good, or empty the bin; nothing is purged automatically.
 - **Encryption** — any clip can be sealed behind a password with a hint, using the same
   scheme as a journal entry. Clips are shared, so anyone with the password opens one and
   **forgetting it loses the clip for everyone**. Categories and tags stay readable on a
@@ -322,7 +328,26 @@ down.
   journal, or from the journal side with **+ Clip** on the entry form; the entry then carries a
   paperclip that opens its clips. A clip exists independently — deleting an entry never
   deletes it. An encrypted entry can carry an unencrypted clip.
-- A `clips` CLI: list, show, add, link and delete.
+- A `clips` CLI: list, show, add, link and delete (to the bin, or `--forever`), plus
+  `recycled`, `restore`, `purge` and `empty-bin`.
+
+## Documents
+
+Filed household paperwork — leases, warranties, manuals — with the files themselves kept
+on a folder on the NAS.
+
+- **Home screen** — every document with its attachment count and size, a filter box (text,
+  category, tag), and the links into filing and editing a document.
+- **Attachments** — one or more files per document. Images and PDFs display inline;
+  anything else downloads, and **Download all** streams a zip. A file moved by hand on the
+  share leaves the attachment listed and the download answering 404.
+- **Delete asks about the files** (default: keep them), and even when deleting them the
+  folder is moved aside to `_deleted/` rather than removed.
+- **Categories & Tags** — two managed lists, each with an uploadable icon.
+- **Configuration** — the document folder, and the size and count limits an administrator
+  sets under Admin → Configuration → Application.
+- Shared among everyone granted the module, and not encrypted. A `list-documents` CLI:
+  list, filter, show one in full and `--zip` it.
 
 ## Admin
 

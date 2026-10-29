@@ -1,5 +1,120 @@
 # Change History
 
+## 2026-10-28 — Document Library module, Clips recycle bin, sticky section strip, grid Select mode
+
+**Three migrations: 0159, 0160, 0161.** All additive. They must be applied on the NAS
+before the affected screens are opened:
+
+- **0159** creates the six `doc_` tables behind the Document Library.
+- **0160** registers the module (`documents`, sequence 13). It is granted to nobody but
+  administrators until someone grants it under Administration → User Management.
+- **0161** creates the six `clp_recycled_*` tables behind the Clips bin. Without it,
+  deleting a clip fails with "no such table".
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not
+invoked, and nothing was loaded in a browser. Everything below is **unverified on
+screen** — `Testing_List.md` carries items for each part. Most of the Documents and Clips
+work was written in earlier sessions and was read for this entry, not re-checked.
+
+### Top-tabs navigation: the section strip now sticks
+
+- **Under the Top tabs desktop shape** the module tab row already stayed at the top of the
+  window, but the section chips beneath it scrolled away, so a long table left nothing on
+  screen naming the section you were in. Both bands now dock together as one block.
+- **One sticky wrapper, not two sticky bars.** `NavTabs` and `SectionStrip` sit inside
+  `.shell-topnav` (`position: sticky; top: 0; z-index: 30`) in
+  [two-tier-shell.tsx](src/components/two-tier-shell.tsx). Sticking the strip on its own
+  would have meant hardcoding the tab row's height, which the admin's bevel, border width
+  and font settings all move. `NavTabs` lost its own `sticky`.
+- The wrapper has no `overflow`, so the `More ▾` and section-group menus are not clipped.
+- Side-tree and phone layouts are separate branches and are unchanged.
+- Documented in `design.md` under *The full layout's two shapes*.
+
+### Document Library: a new module (migrations 0159, 0160)
+
+- **Documents** is a shared module for filed paperwork: each document carries a title,
+  description, categories, tags and one or more attached files. Sections are the **Home
+  screen** (the list, with its filter box and the links into the editor), **Categories &
+  Tags**, and **Configuration**. Filing and editing open at `/modules/documents/new` and
+  `/edit`, which are routes, not nav destinations.
+- **File bytes live on the NAS, not in the database.** `doc_attachments` is an index to a
+  file under the folder set on Documents → Configuration, one folder per document
+  (`doc_<id>/`). A file moved by hand is a normal state: the attachment still lists and the
+  download answers 404.
+- **Nothing is ever unlinked.** Deleting a document asks whether to delete its files too
+  (default no), and even on yes the folder is moved to `_deleted/doc_<id>_<timestamp>/`.
+- **The mime type comes from the stored extension, never from the upload**, and SVG is never
+  rendered inline. Only images and PDFs display inline.
+- **Per-file size and per-document count limits** are app settings, edited under Admin →
+  Configuration → Application (`document-limits-control.tsx`). They parse forgivingly.
+- **Download** routes under `/api/documents/` serve one attachment, a zip of all of them,
+  and the category and tag icons.
+- **`list-documents` CLI** — list, filter by text/category/tag, show one document with its
+  attachment paths, and `--zip` it. No change to `src/lib/documents` was needed.
+- Seeded on the `folder` glyph, which Clips and CSV Analysis also wear; a `document` glyph
+  is a later migration (see 0160's note).
+- Three icon slots were registered (`documents_section_main`, `_metadata`,
+  `_configuration`). The `new`/`edit` routes have none.
+- New reusable pieces: `FileUploaderZone` and `data-grid-select-help.tsx`
+  (see `components.md`).
+
+### Clips: a recycle bin (migration 0161)
+
+- **Delete now moves a clip to a bin** instead of destroying it. The old "This cannot be
+  undone" prompt was the only protection for the only copy of a pasted note.
+- **New section: Clips → Recycled Clips**, with restore, delete-forever and empty-bin.
+- **Six mirror tables, not a `deleted_at` flag.** A flag would make every existing read
+  responsible for excluding binned rows, and one missed `WHERE` would serve a deleted clip.
+  Categories, tags, images (bytes included), checklist items and links all travel with it.
+- **Images are copied into the bin**, so a binned clip's screenshots stop being served from
+  their old id. Purging reclaims the space.
+- **A sealed clip is binned sealed and restored sealed** — the bin is not a way around the
+  password.
+- **Restore aims at the original id**, which keeps a journal link and its badge working. If
+  the id was taken, the clip returns under a new one and the link shows "the linked record
+  is gone".
+- **CLI:** `clips delete` now bins; `--forever` skips the bin; `recycled`, `restore
+  --recycled <n>`, `purge --recycled <n>` and `empty-bin` are new. They take the **bin id**,
+  not the clip's.
+- **No auto-purge** — the bin is emptied by hand.
+
+### Clips: All Clips folded into the home screen
+
+- **The `all` section is gone.** Writing, filtering and editing live on the Clips home
+  screen under its two tabs (Most recent / All clips, seeded from `?tab=`), so a second
+  route showing the same clips was the same screen twice. The icon slots were renumbered
+  to match: `clips_section_all` is retired, `clips_section_recycled` is added.
+- **The board uses fixed-width columns.** `MasonryBoard` gained `minColumnWidth` and
+  `maxColumns`: a wider window shows more cards instead of bigger ones. Clips uses 280px on
+  both boards. Below 1024px the board is still `columns.compact`.
+- A clip viewer, card and instructions revision accompanies this; see `clips-viewer.tsx`
+  and `clips-card.tsx`.
+
+### Data grids: a Select mode
+
+- **Any grid with `enableSelection` gets a "Select" toggle** in its toolbar (or in the
+  standalone selection strip when there is no toolbar). While on, clicking anywhere on a row
+  that is not a button, link or form control ticks its checkbox.
+- It suspends `onRowClick` while on, and turning it off keeps the ticks. Clearing the
+  selection turns it off. It is not persisted across reloads.
+- The compact layout carries the same toggle in its selection bar.
+- Columns can now take a **`hint`**, shown as a Comments mark beside the name. Expense
+  Transactions uses it on Date, Posted, Description, Vendor, Category, Amount, Status,
+  Processed, Card and Note.
+
+### Expense: vendor and category pickers
+
+- **Vendor** on the add-a-transaction form and in the bulk-edit dialog is now an icon
+  picker over the saved vendors. Typing filters the list, but free text still commits —
+  most statement vendors were never saved, so the list is a shortcut, not a constraint.
+- **Category** gets the same "pick one, or type a new name" prompt.
+
+### Not verified
+
+All of the above. In particular: the three migrations have not been applied to any
+database, the Documents module has never been loaded in a browser, and the sticky strip was
+reported tested by Min for the Top-tabs shape only.
+
 ## 2026-10-28 — Journal entry content row, toolbar new-tab shortcuts, expense sign tools, location hand-off
 
 **One migration: 0158** (`sys_toolbar_items.opens_new_tab`, an additive

@@ -9,6 +9,7 @@
 // the page was rendered. Everything else is props in, events out.
 
 import { useState } from "react";
+import { Button } from "@/components/button";
 import { JournalPinButton } from "@/components/journal-pin-button";
 import { TreeIcon } from "@/components/tree-icons";
 import { buildClipItemBoard, type ClipSummary } from "@/lib/clips";
@@ -71,8 +72,18 @@ export function ClipsCard({
   }
 
   return (
+    // `card-embossed` rather than `card-raised`: the card reads as a thick slab —
+    // lit top edge, shaded underside, a two-stop cast beneath it. That is
+    // `design.md`'s sanctioned way to give a card real depth *without* borrowing
+    // the hard offset shadow, which stays the buttons' vocabulary — and this card
+    // now has four of them on it, so the two must not read as the same material.
+    //
+    // It composes over a tint: `.clip-tint` sets only `background-color` and
+    // `border-color`, so a coloured card keeps its hue and gains the bevel. The
+    // emboss itself is theme-derived (`--edge-lit` mixes toward `--ink`), so the
+    // slab reads on the dark themes and the light ones alike.
     <article
-      className={`card-raised rounded-xl border border-line bg-paper-raised p-4 ${
+      className={`card-embossed rounded-xl border border-line bg-paper-raised p-4 ${
         TINT_CLASS[clip.color] ?? ""
       }`}
     >
@@ -193,36 +204,37 @@ export function ClipsCard({
         </div>
       )}
 
-      {/* Row actions, deliberately quiet: small text buttons rather than a row of
-          `Button`s, which at three per card across a forty-card board would be the
-          loudest thing on the screen. */}
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-        <button type="button" onClick={() => onOpen(clip.id)} className="text-muted hover:text-ink">
+      {/* Row actions as `Button`s — the app's hard-offset switch treatment, which
+          lifts on hover and collapses on press (`design.md` → *The signature:
+          buttons are switches*).
+
+          These were small text buttons, on the reasoning that four per card across
+          a forty-card board would be the loudest thing on the screen. Min asked for
+          the 3D row instead, so density loses to affordance here: each of these is
+          a discrete standalone action, which is exactly what `Button` is for.
+          `size="sm"` is the most compact the pill form gets.
+
+          `Button`, never a hand-rolled shadow: the offset, the hover lift and the
+          press collapse are all theme-token-driven, so the row recolours with the
+          running theme instead of being right in one and wrong in the other seven. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="secondary" onClick={() => onOpen(clip.id)}>
           Open
-        </button>
+        </Button>
         {onEdit && (
-          <button
-            type="button"
-            onClick={() => onEdit(clip.id)}
-            className="text-muted hover:text-ink"
-          >
+          <Button size="sm" variant="secondary" onClick={() => onEdit(clip.id)}>
             Edit
-          </button>
+          </Button>
         )}
-        <button
-          type="button"
-          onClick={() => onRecolour(clip.id)}
-          className="text-muted hover:text-ink"
-        >
+        <Button size="sm" variant="secondary" onClick={() => onRecolour(clip.id)}>
           Colour
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(clip.id)}
-          className="text-muted hover:text-red-400"
-        >
+        </Button>
+        {/* `danger` rather than a red-tinted secondary: deleting is the one
+            destructive action on the card, and the variant already carries the
+            fixed semantic red the rest of the app uses for it. */}
+        <Button size="sm" variant="danger" onClick={() => onDelete(clip.id)}>
           Delete
-        </button>
+        </Button>
       </div>
     </article>
   );

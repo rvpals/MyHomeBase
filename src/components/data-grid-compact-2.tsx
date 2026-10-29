@@ -25,6 +25,7 @@
 // with bulk actions stay on `"cards"`.
 
 import { useMemo, useState, type ReactNode } from "react";
+import { Comments } from "@/components/comments";
 import type { CellValue, DataGridColumn } from "./data-grid";
 
 export interface DataGridCompact2Props<T> {
@@ -219,6 +220,13 @@ export function DataGridCompact2<T>({
                 >
                   <dt className="text-xs uppercase tracking-wide text-muted [overflow-wrap:anywhere]">
                     {column.header}
+                    {/* Same reason as the card layout: the wide header, and its
+                        hint mark, are never drawn on compact. */}
+                    {column.hint && (
+                      <span className="ml-1 normal-case">
+                        <Comments title={column.header} content={column.hint} />
+                      </span>
+                    )}
                   </dt>
                   <dd className="text-sm text-ink [overflow-wrap:anywhere]">
                     {column.render(activeRow)}

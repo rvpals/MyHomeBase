@@ -227,6 +227,24 @@ html[data-shell="horizontal"] .app-main {
   padding-left: var(--app-gutter, 0px);
 }
 
+/* The horizontal shape's two bands, docked to the top edge as one block.
+   `NavTabs` and `SectionStrip` are in-flow siblings inside this wrapper rather
+   than two independently-sticky bars: sticking only the tab row let the section
+   chips scroll out from under it, and sticking both would need the strip to know
+   the row's exact height — a number the admin's bevel, border width and font
+   settings all move, and the second place that would have to agree about it.
+
+   `z-30` is the chrome band `NavTabs` carried before the wrapper took over, level
+   with the tree and the music puck and under `Modal`'s `z-50` (design.md, "Stay
+   under z-40"). No `overflow` here, deliberately: the `More` and section-group
+   dropdowns are absolutely positioned children and a scroll container would clip
+   them to the band. */
+.shell-topnav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
 /* The tree column itself. Same fixed-column treatment and z-band as `.shell-rail`
    and `.shell-panel`, because it occupies the space both of them used to. */
 .shell-tree {

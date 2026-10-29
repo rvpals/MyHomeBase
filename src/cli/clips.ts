@@ -1,11 +1,16 @@
 import {
   createClip,
   deleteClip,
+  deleteRecycledClipsForever,
+  emptyClipsRecycleBin,
   getClip,
   linkClip,
   listClipItems,
   listClips,
+  listRecycledClips,
   openClip,
+  recycleClips,
+  restoreRecycledClips,
   saveClipItems,
   setClipColor,
   setClipPinned,
@@ -31,7 +36,12 @@ import { parseFlags } from "./parse-flags";
  *   clips items --id 3 --set "Goggles,Towel,Cap"
  *   clips tick --item 7         /  clips untick --item 7
  *   clips link --id 3 --entry 42
- *   clips delete --id 3
+ *   clips delete --id 3            (moves it to the recycle bin)
+ *   clips delete --id 3 --forever  (destroys it, skipping the bin)
+ *   clips recycled
+ *   clips restore --recycled 5
+ *   clips purge --recycled 5
+ *   clips empty-bin
  *
  * `--content` takes HTML and is sanitized exactly as a paste in the browser is —
  * that is the point of routing both through the use-case rather than the view.
@@ -214,19 +224,102 @@ export async function clipsCommand(args: string[]): Promise<void> {
     case "delete": {
       const id = Number(flags.id);
       if (!id) {
-        console.error("Usage: clips delete --id 3");
+        console.error("Usage: clips delete --id 3 [--forever]");
         process.exitCode = 1;
         return;
       }
 
-      deleteClip(deps.clipsRepo, id);
-      console.log(`Deleted clip ${id}.`);
+      // Default is the recycle bin, matching the web app's Delete button
+      // (migration 0161). `--forever` is the only way to destroy a clip in one
+      // step, and it is deliberately a flag you have to type.
+      //
+      // `parseFlags` records a valueless flag as "", so presence is the test --
+      // `--forever` and `--forever true` both mean the same thing here.
+      if (flags.forever !== undefined) {
+        deleteClip(deps.clipsRepo, id);
+        console.log(`Permanently deleted clip ${id}.`);
+        return;
+      }
+
+      const { movedCount } = recycleClips(deps.clipsRepo, [id]);
+      if (movedCount === 0) {
+        console.error(`No clip ${id}.`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`Moved clip ${id} to the recycle bin. Restore it with: clips restore --recycled <id>`);
+      return;
+    }
+
+    case "recycled": {
+      // The bin, newest deleted first. `--chars` bounds the excerpt exactly as the
+      // module setting does for the web list.
+      const chars = Number(flags.chars) || 120;
+      const rows = listRecycledClips(deps.clipsRepo, chars);
+      if (rows.length === 0) {
+        console.log("The recycle bin is empty.");
+        return;
+      }
+
+      for (const row of rows) {
+        // The bin id leads, because that is what restore and purge take -- the
+        // clip's own id is shown after it and is NOT the handle.
+        console.log(
+          `#${row.recycledId}  (was clip ${row.id})  ${row.title || "Untitled"}  -- deleted ${row.deletedAt}`,
+        );
+        if (row.excerpt !== "") console.log(`    ${row.excerpt}`);
+      }
+      console.log("");
+      console.log(`${rows.length} clip${rows.length === 1 ? "" : "s"} in the bin.`);
+      return;
+    }
+
+    case "restore": {
+      const recycledId = Number(flags.recycled);
+      if (!recycledId) {
+        console.error("Usage: clips restore --recycled 5   (the # from `clips recycled`)");
+        process.exitCode = 1;
+        return;
+      }
+
+      const { restoredCount } = restoreRecycledClips(deps.clipsRepo, [recycledId]);
+      if (restoredCount === 0) {
+        console.error(`No clip #${recycledId} in the recycle bin.`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`Restored clip #${recycledId}.`);
+      return;
+    }
+
+    case "purge": {
+      const recycledId = Number(flags.recycled);
+      if (!recycledId) {
+        console.error("Usage: clips purge --recycled 5   (the # from `clips recycled`)");
+        process.exitCode = 1;
+        return;
+      }
+
+      const { deletedCount } = deleteRecycledClipsForever(deps.clipsRepo, [recycledId]);
+      if (deletedCount === 0) {
+        console.error(`No clip #${recycledId} in the recycle bin.`);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`Permanently deleted clip #${recycledId}.`);
+      return;
+    }
+
+    case "empty-bin": {
+      const { deletedCount } = emptyClipsRecycleBin(deps.clipsRepo);
+      console.log(`Permanently deleted ${deletedCount} clip${deletedCount === 1 ? "" : "s"}.`);
       return;
     }
 
     default:
       console.error(
-        "Usage: clips <list|show|add|pin|unpin|colour|items|tick|untick|link|delete> [flags]",
+        "Usage: clips <list|show|add|pin|unpin|colour|items|tick|untick|link|delete|" +
+          "recycled|restore|purge|empty-bin> [flags]",
       );
       process.exitCode = 1;
   }

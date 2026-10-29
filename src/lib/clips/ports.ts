@@ -8,6 +8,7 @@ import type {
   ClipLinkModule,
   ClipSummary,
   ClipTaxonomyItem,
+  RecycledClip,
 } from "./types";
 
 /** What the repository is handed to write a clip. Taxonomy arrives already trimmed. */
@@ -50,11 +51,42 @@ export interface ClipsRepository {
   /** A full replace of the clip's own fields and its taxonomy, not a patch. */
   updateClip(id: number, input: ClipWriteData): Clip;
   /**
-   * Deletes the clip, its taxonomy pairings, its images and its links, in one
-   * transaction. This is the **only** way a clip is ever deleted: nothing in
-   * another module can cause it, by design.
+   * Deletes the clip, its taxonomy pairings, its images, its items and its
+   * links, in one transaction — permanently, with no copy kept.
+   *
+   * Since migration 0161 this is **not** what the Delete button calls:
+   * `recycleClips` is. This is the bin's own purge and the CLI's
+   * `clips delete --forever`. Nothing in another module can cause it, by design.
    */
   deleteClip(id: number): void;
+
+  // Recycle bin (migration 0161)
+
+  /**
+   * Moves clips into the bin, copying all six tables and then removing the
+   * originals, in one transaction.
+   *
+   * Returns how many actually moved. An id that has already gone contributes
+   * nothing and is skipped rather than throwing, so a double-submitted button
+   * reports the truth instead of an error.
+   */
+  recycleClips(ids: number[]): number;
+  /** Everything in the bin, newest deleted first. `excerptChars` bounds the preview. */
+  listRecycledClips(excerptChars: number): RecycledClip[];
+  /**
+   * Puts binned clips back, keyed by `recycledId`.
+   *
+   * Restores at the clip's original id when that id is still free — which is what
+   * keeps an existing `clp_clip_links` row, and the journal badge it draws,
+   * working across a delete and a restore. Takes a fresh id when it isn't.
+   */
+  restoreRecycledClips(recycledIds: number[]): number;
+  /** Removes rows from the bin for good. There is no undo past this point. */
+  deleteRecycledClipsForever(recycledIds: number[]): number;
+  /** Empties the bin. Returns how many went. */
+  emptyClipsRecycleBin(): number;
+  /** How many clips the bin holds — the number the confirmations quote. */
+  countRecycledClips(): number;
 
   // Encryption
   /** Writes the sealed form and blanks the plaintext columns, in one transaction. */

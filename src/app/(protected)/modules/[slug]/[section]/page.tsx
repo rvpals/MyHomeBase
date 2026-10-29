@@ -25,6 +25,8 @@ import { ToolsSection } from "../tools-section";
 import { isToolsSection } from "../tools-sections";
 import { ClipsSection } from "../clips-section";
 import { isClipsSection } from "../clips-sections";
+import { DocumentsSection } from "../documents-section";
+import { isDocumentsEditorRoute, isDocumentsSection } from "../documents-sections";
 import { HouseholdSection } from "../household-section";
 import { isHouseholdSection } from "../household-sections";
 
@@ -45,6 +47,7 @@ const INVESTMENTS_MODULE_SLUG = "investments";
 const TOOLS_MODULE_SLUG = "tools";
 const HOUSEHOLD_MODULE_SLUG = "household";
 const CLIPS_MODULE_SLUG = "clips";
+const DOCUMENTS_MODULE_SLUG = "documents";
 
 /**
  * A module's sub-section, e.g. /modules/expense/transactions or
@@ -170,6 +173,31 @@ function renderSection(
         search={recipeSearch}
         category={recipeCategory}
         tag={recipeTag}
+        // The same ?tab= Journal's Entries screen reads — "which tab of this screen
+        // is open", not a second name for the same idea.
+        requestedTab={requestedTab}
+        isAdmin={isAdmin}
+      />
+    );
+  }
+  // Both the three nav sections and the two editor routes (`new`, `edit`), which are
+  // not sections: they are where the form opens, so they carry no nav row and no icon
+  // slot. Gated on the slug AND on this module's own guards, so one module's section
+  // name can never resolve under another module's slug.
+  if (
+    slug === DOCUMENTS_MODULE_SLUG &&
+    (isDocumentsSection(section) || isDocumentsEditorRoute(section))
+  ) {
+    return (
+      <DocumentsSection
+        view={section}
+        // The same three filter params Household and Clips read.
+        search={recipeSearch}
+        category={recipeCategory}
+        tag={recipeTag}
+        // The same ?edit= the Journal report and Classroom exam editors use — one
+        // param meaning "open this record for editing".
+        documentId={Number(requestedReportEdit) || undefined}
         isAdmin={isAdmin}
       />
     );

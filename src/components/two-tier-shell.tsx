@@ -274,24 +274,50 @@ export function TwoTierShell({
           shape drops tier 3 on the full layout, so the bell and the profile menu
           would otherwise have nowhere to live — design.md rule 6, the same
           accounting `hideHeader` owes on the home screen. */}
+      {/* The horizontal shape's two bands dock to the top edge **as one block**.
+          `NavTabs` used to be `sticky top-0` by itself, which left the section
+          strip in normal flow — scroll a long transactions table and the chips
+          naming where you are slid out from under the tab row that stayed. Both
+          bands sit in one sticky wrapper instead, so the second tier docks at
+          whatever height the first actually has: a measured offset would have to
+          re-derive a height the admin's bevel, border width and font settings all
+          move, and would be the second thing that has to agree about it.
+
+          Rendered unconditionally around both so the wrapper exists whenever the
+          shape does — a module with no sections simply has one band inside it,
+          because `SectionStrip` returns null for an empty list. */}
       {isHorizontal && tree && (
-        <NavTabs
-          modules={tree.modules}
-          home={tree.home}
-          activeHref={pathname}
-          // `stripModule`, not `module.slug`: it already resolves Administration
-          // by path, and leaves Home matching no tab at all, which is correct —
-          // Home is its own leading tab and highlights via `activeHref`.
-          activeModuleSlug={stripModule?.slug}
-          adminModule={showAdmin ? adminTreeModule : undefined}
-          utility={
-            <>
-              {headerActions}
-              <UserMenu {...userMenuProps} />
-            </>
-          }
-          texture={navTexture}
-        />
+        <div className="shell-topnav">
+          <NavTabs
+            modules={tree.modules}
+            home={tree.home}
+            activeHref={pathname}
+            // `stripModule`, not `module.slug`: it already resolves Administration
+            // by path, and leaves Home matching no tab at all, which is correct —
+            // Home is its own leading tab and highlights via `activeHref`.
+            activeModuleSlug={stripModule?.slug}
+            adminModule={showAdmin ? adminTreeModule : undefined}
+            utility={
+              <>
+                {headerActions}
+                <UserMenu {...userMenuProps} />
+              </>
+            }
+            texture={navTexture}
+          />
+
+          {/* Tier 2. Inside the sticky wrapper with the tab row above it — see the
+              note there. Renders nothing for a module with no sections (Clips,
+              Games, Music, CSV Analysis), rather than drawing an empty band: the
+              tab row above it already names where you are. */}
+          {stripModule && (
+            <SectionStrip
+              moduleSlug={stripModule.slug}
+              sections={stripModule.sections}
+              activeHref={pathname}
+            />
+          )}
+        </div>
       )}
 
       {!tree && !isCompact && (
@@ -306,17 +332,6 @@ export function TwoTierShell({
           // surface rehomes what was on it — losing the unread badge on the home
           // screen would hide it exactly where a reader starts.
           utility={hideHeader ? headerActions : undefined}
-        />
-      )}
-
-      {/* The horizontal shape's tier 2. Renders nothing for a module with no
-          sections (Clips, Games, Music, CSV Analysis), rather than drawing an
-          empty band — the tab row above already names where you are. */}
-      {isHorizontal && stripModule && (
-        <SectionStrip
-          moduleSlug={stripModule.slug}
-          sections={stripModule.sections}
-          activeHref={pathname}
         />
       )}
 

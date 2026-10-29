@@ -374,6 +374,7 @@ function RuleForm({
                     options={categoryIconSelectOptions(categories)}
                     value={action.fieldValue}
                     onChange={(fieldValue) => updateAction(index, { fieldValue })}
+                    createLabel="category"
                     placeholder="Restaurant"
                     ariaLabel="Category to set"
                   />
@@ -388,6 +389,7 @@ function RuleForm({
                     options={vendorIconSelectOptions(vendors)}
                     value={action.fieldValue}
                     onChange={(fieldValue) => updateAction(index, { fieldValue })}
+                    createLabel="vendor"
                     placeholder="TGI Friday"
                     ariaLabel="Vendor to set"
                   />

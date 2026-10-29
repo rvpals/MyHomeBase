@@ -12,10 +12,15 @@ import type { TreeIconConcept } from "@/lib/icons/tree-icon-names";
  * `configuration` is last on purpose — the usual "settings at the bottom" place,
  * matching every other module's shell.
  *
- * Four sections, so no group headings: `modules.md` puts the nesting threshold at
- * about six. Adding a fifth screen is one string here plus a route branch.
+ * Four sections, so still no group headings: `modules.md` puts the nesting
+ * threshold at about six. Adding another screen is one string here plus a route
+ * branch.
+ *
+ * There was a fourth, `all`, until the home screen absorbed it — writing, filtering
+ * and editing now live on `main` under its two tabs, so a second route showing the
+ * same clips would have been the same screen twice.
  */
-export const CLIPS_SECTIONS = ["main", "all", "metadata", "configuration"] as const;
+export const CLIPS_SECTIONS = ["main", "metadata", "recycled", "configuration"] as const;
 
 export type ClipsSection = (typeof CLIPS_SECTIONS)[number];
 
@@ -27,15 +32,15 @@ export function isClipsSection(value: string): value is ClipsSection {
 export const CLIPS_SECTION_INFO: Record<ClipsSection, { label: string; description: string }> = {
   main: {
     label: "Home screen",
-    description: "What is kept here, and what was written most recently.",
-  },
-  all: {
-    label: "All Clips",
-    description: "Every clip, filtered by category, tag or text.",
+    description: "Every clip — write one, filter them, pin what matters.",
   },
   metadata: {
     label: "Categories & Tags",
     description: "The two lists a clip is filed under, and their icons.",
+  },
+  recycled: {
+    label: "Recycled Clips",
+    description: "Deleted clips, kept until you empty the bin. Restore one, or remove it for good.",
   },
   configuration: {
     label: "Configuration",
@@ -54,8 +59,8 @@ export const CLIPS_SECTION_INFO: Record<ClipsSection, { label: string; descripti
  */
 export const CLIPS_SECTION_ICONS: Record<ClipsSection, TreeIconConcept> = {
   main: "grid",
-  all: "note",
   metadata: "list",
+  recycled: "trash",
   configuration: "gear",
 };
 

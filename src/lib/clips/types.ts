@@ -230,3 +230,24 @@ export interface ResolvedClipLink extends ClipLink {
   /** Where to send a reader who clicks it, or undefined when the target is gone. */
   targetHref?: string;
 }
+
+/**
+ * A clip sitting in the recycle bin (migration 0161).
+ *
+ * Extends `ClipSummary`, not `Clip`, and that is deliberate: the bin is a list
+ * screen. It draws a title, an excerpt and the taxonomy, exactly as the Home
+ * screen does — it never opens a clip for reading, so pulling every binned body
+ * and its images would be the same mistake `ClipSummary` exists to avoid. A
+ * restore copies rows in SQL and never needs the body in TypeScript at all.
+ *
+ * `id` is inherited from `ClipSummary` and still means *the id the clip had in
+ * `clp_clips`*. It is NOT the handle for restore or purge — those take
+ * `recycledId`, because the same clip can be recycled, restored and recycled
+ * again, and only the bin's own key tells those copies apart.
+ */
+export interface RecycledClip extends ClipSummary {
+  /** `clp_recycled_clips.id` — the handle for restore and purge. */
+  recycledId: number;
+  /** When it went into the bin. Orders the list, newest first. */
+  deletedAt: string;
+}

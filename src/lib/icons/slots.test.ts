@@ -165,7 +165,10 @@ describe("sectionSlotId", () => {
       household: ["main", "recipes", "recipes-import", "hsa", "configuration", "recipes-group", "hsa-group"],
       // `clips_linked_badge` is deliberately absent: it is not a section, so
       // `sectionSlotId` does not derive it. It is asserted on its own below.
-      clips: ["main", "all", "metadata", "configuration"],
+      clips: ["main", "metadata", "recycled", "configuration"],
+      // `new` and `edit` are deliberately absent: they are routes the editor opens
+      // at, not nav destinations, so no slot is derived for them.
+      documents: ["main", "metadata", "configuration"],
       admin: [
         "configuration", "configuration-modules", "configuration-application",
         // Under the Display Settings group, but the ids stayed `configuration-*` so

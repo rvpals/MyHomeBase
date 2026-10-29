@@ -27,8 +27,24 @@ export interface MultiFileDropzoneProps {
   disabled?: boolean;
   /** Refuse a file whose name is already in the list. Default `true`. */
   dedupeByName?: boolean;
+  /**
+   * How tall the drop target is. Default `"normal"` (`min-h-24`), which is what the
+   * import screens want: there, the zone is one step of a form and the rows below it
+   * are the point.
+   *
+   * `"tall"` (`min-h-48`) is for a screen where dropping files *is* the task and the
+   * zone is a main target rather than a control — the Document Library's editor, where
+   * it occupies its own column. Opt-in rather than a new default, so the three existing
+   * callers keep the height they were designed around.
+   */
+  size?: "normal" | "tall";
   className?: string;
 }
+
+const MIN_HEIGHTS: Record<"normal" | "tall", string> = {
+  normal: "min-h-24",
+  tall: "min-h-48",
+};
 
 export function MultiFileDropzone({
   files,
@@ -37,6 +53,7 @@ export function MultiFileDropzone({
   label = "Drag CSV files here, or click to browse",
   disabled = false,
   dedupeByName = true,
+  size = "normal",
   className = "",
 }: MultiFileDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -89,7 +106,7 @@ export function MultiFileDropzone({
           }
         }}
         className={[
-          "flex min-h-24 cursor-pointer items-center justify-center rounded-md border-2 border-dashed p-6 text-center text-sm transition-colors",
+          `flex ${MIN_HEIGHTS[size]} cursor-pointer items-center justify-center rounded-md border-2 border-dashed p-6 text-center text-sm transition-colors`,
           isDragOver ? "border-brass bg-paper-raised text-ink" : "border-line text-muted",
           disabled ? "cursor-not-allowed opacity-60" : "hover:border-brass hover:text-ink",
         ].join(" ")}

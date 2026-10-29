@@ -20,6 +20,8 @@
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Button } from "@/components/button";
+import { Comments } from "@/components/comments";
+import { SelectModeHelp } from "@/components/data-grid-select-help";
 import { DataGridCompact } from "@/components/data-grid-compact";
 import { DataGridCompact2 } from "@/components/data-grid-compact-2";
 import { Modal } from "@/components/modal";
@@ -52,6 +54,18 @@ export interface DataGridColumn<T> {
   value?: (row: T) => CellValue;
   /** Disable sorting for this column even when `value` is set. */
   sortable?: boolean;
+  /**
+   * A note about what this column *means* — a unit, a sign convention, where the
+   * value comes from. Rendered as a `Comments` mark — an `ⓘ` that opens the text
+   * in a dialog — on the wide header and beside the field label in both compact
+   * layouts, so a hint is reachable on a phone, where the wide header is never
+   * drawn. The single-record view prints it inline instead: that view is itself
+   * a `Modal`, and `Comments` opens one.
+   *
+   * For the column's meaning, not its formatting: "a charge is positive, a
+   * refund negative" earns a hint; "currency" does not.
+   */
+  hint?: string;
   /** Extra classes for both the header and body cells in this column. */
   className?: string;
   /**
@@ -242,6 +256,35 @@ export interface DataGridProps<T> {
 const CONTROL_CLASS =
   "rounded-md border border-line bg-paper px-2 py-1 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
+/**
+ * True when a click landed on something that does its own thing — a row's Edit /
+ * Delete / Create Rule button, a link, a form control. Select mode turns the whole
+ * row into one big checkbox, and without this a click on "Create Rule" would both
+ * open the rule editor and tick the row.
+ *
+ * Walks up from the click target to the row, because the click usually lands on a
+ * `<span>` or an `<svg>` *inside* the button rather than the button itself.
+ */
+export function isInteractiveTarget(target: EventTarget | null, stopAt: Element | null): boolean {
+  let node = target instanceof Element ? target : null;
+  while (node && node !== stopAt) {
+    const tag = node.tagName.toLowerCase();
+    if (
+      tag === "button" ||
+      tag === "a" ||
+      tag === "input" ||
+      tag === "select" ||
+      tag === "textarea" ||
+      tag === "label" ||
+      node.getAttribute("role") === "button"
+    ) {
+      return true;
+    }
+    node = node.parentElement;
+  }
+  return false;
+}
+
 function storageEntryKey(storageKey: string): string {
   return `datagrid:${storageKey}`;
 }
@@ -378,6 +421,11 @@ function DataGridFull<T>({
   const [layout, setLayout] = useState<ColumnLayout>({ order: [], hidden: [], widths: {} });
   const [density, setDensity] = useState<Density>(defaultDensity);
   const [selectedKeys, setSelectedKeys] = useState<Set<string | number>>(new Set());
+  // Click-anywhere-to-tick. Deliberately NOT persisted with the column layout: it's
+  // a transient "I'm about to bulk-edit" mode like the open filter row, not a view
+  // preference, and a grid that silently swallowed row clicks after a reload would
+  // read as broken.
+  const [selectMode, setSelectMode] = useState(false);
   const [showSqlDialog, setShowSqlDialog] = useState(false);
   const [sqlDraft, setSqlDraft] = useState(sql ?? "");
   const [isRunningSql, setIsRunningSql] = useState(false);
@@ -681,6 +729,15 @@ function DataGridFull<T>({
     });
   }
 
+  // Clearing the selection ends the job select mode was turned on for, so the mode
+  // goes with it — including when a caller's bulk action finishes and calls the
+  // `clearSelection` it was handed. Leaving it on would quietly keep swallowing row
+  // clicks after the rows it was collecting are gone.
+  function clearSelection() {
+    setSelectedKeys(new Set());
+    setSelectMode(false);
+  }
+
   function toggleSelectAll() {
     setSelectedKeys((current) => {
       const next = new Set(current);
@@ -765,9 +822,40 @@ function DataGridFull<T>({
   const hasToolbar =
     showToolbar && (showSearch || enableColumnFilters || enableColumnPicker || enableDensity);
   // Its own strip when the toolbar is hidden, so the actions survive either way.
+  // This flag is only about the *bulk-action* half of that strip — the Select toggle
+  // shows whenever `enableSelection` does, ticked rows or not.
   const hasSelectionBar = enableSelection && selectedRows.length > 0;
+  // While this is on, a row click ticks the box instead of running `onRowClick` —
+  // the seven grids that pass both get bulk-select for the price of suspending
+  // open-the-record until the mode is switched back off.
+  const rowSelectMode = enableSelection && selectMode;
   const showFilters = hasToolbar && enableColumnFilters;
   const showColumnPicker = hasToolbar && enableColumnPicker;
+
+  // Turns the whole row into a hit target, so ticking twenty rows doesn't mean twenty
+  // trips to a 13px box at the left edge. Toggling it off leaves `selectedKeys` alone —
+  // the point is to collect a selection and then go back to reading the table with it
+  // still held.
+  //
+  // The mark rides next to it rather than in a `title=`: the mode changes what a click
+  // on the table *does*, which is worth a sentence a reader can actually open, and a
+  // hover hint is invisible on a touch screen.
+  //
+  // One definition, two homes: the toolbar when there is one, the standalone selection
+  // strip when there isn't. Written out twice, the two copies drift.
+  const selectToggle = enableSelection ? (
+    <span className="flex items-center gap-1">
+      <Button
+        size="sm"
+        variant={selectMode ? "primary" : "secondary"}
+        onClick={() => setSelectMode((on) => !on)}
+        aria-pressed={selectMode}
+      >
+        Select
+      </Button>
+      <Comments title="Select" content={<SelectModeHelp />} />
+    </span>
+  ) : null;
 
   const recordRow = recordIndex !== undefined ? sortedRows[recordIndex] : undefined;
   const recordColumns = orderedColumns.filter((column) => !column.excludeFromRecordView);
@@ -802,6 +890,7 @@ function DataGridFull<T>({
               Columns
             </Button>
           )}
+          {selectToggle}
           {enableDensity && (
             <label className="flex items-center gap-1 text-xs text-muted">
               <span>Rows</span>
@@ -833,10 +922,10 @@ function DataGridFull<T>({
           {hasSelectionBar && (
             <span className="ml-auto flex flex-wrap items-center gap-2">
               <span className="text-xs text-muted">{selectedRows.length} selected</span>
-              {renderSelectionActions?.(selectedRows, () => setSelectedKeys(new Set()))}
+              {renderSelectionActions?.(selectedRows, clearSelection)}
               <button
                 type="button"
-                onClick={() => setSelectedKeys(new Set())}
+                onClick={clearSelection}
                 className="text-xs text-brass-dark hover:underline"
               >
                 Clear selection
@@ -848,18 +937,31 @@ function DataGridFull<T>({
 
       {/* The same bar, on its own, when there is no toolbar to sit in. Styled to
           match the toolbar strip so a grid with `showToolbar={false}` reads as one
-          surface rather than growing a differently-shaped header. */}
-      {!hasToolbar && hasSelectionBar && (
+          surface rather than growing a differently-shaped header.
+
+          It renders for the Select toggle as well as for the bulk actions, which is
+          why the condition is `enableSelection` and not just "something is ticked".
+          Gating the toggle on a selection would have been backwards: you'd have to
+          tick the first row the hard way before the control that makes ticking easy
+          appeared. Admin → Security → Visits is the grid this exists for — bare by
+          choice (`showToolbar={false}`), but still a long list someone bulk-deletes
+          from. */}
+      {!hasToolbar && enableSelection && (
         <div className="flex flex-wrap items-center gap-2 border-b border-line bg-paper-raised px-3 py-2">
-          <span className="text-xs text-muted">{selectedRows.length} selected</span>
-          {renderSelectionActions?.(selectedRows, () => setSelectedKeys(new Set()))}
-          <button
-            type="button"
-            onClick={() => setSelectedKeys(new Set())}
-            className="text-xs text-brass-dark hover:underline"
-          >
-            Clear selection
-          </button>
+          {selectToggle}
+          {hasSelectionBar && (
+            <>
+              <span className="text-xs text-muted">{selectedRows.length} selected</span>
+              {renderSelectionActions?.(selectedRows, clearSelection)}
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="text-xs text-brass-dark hover:underline"
+              >
+                Clear selection
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -964,6 +1066,18 @@ function DataGridFull<T>({
                   >
                     <span className="inline-flex items-center justify-center gap-1">
                       {column.header}
+                      {column.hint && (
+                        // `Comments` rather than a title tooltip: a hint can run
+                        // to a couple of sentences, and a phone has no hover at
+                        // all. `stopPropagation` keeps opening the note from
+                        // also re-sorting the column it sits in.
+                        <span
+                          onClick={(event) => event.stopPropagation()}
+                          className="font-normal normal-case"
+                        >
+                          <Comments title={column.header} content={column.hint} />
+                        </span>
+                      )}
                       {activeSort && <span aria-hidden>{activeSort === "asc" ? "▲" : "▼"}</span>}
                     </span>
                     {enableColumnResize && (
@@ -1030,22 +1144,41 @@ function DataGridFull<T>({
                   // tabIndex + Enter/Space handling so it's still keyboard-reachable.
                   <tr
                     key={key}
-                    onClick={onRowClick ? () => onRowClick(row) : undefined}
-                    onKeyDown={
-                      onRowClick
+                    onClick={
+                      rowSelectMode
                         ? (event) => {
+                            // A click on the row's own Edit/Delete button is that
+                            // button's, not the checkbox's.
+                            if (isInteractiveTarget(event.target, event.currentTarget)) return;
+                            toggleRowSelection(row);
+                          }
+                        : onRowClick
+                          ? () => onRowClick(row)
+                          : undefined
+                    }
+                    onKeyDown={
+                      rowSelectMode
+                        ? (event) => {
+                            if (event.target !== event.currentTarget) return;
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault();
-                              onRowClick(row);
+                              toggleRowSelection(row);
                             }
                           }
-                        : undefined
+                        : onRowClick
+                          ? (event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                onRowClick(row);
+                              }
+                            }
+                          : undefined
                     }
-                    tabIndex={onRowClick ? 0 : undefined}
+                    tabIndex={rowSelectMode || onRowClick ? 0 : undefined}
                     className={`${(rowBands?.[index] ?? index) % 2 === 1 ? stripeClassName : "bg-paper"} ${
                       selectedKeys.has(key) ? "outline outline-1 -outline-offset-1 outline-brass/40" : ""
                     } ${
-                      onRowClick
+                      rowSelectMode || onRowClick
                         ? "cursor-pointer hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brass"
                         : ""
                     }`}
@@ -1254,6 +1387,16 @@ function DataGridFull<T>({
                   {column.header}
                   {hiddenKeys.has(column.key) && (
                     <span className="ml-1 normal-case opacity-70">(hidden)</span>
+                  )}
+                  {/* Spelled out inline, not a `Comments` chip: this view is
+                      already a `Modal`, and `Comments` opens its own — both are
+                      z-50 with no portal, so nesting them is the trap
+                      components.md calls out for the encrypt dialog. There is
+                      room for the words here anyway. */}
+                  {column.hint && (
+                    <span className="mt-0.5 block text-[0.7rem] font-normal normal-case tracking-normal opacity-70">
+                      {column.hint}
+                    </span>
                   )}
                 </dt>
                 <dd className="break-words text-sm text-ink">{column.render(recordRow)}</dd>

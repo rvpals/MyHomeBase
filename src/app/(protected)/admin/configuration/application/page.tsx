@@ -4,6 +4,7 @@ import { useAdminSettings } from "../../admin-shell";
 import { PAGE_CONTAINER } from "../../../page-container";
 import { CullCapControl } from "./cull-cap-control";
 import { UploadCapControl } from "./upload-cap-control";
+import { DocumentLimitsControl } from "./document-limits-control";
 
 export default function ApplicationConfigurationPage() {
   const { applicationName, setApplicationName } = useAdminSettings();
@@ -30,6 +31,7 @@ export default function ApplicationConfigurationPage() {
 
         <UploadCapControl />
         <CullCapControl />
+        <DocumentLimitsControl />
       </div>
     </div>
   );

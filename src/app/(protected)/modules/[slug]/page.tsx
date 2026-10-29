@@ -14,6 +14,7 @@ import { JournalSection } from "./journal-section";
 import { MusicSection } from "./music-section";
 import { StockSection } from "./stock-section";
 import { ClipsSection } from "./clips-section";
+import { DocumentsSection } from "./documents-section";
 import { HouseholdSection } from "./household-section";
 import { ToolsSection } from "./tools-section";
 
@@ -34,15 +35,26 @@ const PICTURE_GALLERY_MODULE_SLUG = "picture-gallery";
 const TOOLS_MODULE_SLUG = "tools";
 const HOUSEHOLD_MODULE_SLUG = "household";
 const CLIPS_MODULE_SLUG = "clips";
+const DOCUMENTS_MODULE_SLUG = "documents";
 
 function ModuleBody({
   slug,
   isCurrentUserAdmin,
   requestedClassId,
+  clipsSearch,
+  clipsCategory,
+  clipsTag,
+  clipsTab,
 }: {
   slug: string;
   isCurrentUserAdmin: boolean;
   requestedClassId?: number;
+  // Clips' home screen IS the module root, so its filter box and its tabs put
+  // their state in this route's query string rather than a section route's.
+  clipsSearch?: string;
+  clipsCategory?: string;
+  clipsTag?: string;
+  clipsTab?: string;
 }) {
   // Investments, My Journal, and Expense all use a tree nav: the module root
   // is their home/dashboard, and every other section is its own route under
@@ -88,7 +100,30 @@ function ModuleBody({
   }
 
   if (slug === CLIPS_MODULE_SLUG) {
-    return <ClipsSection section="main" />;
+    return (
+      <ClipsSection
+        section="main"
+        search={clipsSearch}
+        category={clipsCategory}
+        tag={clipsTag}
+        requestedTab={clipsTab}
+        isAdmin={isCurrentUserAdmin}
+      />
+    );
+  }
+
+  if (slug === DOCUMENTS_MODULE_SLUG) {
+    // The same three filter params Clips uses — the home screen *is* the list here
+    // too, so a filtered library has to be a real URL.
+    return (
+      <DocumentsSection
+        view="main"
+        search={clipsSearch}
+        category={clipsCategory}
+        tag={clipsTag}
+        isAdmin={isCurrentUserAdmin}
+      />
+    );
   }
 
   return (
@@ -106,13 +141,30 @@ export default async function ModulePage({
   params: Promise<{ slug: string }>;
   // `classId` picks the Classroom module's class, so a teacher can bookmark
   // their first-period register and land straight on it.
-  searchParams: Promise<{ classId?: string | string[] }>;
+  //
+  // The rest are Clips': its home screen is the module root, so a filtered board
+  // and an open tab have to be real URLs here — the same four names the section
+  // route already parses, not a second spelling of the same idea.
+  searchParams: Promise<{
+    classId?: string | string[];
+    search?: string | string[];
+    category?: string | string[];
+    tag?: string | string[];
+    tab?: string | string[];
+  }>;
 }) {
   const { slug } = await params;
-  const { classId } = await searchParams;
+  const { classId, search, category, tag, tab } = await searchParams;
   // A repeated ?classId= yields an array; take the first rather than joining.
   const rawClassId = Array.isArray(classId) ? classId[0] : classId;
   const requestedClassId = Number(rawClassId) || undefined;
+  // Same first-element rule, and all four stay raw: Clips parses them with its own
+  // `clipFilterSchema`, so a stale value narrows the board to nothing rather than
+  // 404ing, and an unknown tab opens the first one.
+  const clipsSearch = Array.isArray(search) ? search[0] : search;
+  const clipsCategory = Array.isArray(category) ? category[0] : category;
+  const clipsTag = Array.isArray(tag) ? tag[0] : tag;
+  const clipsTab = Array.isArray(tab) ? tab[0] : tab;
 
   // Before the lookup, because this slug no longer resolves to a module row.
   if (slug === RETIRED_ATTENDANCE_SLUG) {
@@ -135,6 +187,10 @@ export default async function ModulePage({
         slug={slug}
         isCurrentUserAdmin={isAdmin(currentUser)}
         requestedClassId={requestedClassId}
+        clipsSearch={clipsSearch}
+        clipsCategory={clipsCategory}
+        clipsTag={clipsTag}
+        clipsTab={clipsTab}
       />
     </div>
   );

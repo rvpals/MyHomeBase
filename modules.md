@@ -41,6 +41,7 @@ are the `snake_case` equivalents.
 | `tools` | Tools | Tools & Utilities | This module list all the utilities and tools | 10 | `tool` | `tol_` |
 | `household` | Household | Household | Recipes, receipts and the HSA — the household's paperwork. | 11 | `household` | `hsh_` |
 | `clips` | Clips | Clips | Rich-text notes with tags and pasted images, linkable to a journal entry. | 12 | `folder` | `clp_` |
+| `documents` | Documents | Document Library | Filed documents with categories, tags and their attachment files. | 13 | `folder` | `doc_` |
 
 Sequence 1 is deliberately vacant: it belonged to the Real Estate module, retired
 in `migrations/0026_drop_real_estate_module`. Its `rei_` prefix is retired with
@@ -2411,18 +2412,96 @@ editor's one remaining two-column grid (Category/Rating/Source/Tags) collapses t
 (`max-lg:grid-cols-1`), and the grid goes compact at 1024px carrying selection and both
 bulk actions with it.
 
-**Clips** (`clips`) — rich-text notes that stand on their own: paste an email, keep
-a reference, jot something down. Four sections (Home screen, All Clips, Categories &
-Tags, Configuration), one library module `src/lib/clips`, eight `clp_` tables from
-migrations 0155 and 0157. Driveable as
-`npm run cli -- clips <list|show|add|pin|unpin|colour|items|tick|untick|link|delete>`.
+**Document Library** (`documents`) — the household's filed paperwork: a lease, a
+warranty, an insurance policy, a manual. Three sections (Home screen, Categories &
+Tags, Configuration), one library module `src/lib/documents`, six `doc_` tables from
+migration 0159. Driveable as
+`npm run cli -- list-documents [--search X] [--category C] [--tag T] [--id N] [--zip path]`.
 
-All Clips is a **board or a list**, switched with `ViewModeSwitch` and remembered per
+The home screen **is** the list, the same shape Clips settled on — filtering and the
+way in to the editor both live at `/modules/documents`, because a second route showing
+the same rows would be the same screen twice. The editor is a **full route**
+(`/modules/documents/new` and `/modules/documents/edit?edit=<id>`) rather than a modal:
+a document carries a title, a description, two taxonomies and any number of files, and
+a route means a half-filled form survives a refresh. Those two routes are deliberately
+**not** sections — they carry no nav row and no icon slot, because a slot marks a place
+and "the form I am filling in" is not one.
+
+Five decisions worth knowing:
+
+- **The file bytes are not in the database.** Files live on a configured folder on the
+  NAS at `doc_<id>/<name>`; `doc_attachments` is the index to them. The same split the
+  HSA receipts use, and migration 0079 recorded the cost of the alternative when it
+  dropped `jrn_entry_images`. The trade is that the two can disagree — a file moved by
+  hand leaves a row pointing at nothing — and that is treated as a **normal state**: the
+  document still lists it and the serving route answers 404.
+- **One file per attachment, never a `.zip` on disk.** A multi-file document was
+  originally specified as `doc_<id>.zip`; keeping each file separate instead is what
+  lets any one of them be opened on its own, and makes an edit an add or a remove rather
+  than unpack-modify-repack. **Download all** builds the archive on demand through
+  `src/lib/zip`, re-applying a collision suffix because `buildZip` refuses duplicate
+  entry names and two files on one document legitimately share an original name.
+- **There is no date column.** Considered and dropped: a lease has a term, a warranty an
+  expiry, a manual neither, so one `doc_date` would have meant something different for
+  each. `created_at` records when it was filed, which is the only date the module can
+  state honestly — and with no date there is no year folder, so the layout is flat.
+- **Nothing is ever unlinked.** Deleting a document asks whether to delete its files,
+  defaulting to **no**; even on yes the folder *moves* to `_deleted/doc_<id>_<timestamp>/`.
+  The timestamp matters: deleting, re-filing and deleting again would otherwise collide,
+  and `rename` onto an existing folder fails on Windows.
+- **The upload ceiling is set in Admin, not here.** Per-file size and files-per-document
+  live in Administration → Configuration → Application
+  ([document-limits-control.tsx](src/app/(protected)/admin/configuration/application/document-limits-control.tsx)),
+  because they bound what one request costs the server rather than expressing a
+  preference about documents. They are stored as this module's `sys_module_settings`
+  rows — the same arrangement `UploadCapControl` uses for the SQLite Browser — and the
+  module's own Configuration screen shows them **read-only**, so a limit still explains
+  itself where it applies. Parsing is forgiving: a blank or hand-edited nonsense value
+  falls back to the default and an over-large one is clamped.
+
+**Categories and tags each carry an uploaded icon**, the same treatment the Journal's
+and Expense's taxonomy screens give theirs. The bytes sit in `doc_categories.icon_image`
+/ `doc_tags.icon_image` and are served by `/api/documents/categories/<name>/icon` and
+`/api/documents/tags/<name>/icon` — never inlined into a list payload, which is why
+every taxonomy read names its columns and omits `icon_image` (`TAXONOMY_COLUMNS` in the
+repository exists for exactly that). PNG/JPEG/WebP/GIF up to 128 KB, the same
+`MAX_JOURNAL_ICON_BYTES` ceiling, enforced on the **decoded** length. Both routes gate
+on holding the module, and both URLs carry a `?v=<updatedAt>` cache-buster — the route
+sends `max-age=300`, so without it a replaced icon would show the old picture for five
+minutes. There is no "generate from name": that is the Journal's own icon generator, and
+this module has no equivalent.
+
+The upload path is a **route handler**, not a server action
+(`/api/documents/<id>/attachments`): a server action's body limit is about 1 MB and
+raising it is a global change affecting every action in the app. Files are stored one at
+a time and failures are collected rather than thrown, so a reader who dropped six files
+and had one refused keeps the other five.
+
+**Clips** (`clips`) — rich-text notes that stand on their own: paste an email, keep
+a reference, jot something down. Four sections (Home screen, Categories & Tags,
+Recycled Clips, Configuration), one library module `src/lib/clips`, fourteen `clp_`
+tables from migrations 0155, 0157 and 0161. Driveable as
+`npm run cli -- clips <list|show|add|pin|unpin|colour|items|tick|untick|link|delete|recycled|restore|purge|empty-bin>`.
+
+The home screen **is** the module: it absorbed the old All Clips section, so writing,
+filtering, pinning and editing all happen at `/modules/clips`. Its two tabs are
+**Most Recent** (the newest few, a glance) and **All clips** (everything), seeded
+from `?tab=` and defaulting to the first. The search box and the category and tag
+chips sit *above* the strip and narrow both tabs together — so with a filter on,
+"most recent" means the newest few matches, which the tab says out loud rather than
+leaving to be discovered.
+
+Either tab is a **board or a list**, switched with `ViewModeSwitch` and remembered per
 device in `localStorage` — the same rows, two shapes, so neither is "the real one".
 Both draw the same `ClipsCard` and both show the pinned band, because pinning is in
 the repository's one `ORDER BY` rather than in either view.
 
-Six decisions worth knowing, because each was a trap:
+Because the home screen is the module *root*, its `?search=`/`?category=`/`?tag=`/`?tab=`
+params are parsed in [`[slug]/page.tsx`](<src/app/(protected)/modules/[slug]/page.tsx>)
+as well as the section route — a filter box on a root screen is otherwise a box that
+navigates to a query string nothing reads.
+
+Seven decisions worth knowing, because each was a trap:
 
 - **A clip's checklist is a table, not checkboxes in the body.** `sanitizeClipHtml`
   removes `<input>` with its contents and refuses `style` outright — deliberately,
@@ -2436,6 +2515,18 @@ Six decisions worth knowing, because each was a trap:
   the same pink card in all eight themes, two of which are light. The keys are
   permanent, like an icon slot id — see `design.md` → *Tinted surfaces*.
 
+- **Deleting a clip bins it; only the bin destroys it.** Migration 0161 added
+  `clp_recycled_clips` and five child mirrors, built to the same pattern as the
+  journal's bin (0079) — mirror tables, **not** a `deleted_at` flag on `clp_clips`.
+  A flag would mean every existing read (the list, the board, the chips, the
+  journal's link count, the taxonomy usage counts) had to learn to exclude binned
+  rows, and one missed `WHERE` silently serves a deleted clip; a separate table
+  cannot be read by accident. All six of a clip's tables are mirrored, **images
+  included, bytes and all** — orphaning the rows in `clp_clip_images` instead would
+  leave a deleted clip's screenshots live at `/api/clips/images/<id>`, since that
+  route serves by image id alone. A sealed clip is binned sealed and comes back
+  sealed. Restore aims at the clip's **original** id for the same reason
+  `restoreRecycledEntries` does — see the next point.
 - **A clip is never deleted by anything but a reader deleting it.** `clp_clip_links`
   points *at* a journal entry and nothing points back, so deleting the entry leaves
   an orphaned link rather than removing the supporting email someone pasted. That is

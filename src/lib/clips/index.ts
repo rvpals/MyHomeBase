@@ -12,6 +12,7 @@ export type {
   ClipLinkModule,
   ClipSummary,
   ClipTaxonomyItem,
+  RecycledClip,
   ResolvedClipLink,
 } from "./types";
 
@@ -98,6 +99,21 @@ export {
   updateClip,
   type ClipWriteResult,
 } from "./clips";
+
+// The recycle bin (migration 0161). `deleteClip` above is now the permanent
+// purge — the Delete button calls `recycleClips`, and only the bin's own purge
+// and the CLI's `--forever` destroy anything.
+export {
+  countRecycledClips,
+  deleteRecycledClipsForever,
+  emptyClipsRecycleBin,
+  listRecycledClips,
+  recycleClips,
+  restoreRecycledClips,
+  type ClipPurgeResult,
+  type ClipRecycleResult,
+  type ClipRestoreResult,
+} from "./recycle";
 
 // The board's arrangement rules — pure, and shared by the board view, the list's
 // pinned band and anything that needs the same split without a browser.

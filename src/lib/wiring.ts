@@ -36,6 +36,8 @@ import {
 } from "@/lib/scratchpad";
 import { SqliteClipsRepository } from "./clips/repository";
 import { SharpClipImageProcessor } from "./clips/image-processor";
+import { SqliteDocumentsRepository } from "./documents/repository";
+import { NodeDocumentFileStore } from "./documents/file-store";
 import { SqliteGamesRepository } from "./games/repository";
 import { SqliteHouseholdRepository } from "./household/repository";
 import { SqliteHsaRepository } from "./household/hsa-repository";
@@ -278,6 +280,13 @@ export const deps = {
   // `sharp`, for the reason the carousel and icon processors both record: this file
   // loads on every page, so a top-level native import would run on every render.
   clipImageProcessor: new SharpClipImageProcessor(),
+  // The Document Library (migrations/0159): filed documents, their taxonomy, and the
+  // rows that index their attachment files.
+  documentsRepo: new SqliteDocumentsRepository(db),
+  // The folder a document's attachment files are written to (migrations/0159). Takes
+  // the folder per call rather than at construction, exactly as receiptFileStore does:
+  // it is a setting, so correcting it takes effect on the next save with no restart.
+  documentFileStore: new NodeDocumentFileStore(),
   // The Household module's recipe box (migrations/0118).
   householdRepo: new SqliteHouseholdRepository(db),
   // The Household module's HSA Tracker (migrations/0128). Its own repository: the

@@ -24,6 +24,7 @@ module is obvious from the name alone. New tables must follow this.
 | `tol_` | Tools | `tol_uploaded_databases`, `tol_uploaded_csv_files`, `tol_todo_categories`, `tol_todo_items` |
 | `hsh_` | Household | `hsh_recipes`, `hsh_recipe_tags`, `hsh_hsa_expenses`, `hsh_hsa_cards` |
 | `clp_` | Clips | `clp_clips`, `clp_categories`, `clp_tags`, `clp_clip_categories`, `clp_clip_tags`, `clp_clip_images`, `clp_clip_links` |
+| `doc_` | Document Library | `doc_documents`, `doc_attachments`, `doc_categories`, `doc_tags`, `doc_document_categories`, `doc_document_tags` |
 
 **Attendance became Classroom in migration 0143**, and the prefix moved `att_` -> `cls_`
 with it. Attendance is now one of two *section groups* inside Classroom (the other is

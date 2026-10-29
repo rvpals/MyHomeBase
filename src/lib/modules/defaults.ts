@@ -19,7 +19,8 @@ import type { ModuleSeed } from "./types";
 // migrations/0119_seed_household_module.sql, and
 // migrations/0143_rename_attendance_to_classroom.sql (which renamed the Attendance
 // module to Classroom, folding Attendance into it as a section group), and
-// migrations/0156_seed_clips_module.sql.
+// migrations/0156_seed_clips_module.sql, and
+// migrations/0160_seed_documents_module.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: ModuleSeed[] = [
   {
@@ -126,6 +127,18 @@ export const DEFAULT_MODULES: ModuleSeed[] = [
     longName: "Clips",
     description: "Rich-text notes with tags and pasted images, linkable to a journal entry.",
     sequence: 12,
+    isVisible: true,
+    icon: "folder",
+  },
+  {
+    // `folder` again, for the reason the entry above records — a `document` glyph
+    // would have to be drawn in all twelve generated icon sets, which is its own
+    // migration. See migrations/0160_seed_documents_module.md.
+    slug: "documents",
+    shortName: "Documents",
+    longName: "Document Library",
+    description: "Filed documents with categories, tags and their attachment files.",
+    sequence: 13,
     isVisible: true,
     icon: "folder",
   },

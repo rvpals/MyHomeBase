@@ -12,6 +12,12 @@
 // top edge competing with the bar that already owns sections at the bottom edge.
 // `TwoTierShell` decides; this component is never rendered on compact.
 //
+// **It does not position itself.** `TwoTierShell` renders this inside
+// `.shell-topnav`, the sticky wrapper it shares with `NavTabs`, so the two bands
+// dock to the top edge together and the current section stays named on screen
+// however far the page scrolls. Giving this component its own `sticky` would mean
+// hardcoding the tab row's height here — see the rule's note in globals.css.
+//
 // **Grouped sections collapse into one dropdown per group.** Journal has 23
 // sections and Classroom 19, which no single row holds; its seven ungrouped
 // sections fit, and "Data Management" and "Configuration" become two menus. That

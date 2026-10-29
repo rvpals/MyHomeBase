@@ -155,7 +155,13 @@ export function NavTabs({
       ref={rowRef}
       // `chrome-bar` carries the admin's bevel and border width, exactly as it
       // does for `AppHeader`. Geometry here, decoration there.
-      className="chrome-bar sticky top-0 z-30 flex items-stretch gap-0.5 border-line bg-paper-raised px-2"
+      //
+      // **Not `sticky` itself.** The tab row and the section strip dock together
+      // as one block, so the stickiness lives on the wrapper `TwoTierShell` puts
+      // around both (`.shell-topnav`) — see design.md, "The full layout's two
+      // shapes". Sticking this row on its own is what let the strip scroll out
+      // from under it, leaving the current section unnamed on screen.
+      className="chrome-bar flex items-stretch gap-0.5 border-line bg-paper-raised px-2"
       // Guarded exactly as `NavTree` guards it: `navTextureVars` takes a resolved
       // texture, not an optional one, so an unset picture means no vars at all.
       style={texture ? (navTextureVars(texture) as CSSProperties) : undefined}

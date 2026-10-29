@@ -1138,20 +1138,10 @@ export const ICON_SLOTS: IconSlot[] = [
     id: "clips_section_main",
     label: "Clips home",
     group: "Clips sections",
+    // The module's one working screen since it absorbed All Clips: both tabs, the
+    // filter box and the editor live behind this row.
     where: "Clips → section panel → Home screen.",
     defaultConcept: "grid",
-    wired: true,
-    namespace: "tree",
-  },
-  {
-    id: "clips_section_all",
-    label: "All Clips",
-    group: "Clips sections",
-    where: "Clips → section panel → All Clips.",
-    // `note` (a page of text) rather than `clip`: this row is the list of written
-    // things, and `clip` is spent on the attachment badge below, where the mark has
-    // to read as "something is attached here" rather than "notes live here".
-    defaultConcept: "note",
     wired: true,
     namespace: "tree",
   },
@@ -1161,6 +1151,17 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Clips sections",
     where: "Clips → section panel → Categories & Tags.",
     defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "clips_section_recycled",
+    label: "Recycled Clips",
+    group: "Clips sections",
+    where: "Clips → section panel → Recycled Clips.",
+    // The bin, which is what the screen is. Migration 0161 — deleting a clip
+    // moves it here rather than destroying it.
+    defaultConcept: "trash",
     wired: true,
     namespace: "tree",
   },
@@ -1181,6 +1182,43 @@ export const ICON_SLOTS: IconSlot[] = [
     // `clip` itself, the one place the paperclip reads exactly right: it marks an
     // attachment on someone else's record rather than naming a destination.
     defaultConcept: "clip",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* ---------------------------------------------------------------------------------
+     Document Library — its three sections.
+
+     The `new` and `edit` routes get no slot: they are not destinations in the nav,
+     they are where the editor opens. A slot marks a PLACE, and "the form I am filling
+     in" is not one — the same reason a row's Edit button is not slotted.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "documents_section_main",
+    label: "Documents home",
+    group: "Document Library sections",
+    // One working screen, as Clips settled on: the list, the filter box and the
+    // links into the editor all live behind this row.
+    where: "Documents → section panel → Home screen.",
+    defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "documents_section_metadata",
+    label: "Categories & Tags",
+    group: "Document Library sections",
+    where: "Documents → section panel → Categories & Tags.",
+    defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "documents_section_configuration",
+    label: "Configuration",
+    group: "Document Library sections",
+    where: "Documents → section panel → Configuration.",
+    defaultConcept: "gear",
     wired: true,
     namespace: "tree",
   },

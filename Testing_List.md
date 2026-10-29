@@ -146,6 +146,49 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-28 — Release (Document Library, Clips recycle bin, sticky section strip, grid Select mode)
+
+**Migrations 0159, 0160 and 0161 must be applied on the NAS first** — Documents items fail
+with "no such table" until 0159/0160 are in, and Clips delete fails the same way without
+0161. **Documents is granted to nobody but administrators** until you grant it (item 1).
+Items 1–15 are Documents, 16–24 Clips, 25–26 the sticky strip, 27–31 grid Select mode and
+32–34 Expense. **Items 26 and 33 are phone-only.**
+
+- [ ] **1.** Administration → User Management: grant a non-admin user the Documents module; they see it on the home grid and in the module tabs, and a user without the grant gets a not-found page
+- [ ] **2.** Documents → Configuration: before a folder is set, filing a document works but attaching a file is refused with "No document folder is set."
+- [ ] **3.** Set the document folder on Configuration; the Documents home screen lists nothing yet and offers a way to file one
+- [ ] **4.** File a new document with a title, description, a category, a tag and two attachments; it appears on the home screen with its attachment count and total size
+- [ ] **5.** On the NAS the files are under `doc_<id>/` directly beneath the chosen folder, with no year folder
+- [ ] **6.** Open a PDF and an image attachment: both display inline; a Word or text file downloads instead
+- [ ] **7.** **Download all** on a document streams one zip containing every attachment
+- [ ] **8.** Filter the home screen by text, category and tag; the filter survives a refresh
+- [ ] **9.** Edit a document: add a file, remove a file, change its tags; the list reflects it
+- [ ] **10.** Delete a document and leave "also delete its files" unticked: the record goes and the files stay on the share
+- [ ] **11.** Delete another with it ticked: the folder is moved to `_deleted/doc_<id>_<timestamp>/` and is not unlinked
+- [ ] **12.** Move one attachment file by hand on the NAS, then open its document: the attachment still lists and downloading it gives a 404 rather than a crash
+- [ ] **13.** Documents → Categories & Tags: add, rename and delete a category and a tag, and upload an icon for one; deleting a category never deletes a document
+- [ ] **14.** Admin → Configuration → Application: the document limits control saves; try a file over the size limit and a document over the count limit, and a blank or nonsense value falls back to the default
+- [ ] **15.** CLI: `npm run cli -- list-documents`, then `--search`, `--id` and `--id <n> --zip <file>` each work, and `--zip` names and skips a file that is missing from the share
+- [ ] **16.** Clips: delete a clip — it asks, then disappears from the home screen and the board
+- [ ] **17.** Clips → **Recycled Clips** lists it, newest deleted first, with restore, delete-forever and empty-bin
+- [ ] **18.** Restore a clip that had categories, tags, a pasted image and a checklist: all of them come back, and the checklist order is unchanged
+- [ ] **19.** Restore a clip attached to a journal entry: the entry's paperclip badge still opens it
+- [ ] **20.** Delete a clip, add another clip, then restore the first: it still comes back (under a new id if the old one was taken) and an old link reads "the linked record is gone"
+- [ ] **21.** Bin a password-sealed clip: the bin shows "(encrypted)" and the restored clip still needs its password
+- [ ] **22.** Delete-forever one clip and empty the bin: both are gone for good, and a deleted clip's pasted image no longer loads from its old URL
+- [ ] **23.** Clips home screen: the **Most recent** and **All clips** tabs both work, `?tab=` selects one, and the old All Clips section is gone from the nav
+- [ ] **24.** Clips board: columns are a fixed width, so widening the window shows more cards rather than wider ones; on a phone it is one column
+- [ ] **25.** Top tabs navigation, long page (Expense → Transactions): scroll down and the module tab row **and** the section chips stay at the top of the window
+- [ ] **26.** Phone: the bottom bar is unchanged and nothing sticks at the top
+- [ ] **27.** Open a section-group menu (e.g. Journal → Configuration) and the **More ▾** menu while scrolled: both open fully and are not clipped
+- [ ] **28.** Any grid with row checkboxes now has a **Select** toggle with a help mark beside it; turning it on lets a click anywhere on a row tick that row
+- [ ] **29.** With Select on, a row's Edit/Delete button, a link and an input still work normally, and row-click-to-open is suspended until it is off
+- [ ] **30.** Turn Select off with rows ticked: the ticks stay. Clear the selection: Select turns itself off
+- [ ] **31.** Admin → Security → Visits (no toolbar): the Select toggle appears in the selection strip
+- [ ] **32.** Expense → Transactions: column headers show a hint mark (Amount explains the sign convention); hover or tap one to read it
+- [ ] **33.** Phone: the same hint and Select toggle are available in the card layout
+- [ ] **34.** Add a transaction: Vendor is a picker over the saved vendors, typing filters it, and a name that is not saved still commits; the bulk-edit dialog's Vendor field does the same
+
 ## 2026-10-28 — Release (Journal entry content row, toolbar new-tab shortcuts, expense sign tools, location hand-off)
 
 **Migration 0158 must be applied on the NAS first** — items 5–10 fail with "no such column"

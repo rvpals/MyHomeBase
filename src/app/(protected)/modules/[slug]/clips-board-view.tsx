@@ -11,6 +11,18 @@ import { MasonryBoard } from "@/components/masonry-board";
 import { buildClipBoard, dealClipsIntoColumns, type ClipSummary } from "@/lib/clips";
 import { ClipsCard } from "./clips-card";
 
+/**
+ * The narrowest a card column may be, in pixels.
+ *
+ * Fixed width rather than a column count, so a card is the same size on a laptop and
+ * on a wide monitor and the extra room shows *more* clips instead of fatter ones.
+ * 280px is about the narrowest that still holds a title, a readable excerpt line and
+ * a row of chips without the chips wrapping one per line. Shared with the home
+ * screen's board (`clips-main-view.tsx`) so a card does not change size between the
+ * two screens.
+ */
+const CARD_WIDTH = 280;
+
 export interface ClipsBoardViewProps {
   clips: ClipSummary[];
   onOpen: (id: number) => void;
@@ -63,6 +75,7 @@ export function ClipsBoardView({
             deal={dealClipsIntoColumns}
             renderItem={renderCard}
             itemKey={(clip) => clip.id}
+            minColumnWidth={CARD_WIDTH}
           />
         </section>
       )}
@@ -80,6 +93,7 @@ export function ClipsBoardView({
             deal={dealClipsIntoColumns}
             renderItem={renderCard}
             itemKey={(clip) => clip.id}
+            minColumnWidth={CARD_WIDTH}
           />
         </section>
       )}

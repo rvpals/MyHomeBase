@@ -62,6 +62,7 @@ import { recipesCommand } from "./recipes";
 import { examsCommand } from "./exams";
 import { takeAttendanceCommand } from "./take-attendance";
 import { clipsCommand } from "./clips";
+import { listDocumentsCommand } from "./list-documents";
 import { todoCommand } from "./todo";
 import { taxLotsCommand } from "./tax-lots";
 import { simulateTickerCommand } from "./simulate-ticker";
@@ -125,6 +126,7 @@ const commands: Record<string, Command> = {
   recipes: recipesCommand,
   hsa: hsaCommand,
   clips: clipsCommand,
+  "list-documents": listDocumentsCommand,
   todo: todoCommand,
   "take-attendance": takeAttendanceCommand,
   exams: examsCommand,

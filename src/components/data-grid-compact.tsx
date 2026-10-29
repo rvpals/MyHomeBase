@@ -25,7 +25,11 @@
 // pinned above the cards.
 
 import { useMemo, useState, type ReactNode } from "react";
+import { Comments } from "@/components/comments";
 import { computeRowBands } from "@/lib/shared/table";
+import { SelectModeHelp } from "@/components/data-grid-select-help";
+// Types only: `data-grid` imports this file in turn, and `import type` is erased, so
+// the cycle never reaches runtime. Keep it that way — see `data-grid-select-help`.
 import type { CellValue, DataGridColumn } from "./data-grid";
 
 export interface DataGridCompactProps<T> {
@@ -117,6 +121,10 @@ export function DataGridCompact<T>({
   const [sortKey, setSortKey] = useState<string>("");
   const [limit, setLimit] = useState(PAGE_STEP);
   const [selectedKeys, setSelectedKeys] = useState<Set<string | number>>(new Set());
+  // Tap-anywhere-to-tick, the phone half of the full grid's "Select" toggle. The
+  // checkbox here is a 16px box in a card corner, so the aiming problem it solves is
+  // worse on a touch screen than on a pointer one. Not persisted, same as there.
+  const [selectMode, setSelectMode] = useState(false);
 
   // The first column identifies the record, so it becomes the card's heading
   // rather than another label/value line.
@@ -145,7 +153,10 @@ export function DataGridCompact<T>({
   // grid keeps. A row filtered out of view is dropped from the selection rather than
   // acted on invisibly.
   const selectedRows = visible.filter((row) => selectedKeys.has(getRowKey(row)));
-  const clearSelection = () => setSelectedKeys(new Set());
+  const clearSelection = () => {
+    setSelectedKeys(new Set());
+    setSelectMode(false);
+  };
   const allVisibleSelected = visible.length > 0 && selectedRows.length === visible.length;
 
   function toggleRowSelection(row: T) {
@@ -226,6 +237,22 @@ export function DataGridCompact<T>({
             />
             {selectedRows.length > 0 ? `${selectedRows.length} selected` : "Select all"}
           </label>
+          <span className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setSelectMode((on) => !on)}
+              aria-pressed={selectMode}
+              className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+                selectMode
+                  ? "border-brass bg-brass text-paper"
+                  : "border-line bg-paper text-ink hover:border-brass/50"
+              }`}
+            >
+              Select
+            </button>
+            {/* Same words as the full grid — see `SelectModeHelp`. */}
+            <Comments title="Select" content={<SelectModeHelp />} />
+          </span>
           {selectedRows.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
               {renderSelectionActions?.(selectedRows, clearSelection)}
@@ -257,6 +284,7 @@ export function DataGridCompact<T>({
                 detailColumns={detailColumns}
                 onRowClick={onRowClick}
                 isSelectable={enableSelection}
+                selectOnTap={enableSelection && selectMode}
                 isSelected={selectedKeys.has(getRowKey(row))}
                 onToggleSelected={() => toggleRowSelection(row)}
               />
@@ -310,6 +338,7 @@ function CompactRow<T>({
   onRowClick,
   stripeClassName,
   isSelectable = false,
+  selectOnTap = false,
   isSelected = false,
   onToggleSelected,
 }: {
@@ -326,6 +355,8 @@ function CompactRow<T>({
   detailColumns: DataGridColumn<T>[];
   onRowClick?: (row: T) => void;
   isSelectable?: boolean;
+  /** Tap the card body to tick it, instead of running `onRowClick`. */
+  selectOnTap?: boolean;
   isSelected?: boolean;
   onToggleSelected?: () => void;
 }) {
@@ -356,6 +387,13 @@ function CompactRow<T>({
           >
             <dt className="border-r border-line py-1.5 pr-3 text-[11px] uppercase tracking-wide text-muted [overflow-wrap:anywhere]">
               {column.header}
+              {/* The wide header is never drawn on compact, so without this a
+                  hint would be unreachable on a phone. */}
+              {column.hint && (
+                <span className="ml-1 normal-case">
+                  <Comments title={column.header} content={column.hint} />
+                </span>
+              )}
             </dt>
             {/* Clamped rather than truncated: two lines is enough to read a title
                 or a tag list, and the record view has the untruncated version.
@@ -408,8 +446,13 @@ function CompactRow<T>({
 
   // `data-compact-row` is a stable hook for the layout snapshot harness, which
   // counts cards the way it counts table rows.
+  //
+  // In select mode the card is a button whatever the caller passed, and its tap ticks
+  // the box rather than opening the record — the same suspension of `onRowClick` the
+  // full grid makes, so a phone and a desktop behave alike while the mode is on.
+  const tapAction = selectOnTap ? onToggleSelected : onRowClick ? () => onRowClick(row) : undefined;
   const card =
-    onRowClick === undefined ? (
+    tapAction === undefined ? (
       <div data-compact-row className={cardClass}>
         {body}
       </div>
@@ -417,7 +460,7 @@ function CompactRow<T>({
       <button
         type="button"
         data-compact-row
-        onClick={() => onRowClick(row)}
+        onClick={tapAction}
         className={`w-full text-left transition-colors hover:border-brass/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${cardClass}`}
       >
         {body}
