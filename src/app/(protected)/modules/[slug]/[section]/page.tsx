@@ -88,6 +88,7 @@ function renderSection(
   requestedReportRun: string | undefined,
   requestedTopic: string | undefined,
   requestedCloneId: number | undefined,
+  requestedTreeDocumentId: number | undefined,
 ) {
   if (slug === CLASSROOM_MODULE_SLUG && isClassroomSection(section)) {
     return (
@@ -180,7 +181,7 @@ function renderSection(
       />
     );
   }
-  // Both the three nav sections and the two editor routes (`new`, `edit`), which are
+  // Both the five nav sections and the two editor routes (`new`, `edit`), which are
   // not sections: they are where the form opens, so they carry no nav row and no icon
   // slot. Gated on the slug AND on this module's own guards, so one module's section
   // name can never resolve under another module's slug.
@@ -198,6 +199,11 @@ function renderSection(
         // The same ?edit= the Journal report and Classroom exam editors use — one
         // param meaning "open this record for editing".
         documentId={Number(requestedReportEdit) || undefined}
+        // Which document the tree screen is showing below its list. A separate param
+        // from ?edit=: that one means "open this record for editing", this one means
+        // "read this one beside the tree", and collapsing them would make the tree's
+        // detail pane and the editor the same link.
+        treeDocumentId={requestedTreeDocumentId}
         isAdmin={isAdmin}
       />
     );
@@ -290,6 +296,13 @@ export default async function ModuleSectionPage({
     // was made. That also makes the clone form reloadable and bookmarkable, the
     // same reasoning ?filter= and ?topic= follow.
     clone?: string | string[];
+    // Which document the Document Library's tree screen is showing in its detail
+    // pane. In the URL rather than client state for the reason ?category= and ?tag=
+    // are: `NavTree` remounts on every navigation, so a tree position held in client
+    // state is lost the moment the reader goes anywhere and comes back. Only the id
+    // travels; the section re-reads the record, so the pane always shows what the
+    // document says now.
+    doc?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -317,6 +330,7 @@ export default async function ModuleSectionPage({
     run,
     topic,
     clone,
+    doc,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -384,6 +398,15 @@ export default async function ModuleSectionPage({
   const parsedCloneId = Number(rawCloneId);
   const requestedCloneId =
     Number.isInteger(parsedCloneId) && parsedCloneId > 0 ? parsedCloneId : undefined;
+  // The same rule again for the tree's open document: a row id, so anything that is
+  // not a positive integer is absent rather than wrong, and the tree renders its
+  // "pick a document" placeholder exactly as it would with no param.
+  const rawTreeDocumentId = Array.isArray(doc) ? doc[0] : doc;
+  const parsedTreeDocumentId = Number(rawTreeDocumentId);
+  const requestedTreeDocumentId =
+    Number.isInteger(parsedTreeDocumentId) && parsedTreeDocumentId > 0
+      ? parsedTreeDocumentId
+      : undefined;
 
   // Before the lookup, because this slug no longer resolves to a module row. The
   // section slugs are unchanged, so the path maps one-for-one; only the three
@@ -434,6 +457,7 @@ export default async function ModuleSectionPage({
     requestedReportRun,
     requestedTopic,
     requestedCloneId,
+    requestedTreeDocumentId,
   );
   if (!body) notFound();
 

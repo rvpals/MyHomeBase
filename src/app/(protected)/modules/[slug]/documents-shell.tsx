@@ -67,8 +67,8 @@ export async function DocumentsShell({ children }: { children: ReactNode }) {
   // Both name fields are admin-editable, so they're read rather than hardcoded.
   const appModule = getModuleBySlug(deps.moduleRepo, DOCUMENTS_MODULE_SLUG);
 
-  // Flat: three sections is well under the ~6 threshold `modules.md` sets for nesting,
-  // so there are no group headings here and every node is a real destination.
+  // Flat: four sections is still well under the ~6 threshold `modules.md` sets for
+  // nesting, so there are no group headings here and every node is a real destination.
   const sections: SectionNode[] = DOCUMENTS_SECTIONS.map(
     (section: DocumentsSection): SectionNode => ({
       id: section,

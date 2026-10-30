@@ -7,6 +7,7 @@ import {
   listGames,
   listRecentScores,
   listTopScores,
+  listWordBank,
   recordScore,
   scoreCardKey,
   scoreGameName,
@@ -280,5 +281,22 @@ describe("arrowBestScores", () => {
     for (const tier of ARROW_DIFFICULTIES) {
       expect(bests[tier]).toBe(0);
     }
+  });
+});
+
+describe("listWordBank", () => {
+  it("returns every word when no tier is asked for", () => {
+    const all = listWordBank();
+    expect(all.length).toBeGreaterThan(0);
+    expect(new Set(all.map((entry) => entry.tier))).toEqual(new Set(["easy", "medium", "hard"]));
+  });
+
+  it("narrows to one tier", () => {
+    const hard = listWordBank({ tier: "hard" });
+    expect(hard.every((entry) => entry.tier === "hard")).toBe(true);
+  });
+
+  it("rejects a tier that does not exist", () => {
+    expect(() => listWordBank({ tier: "impossible" })).toThrow();
   });
 });

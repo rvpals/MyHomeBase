@@ -204,7 +204,7 @@ const SECTION_BUILDERS: Record<string, () => TreeSection[]> = {
   // keep, so there are no group labels to flatten.
   clips: () =>
     toSections(CLIPS_SECTIONS, CLIPS_SECTION_INFO, CLIPS_SECTION_ICONS, clipsSectionHref),
-  // Flat as well: three sections. `new` and `edit` are deliberately absent — they are
+  // Flat as well: four sections. `new` and `edit` are deliberately absent — they are
   // routes the editor opens at, not destinations, so the tree never offers them.
   documents: () =>
     toSections(

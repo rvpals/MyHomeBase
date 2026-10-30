@@ -21,6 +21,7 @@ export {
 } from "./types";
 export {
   transactionStatusSchema,
+  excludedCategoriesSchema,
   creditCardAccountSchema,
   saveAccountSchema,
   expenseCategorySchema,
@@ -184,6 +185,7 @@ export {
   type MonthCategoryBreakdown,
   type MonthCategorySlice,
 } from "./month-breakdown";
+export { excludeCategoriesFromStats, excludeCategoryTotals } from "./statistics";
 export {
   EXPENSE_SETTING_KEYS,
   DEFAULT_AUTO_IMPORT_INTERVAL_MINUTES,

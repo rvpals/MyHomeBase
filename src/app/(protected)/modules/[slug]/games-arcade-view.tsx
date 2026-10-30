@@ -8,6 +8,8 @@ import {
   formatScore,
   type ArrowDifficulty,
   type GameSummary,
+  type PictionaryTier,
+  type PictionaryWord,
 } from "@/lib/games";
 import { gameSlotId, getIconSlot } from "@/lib/icons";
 import { GameRules, hasGameRules } from "./games-instructions";
@@ -19,6 +21,7 @@ import { GameMahjongMatchView } from "./game-mahjong-match-view";
 import { GameMahjongView } from "./game-mahjong-view";
 import { GameMinesweeperView } from "./game-minesweeper-view";
 import { GamePacmanView } from "./game-pacman-view";
+import { GamePictionaryView } from "./game-pictionary-view";
 import { GameSudokuView } from "./game-sudoku-view";
 import { GameTetrisView } from "./game-tetris-view";
 
@@ -56,10 +59,16 @@ const RULES_PANEL_ID = "game-rules-panel";
 export function GamesArcadeView({
   games,
   arrowBests,
+  wordPool,
 }: {
   games: GameSummary[];
   /** Best score per Arrow Clearing tier. One card, three scoreboards — see below. */
   arrowBests: Record<ArrowDifficulty, number>;
+  /**
+   * Pictionary's prompts per tier — the built-in bank joined with whatever was imported
+   * on the Configuration screen. Read on the server; see `games-section.tsx`.
+   */
+  wordPool: Record<PictionaryTier, readonly PictionaryWord[]>;
 }) {
   const [openKey, setOpenKey] = useState<string | undefined>(undefined);
   // Whether the Bridge board is showing its rules. Owned here rather than in
@@ -271,6 +280,10 @@ export function GamesArcadeView({
               {/* The maze game. The arcade's second real-time one after Tetris, and
                   the first where the opponents move on the clock as well. */}
               {open.game.key === "pacman" && <GamePacmanView bestScore={open.best?.score ?? 0} />}
+              {/* The only pass-and-play game: several people round one device, playing
+                  under typed names. It takes no `bestScore` because it posts nothing to
+                  the shared board — see the catalogue entry for why. */}
+              {open.game.key === "pictionary" && <GamePictionaryView wordPool={wordPool} />}
             </div>
           </div>
         </Modal>

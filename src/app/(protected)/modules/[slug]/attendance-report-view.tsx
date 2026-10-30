@@ -345,11 +345,19 @@ function DetailSheet({ report }: { report: AttendanceDetailReport }) {
           sheet. */}
       <div className="print-grid mt-4 -mx-6 overflow-x-auto max-lg:-mx-4">
         <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-line">
+          {/* The header is the inverted bar: `bg-ink`/`text-paper`, the same
+              pair the app uses wherever a strip reads as a header rather than
+              as content. Theme tokens, not literal black and white -- on a dark
+              theme the pair flips with the theme and the bar stays legible,
+              which a hardcoded #000 would not. */}
+          <thead className="bg-ink text-paper">
+            <tr>
               {/* `left-0` pairs with the body cells below; both need the same
-                  offset or the pinned column and its header separate. */}
-              <th className="sticky left-0 z-10 bg-paper px-6 py-2 text-left align-bottom font-medium text-muted max-lg:px-4">
+                  offset or the pinned column and its header separate. The
+                  background must be `bg-ink` here rather than `bg-paper`: a
+                  sticky cell paints over the row scrolling beneath it, so it
+                  carries its own copy of whatever its row's background is. */}
+              <th className="sticky left-0 z-10 border-r border-line/25 bg-ink px-3 py-2 text-left align-bottom font-semibold text-paper max-lg:px-2">
                 Student
               </th>
               {report.dates.map((date) => (
@@ -357,12 +365,18 @@ function DetailSheet({ report }: { report: AttendanceDetailReport }) {
                   key={date}
                   title={date}
                   scope="col"
-                  className="whitespace-nowrap px-2 py-2 text-center font-mono text-xs font-medium text-muted"
+                  // The table is `border-collapse`, so this `border-l` and the
+                  // pinned column's `border-r` share one rule at that seam
+                  // rather than drawing two.
+                  // `border-line/25` rather than `border-line`: the rule sits on
+                  // the inverted header, where the normal line token is too dark
+                  // against `bg-ink` to read as a divider.
+                  className="whitespace-nowrap border-l border-line/25 px-2 py-2 text-center font-mono text-xs font-semibold text-paper"
                 >
                   {shortDate(date)}
                 </th>
               ))}
-              <th className="whitespace-nowrap px-3 py-2 text-right font-medium text-muted">
+              <th className="whitespace-nowrap border-l border-line/25 px-3 py-2 text-right font-semibold text-paper">
                 P / A
               </th>
             </tr>
@@ -432,17 +446,24 @@ function ActionLegend({ entries }: { entries: AttendanceActionLegendEntry[] }) {
 function DetailRow({ row, dates }: { row: AttendanceDetailRow; dates: string[] }) {
   return (
     <tr className="border-b border-line">
+      {/* `w-px` plus `whitespace-nowrap` is the shrink-to-fit idiom for a table
+          cell: the width is a floor, not a cap, so the column ends up exactly as
+          wide as the longest name and the dates start right after it. Previously
+          `px-6` and a fixed `max-w-[12rem]` reserved a fixed slab whether the
+          names needed it or not, which on a phone spent a third of the screen on
+          whitespace. Padding matches the header above, or the pinned column and
+          its header misalign. */}
       <th
         scope="row"
-        className="sticky left-0 z-10 bg-paper px-6 py-1.5 text-left font-normal text-ink max-lg:px-4"
+        className="sticky left-0 z-10 w-px whitespace-nowrap border-r border-line bg-paper px-3 py-1.5 text-left font-normal text-ink max-lg:px-2"
       >
-        <span className="block max-w-[12rem] truncate">{row.studentName}</span>
+        {row.studentName}
       </th>
 
       {row.cells.map((cell, index) => (
         <td
           key={dates[index]}
-          className="whitespace-nowrap px-2 py-1.5 text-center align-middle"
+          className="whitespace-nowrap border-l border-line px-2 py-1.5 text-center align-middle"
         >
           {cell.status === undefined ? (
             // Not enrolled that day. Deliberately not an A -- see
@@ -475,7 +496,7 @@ function DetailRow({ row, dates }: { row: AttendanceDetailRow; dates: string[] }
         </td>
       ))}
 
-      <td className="whitespace-nowrap px-3 py-1.5 text-right font-mono text-xs text-muted">
+      <td className="whitespace-nowrap border-l border-line px-3 py-1.5 text-right font-mono text-xs text-muted">
         {row.presentCount} / {row.absentCount}
       </td>
     </tr>

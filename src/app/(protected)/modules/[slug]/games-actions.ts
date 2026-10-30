@@ -3,7 +3,14 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
-import { recordScore } from "@/lib/games";
+import {
+  PICTIONARY_TIERS,
+  clearCustomWords,
+  deleteCustomWord,
+  importWords,
+  recordScore,
+  type PictionaryImportSummary,
+} from "@/lib/games";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
@@ -65,5 +72,87 @@ export async function saveScoreAction(
     const issues = (error as { issues?: { message?: string }[] }).issues;
     const first = Array.isArray(issues) ? issues[0]?.message : undefined;
     return { ok: false, error: first ?? "Could not save that score." };
+  }
+}
+
+export type ImportWordsResult =
+  | { ok: true; summary: PictionaryImportSummary }
+  | { ok: false; error: string };
+
+/**
+ * Saves a typed or pasted list of Pictionary words.
+ *
+ * The words are attributed to the signed-in user, taken from the session rather than
+ * the body, so `created_by` cannot be forged.
+ *
+ * A list with a few unusable rows still imports the rest; the summary says what landed,
+ * what was already there and which lines were rejected. See `importWords`.
+ */
+export async function importWordsAction(text: string, tier: string): Promise<ImportWordsResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+    const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
+    if (!currentUser) return { ok: false, error: "Sign in to add words." };
+
+    const summary = importWords(deps.pictionaryWordsRepo, {
+      text,
+      tier,
+      userId: currentUser.id,
+    });
+
+    revalidatePath(`${GAMES_MODULE_PATH}/configuration`);
+    // The Arcade reads the bank when a session starts, so a newly imported word should
+    // be in play without a reload.
+    revalidatePath(GAMES_MODULE_PATH);
+
+    return { ok: true, summary };
+  } catch (error) {
+    const issues = (error as { issues?: { message?: string }[] }).issues;
+    const first = Array.isArray(issues) ? issues[0]?.message : undefined;
+    return { ok: false, error: first ?? "Could not save those words." };
+  }
+}
+
+export type DeleteWordResult = { ok: true } | { ok: false; error: string };
+
+/** Removes one custom word. */
+export async function deleteWordAction(id: number): Promise<DeleteWordResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const removed = deleteCustomWord(deps.pictionaryWordsRepo, id);
+    if (!removed) return { ok: false, error: "That word is no longer there." };
+
+    revalidatePath(`${GAMES_MODULE_PATH}/configuration`);
+    revalidatePath(GAMES_MODULE_PATH);
+    return { ok: true };
+  } catch (error) {
+    const issues = (error as { issues?: { message?: string }[] }).issues;
+    const first = Array.isArray(issues) ? issues[0]?.message : undefined;
+    return { ok: false, error: first ?? "Could not remove that word." };
+  }
+}
+
+export type ClearWordsResult = { ok: true; removed: number } | { ok: false; error: string };
+
+/**
+ * Removes every custom word, or every one in a tier.
+ *
+ * Destructive and not undoable, so the view confirms before calling — there is no
+ * recycle bin for words, since the list can be pasted back in.
+ */
+export async function clearWordsAction(tier?: string): Promise<ClearWordsResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const parsedTier = PICTIONARY_TIERS.find((entry) => entry === tier);
+    if (tier && !parsedTier) return { ok: false, error: "Unknown tier." };
+
+    const removed = clearCustomWords(deps.pictionaryWordsRepo, parsedTier);
+
+    revalidatePath(`${GAMES_MODULE_PATH}/configuration`);
+    revalidatePath(GAMES_MODULE_PATH);
+    return { ok: true, removed };
+  } catch {
+    return { ok: false, error: "Could not clear those words." };
   }
 }

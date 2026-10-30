@@ -25,7 +25,7 @@ export function isExpenseSection(value: string): value is ExpenseSection {
 /** Title and one-line description, used in the nav and as the page heading. */
 export const EXPENSE_SECTION_INFO: Record<ExpenseSection, { label: string; description: string }> = {
   main: {
-    label: "Main (Dashboard)",
+    label: "Home screen",
     description: "At-a-glance totals and what still needs your attention.",
   },
   transactions: {

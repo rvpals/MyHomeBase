@@ -18,6 +18,11 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be formatted 
 
 export const transactionStatusSchema = z.enum(TRANSACTION_STATUSES);
 
+/** Category names excluded from statistics: trimmed, non-blank, de-duplicated. */
+export const excludedCategoriesSchema = z
+  .array(z.string())
+  .transform((names) => [...new Set(names.map((name) => name.trim()).filter((n) => n !== ""))]);
+
 export const creditCardAccountSchema = z.object({
   id: z.number().int().positive(),
   name: z.string().min(1),

@@ -2,28 +2,36 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  bulkSetTaxonomy,
   clearCategoryIcon,
   clearTagIcon,
   createDocument,
   deleteCategory,
-  deleteDocument,
+  deleteRecycledDocumentsForever,
   deleteTag,
+  describeBulkResult,
   describeDocumentRootCheck,
+  emptyDocumentsRecycleBin,
   listCategories,
   listDocuments,
+  listRecycledDocuments,
   listTags,
+  recycleDocuments,
   removeAttachment,
+  restoreRecycledDocuments,
   saveCategory,
   saveTag,
   setCategoryIcon,
   setDocumentRoot,
   setTagIcon,
   updateDocument,
+  type BulkTaxonomyInput,
   type CreateDocumentInput,
   type DocumentFilterInput,
   type DocumentSummary,
   type DocumentTaxonomyItem,
   type FolderListing,
+  type RecycledDocument,
   type UpdateDocumentInput,
 } from "@/lib/documents";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
@@ -108,17 +116,132 @@ export async function updateDocumentAction(input: UpdateDocumentInput): Promise<
  * it to false, and even on true the files are moved to `_deleted/` rather than
  * unlinked.
  */
-export async function deleteDocumentAction(
-  id: number,
-  deleteFiles: boolean,
-): Promise<ActionResult> {
+/**
+ * The Delete button — which **recycles** since migration 0163.
+ *
+ * The name is kept because that is what the button says and what the reader means;
+ * what changed is that it is now reversible. `deleteDocument` still exists and is
+ * still the permanent purge, reached only from the bin.
+ *
+ * `deleteFiles` is gone: recycling always moves the folder to `_deleted/`, because a
+ * restore has to be able to find the files again. "Keep the paperwork, drop the
+ * record" is now what a purge does — the bytes stay under `_deleted/` either way.
+ */
+export async function deleteDocumentAction(id: number): Promise<ActionResult> {
   try {
     await requireModuleAccess(ACCESS_MODULE_SLUG);
-    await deleteDocument(deps.documentsRepo, documentFiles(), { id, deleteFiles });
+    await recycleDocuments(deps.documentsRepo, documentFiles(), [id]);
     revalidatePath(DOCUMENTS_PATH);
     return { ok: true };
   } catch (error) {
     return toErrorResult(error, "Could not delete that document.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bulk operations (migration 0163)
+// ---------------------------------------------------------------------------
+
+export async function bulkSetTaxonomyAction(
+  input: BulkTaxonomyInput,
+): Promise<ActionResult & { message?: string }> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const result = bulkSetTaxonomy(deps.documentsRepo, input);
+    revalidatePath(DOCUMENTS_PATH);
+    return { ok: true, message: describeBulkResult(result) };
+  } catch (error) {
+    return toErrorResult(error, "Could not apply that change.");
+  }
+}
+
+export async function bulkRecycleAction(
+  ids: number[],
+): Promise<ActionResult & { message?: string }> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const result = await recycleDocuments(deps.documentsRepo, documentFiles(), ids);
+    revalidatePath(DOCUMENTS_PATH);
+    const noun = result.movedCount === 1 ? "document" : "documents";
+    return { ok: true, message: `${result.movedCount} ${noun} moved to the bin` };
+  } catch (error) {
+    return toErrorResult(error, "Could not delete those documents.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The recycle bin (migration 0163)
+// ---------------------------------------------------------------------------
+
+export async function listRecycledDocumentsAction(): Promise<{
+  ok: boolean;
+  documents?: RecycledDocument[];
+  error?: string;
+}> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    return { ok: true, documents: listRecycledDocuments(deps.documentsRepo) };
+  } catch (error) {
+    return toErrorResult(error, "Could not read the recycle bin.");
+  }
+}
+
+/**
+ * Puts binned documents back.
+ *
+ * `message` names any renumbering rather than swallowing it: a document whose original
+ * id had been taken comes back under a new one, with its attachment paths rewritten to
+ * match. Nothing is broken by that, but any bookmark to the old id now points at a
+ * different document, and the reader should be told while they are still looking.
+ */
+export async function restoreDocumentsAction(
+  recycledIds: number[],
+): Promise<ActionResult & { message?: string }> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const result = await restoreRecycledDocuments(
+      deps.documentsRepo,
+      documentFiles(),
+      recycledIds,
+    );
+    revalidatePath(DOCUMENTS_PATH);
+
+    const noun = result.restoredCount === 1 ? "document" : "documents";
+    const renumbered =
+      result.renumbered.length === 0
+        ? ""
+        : ` — ${result.renumbered
+            .map((row) => `"${row.title}" came back as #${row.toId} (was #${row.fromId})`)
+            .join("; ")}`;
+    return { ok: true, message: `${result.restoredCount} ${noun} restored${renumbered}` };
+  } catch (error) {
+    return toErrorResult(error, "Could not restore those documents.");
+  }
+}
+
+export async function purgeRecycledDocumentsAction(
+  recycledIds: number[],
+): Promise<ActionResult & { message?: string }> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const result = deleteRecycledDocumentsForever(deps.documentsRepo, recycledIds);
+    revalidatePath(DOCUMENTS_PATH);
+    const noun = result.deletedCount === 1 ? "document" : "documents";
+    return { ok: true, message: `${result.deletedCount} ${noun} removed from the bin` };
+  } catch (error) {
+    return toErrorResult(error, "Could not remove those documents.");
+  }
+}
+
+export async function emptyDocumentsBinAction(): Promise<ActionResult & { message?: string }> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const result = emptyDocumentsRecycleBin(deps.documentsRepo);
+    revalidatePath(DOCUMENTS_PATH);
+    const noun = result.deletedCount === 1 ? "document" : "documents";
+    return { ok: true, message: `${result.deletedCount} ${noun} removed from the bin` };
+  } catch (error) {
+    return toErrorResult(error, "Could not empty the bin.");
   }
 }
 

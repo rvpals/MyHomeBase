@@ -17,6 +17,9 @@ export {
   type AttendanceSessionSummary,
   type AttendanceSheet,
   type AttendanceStatus,
+  type IndividualStudentRecord,
+  type StudentAttendanceDay,
+  type StudentClassRecord,
   type ClassWeekday,
   type AttendanceActionIconRef,
   type RecordedStudentAction,
@@ -102,6 +105,7 @@ export {
   updateStudent,
   updateStudentAction,
 } from "./attendance";
+export { buildIndividualStudentRecord } from "./student-record";
 export { resolveWeekdayClassId, weekdayOfIsoDate } from "./weekday";
 export {
   attendanceDetailReportToCsv,

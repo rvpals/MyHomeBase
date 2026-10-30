@@ -222,6 +222,27 @@ export {
   type Season,
   type Suit,
   type SudokuCell,
+  PICTIONARY_BASE_POINTS,
+  PICTIONARY_DEFAULT_ROUNDS,
+  PICTIONARY_GUESSER_SHARE,
+  PICTIONARY_MAX_NAME_LENGTH,
+  PICTIONARY_MAX_PLAYERS,
+  PICTIONARY_MAX_ROUNDS,
+  PICTIONARY_MIN_PLAYERS,
+  PICTIONARY_MIN_ROUNDS,
+  PICTIONARY_SOURCES,
+  PICTIONARY_SPEED_BONUS,
+  PICTIONARY_TIERS,
+  PICTIONARY_TURN_SECONDS,
+  type PictionaryPhase,
+  type PictionaryPlayer,
+  type PictionaryRound,
+  type PictionaryRoundOutcome,
+  type PictionarySource,
+  type PictionaryState,
+  type PictionaryTier,
+  type PictionaryWord,
+  type StoredPictionaryWord,
   type SudokuDifficulty,
   type SudokuDigit,
   type SudokuGrid,
@@ -238,15 +259,20 @@ export {
 } from "./types";
 export { GAME_CATALOGUE, findGame, isKnownGame, listPlayableGames } from "./catalogue";
 export {
+  deleteWordSchema,
+  importWordsSchema,
   moveSchema,
   recordScoreSchema,
   topScoresQuerySchema,
+  wordBankQuerySchema,
+  type ImportWordsInput,
   type MoveInput,
   type RecordScoreInput,
   type ScoreWriteData,
   type TopScoresQuery,
+  type WordBankQuery,
 } from "./schema";
-export type { ScoreRepository } from "./ports";
+export type { PictionaryWordRepository, ScoreRepository } from "./ports";
 export {
   arrowBestScores,
   formatScore,
@@ -255,10 +281,19 @@ export {
   listGames,
   listRecentScores,
   listTopScores,
+  listWordBank,
   recordScore,
   scoreCardKey,
   scoreGameName,
   type GameSummary,
+  // The custom word bank — imported lists, and the joined pool a session plays from.
+  clearCustomWords,
+  countCustomWords,
+  deleteCustomWord,
+  importWords,
+  listCustomWords,
+  listPlayableWords,
+  type PictionaryImportSummary,
 } from "./games";
 export {
   applyMove,
@@ -556,3 +591,46 @@ export {
   tick as tickPacman,
   tickIntervalMs as pacmanTickIntervalMs,
 } from "./game-pacman";
+
+// Pictionary — the pass-and-play game. The collision list is the longest yet:
+// `startGame`, `tick`, `tickIntervalMs` and `Random` are all taken several times over,
+// and `standings`, `guessers` and `roundPoints` are new. Aliased here for the reason
+// every block above is: inside `game-pictionary.ts` the short names read best, and only
+// this file, where every game's surface meets, needs the qualifier.
+//
+// There is no `scoreGame` to alias. A session has several players and the shared board
+// ranks individuals, so the question "what did this game score" has no single answer —
+// `scoreFor` asks it per player instead. See `catalogue.ts`.
+export {
+  awardRound,
+  beginTurn,
+  currentDrawer,
+  guessers,
+  missRound,
+  roundNumber,
+  roundPoints,
+  scoreFor as pictionaryScoreFor,
+  skipRound,
+  standings as pictionaryStandings,
+  startGame as startPictionary,
+  stopDrawing,
+  tick as tickPictionary,
+  tickIntervalMs as pictionaryTickIntervalMs,
+  type PictionaryEntrant,
+} from "./game-pictionary";
+
+// The word bank. `allWords` and `wordsInTier` are reachable through `listWordBank` in
+// `games.ts`, which is what the CLI and the views call; these are exported for the
+// pickers that need the bank's shape rather than its contents.
+export { PICTIONARY_WORDS, pickWord, tierSize } from "./pictionary-words";
+
+// Importing a pasted word list. `parseWordList` is pure text-in/words-out and is what
+// both the Configuration screen and the CLI call through `importWords`; `wordProblem`
+// is exported so the screen can validate one box as it is typed.
+export {
+  PICTIONARY_MAX_WORD_LENGTH,
+  parseWordList,
+  wordProblem,
+  type PictionaryImportParse,
+  type PictionaryImportProblem,
+} from "./pictionary-import";

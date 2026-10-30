@@ -716,6 +716,23 @@ const GamePacman: IconComponent = (props) => (
   </svg>
 );
 
+/* Pictionary: a pencil drawing a line that is already a recognisable shape.
+   The pencil sits top-right on the diagonal every drawing tool here uses, and the mark
+   it leaves is a small peaked outline — enough to read as "a drawing in progress"
+   rather than as a note being written, which is what a pencil over a straight rule
+   would say. Outlined rather than filled, unlike Pac-Man: this glyph is about the
+   *line*, so a solid silhouette would lose the one thing it is drawing. */
+const GamePictionary: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The pencil: body, then the tip, pointing down-left at the mark. */}
+    <path d="M20.5 3.5a2.1 2.1 0 0 0-3 0l-5.4 5.4 3 3 5.4-5.4a2.1 2.1 0 0 0 0-3z" />
+    <path d="M12.1 8.9 9.4 11.6l3 3 2.7-2.7" />
+    {/* The line being drawn — a peak, the shape a child draws for a mountain or a roof. */}
+    <path d="M3.5 20.5h13" />
+    <path d="M5.5 20.5 9 14l2.6 4.2" />
+  </svg>
+);
+
 /* A rocket launching: the nose-cone body on a diagonal, one porthole, two fins and a
    short exhaust plume off the tail. The "launch module" button on the home screen's
    cards.
@@ -927,6 +944,7 @@ const TREE_ICONS = {
   "game-minesweeper": GameMinesweeper,
   "game-mahjong": GameMahjongMatch,
   "game-pacman": GamePacman,
+  "game-pictionary": GamePictionary,
   pin: MapPin,
   pushpin: Pushpin,
   "pushpin-filled": PushpinFilled,

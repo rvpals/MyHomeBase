@@ -85,6 +85,11 @@ function fakeRepo(): AttendanceRepository {
         .map((studentId) => students.get(studentId))
         .filter((student): student is Student => Boolean(student));
     },
+    listClassesForStudent(studentId) {
+      return [...classes.values()]
+        .filter((entry) => enrollments.get(entry.id)?.has(studentId) ?? false)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    },
     enrollStudents(classId, studentIds) {
       const enrolled = enrollments.get(classId) ?? new Set<number>();
       let added = 0;

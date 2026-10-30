@@ -83,6 +83,12 @@ export interface DocumentAttachment {
   relativePath: string;
   mimeType: string;
   byteSize: number;
+  /**
+   * SHA-256 of the file's bytes, lowercase hex, or `""` for a row that was never
+   * hashed (migration 0163 added the column and did not backfill — see `UNHASHED`
+   * in `content-hash.ts`). An un-hashed row takes no part in duplicate detection.
+   */
+  contentHash: string;
   sortOrder: number;
   createdAt: string;
 }
@@ -108,4 +114,59 @@ export interface DocumentTaxonomyItem {
   hasIcon: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * One existing attachment that holds the same bytes as the file being uploaded
+ * (migration 0163).
+ *
+ * Carries the document's title, not just its id, because the only useful phrasing of
+ * this warning names it — "already attached to **Lease 2026**". An id would make the
+ * reader go and look it up to decide whether they care.
+ */
+export interface DuplicateMatch {
+  attachmentId: number;
+  documentId: number;
+  /** The document the matching file is attached to, for the warning's wording. */
+  documentTitle: string;
+  /** What the matching file is called there, which is usually the thing that differs. */
+  originalName: string;
+}
+
+/**
+ * A document sitting in the recycle bin (migration 0163).
+ *
+ * **`recycledId` is the handle**, not `id`. `id` is the id the document *had* when it
+ * was live, kept because a restore aims to put it back there — and for a document
+ * that matters more than it does for a clip, since every attachment path encodes it
+ * (`doc_17/lease.pdf`). Restore, purge and the list all key on `recycledId`; passing
+ * `id` to any of them would act on the wrong row or none at all.
+ */
+export interface RecycledDocument {
+  /** This bin row's own id. The handle for restore and purge. */
+  recycledId: number;
+  /** The id it had while live, and the one a restore aims to put it back at. */
+  id: number;
+  title: string;
+  description: string;
+  categories: string[];
+  tags: string[];
+  /** How many files came with it, mirroring `DocumentSummary`. */
+  attachmentCount: number;
+  totalBytes: number;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+  /** When it went into the bin — the list's sort order. */
+  deletedAt: string;
+  /**
+   * The stamped `_deleted/doc_17_<timestamp>` folder its files were moved to, or `""`
+   * when it had no files.
+   *
+   * Stored rather than derived because `moveToDeleted` generates that timestamp at the
+   * moment of the move and records it nowhere else; with two deletes of the same
+   * document in the bin, guessing which folder belongs to which row would be a coin
+   * flip. See migration 0163.
+   */
+  deletedFolder: string;
 }

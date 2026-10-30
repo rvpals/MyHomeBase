@@ -22,6 +22,7 @@ import { useState } from "react";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { FolderBrowser } from "@/components/folder-browser";
+import { Tabs } from "@/components/tabs";
 import { UtcTime } from "@/components/utc-time";
 import Link from "next/link";
 // Types only, straight from the type module rather than the lib index: that index
@@ -47,6 +48,8 @@ export interface BackupDataViewProps {
   settings: BackupSettings;
   /** The HSA receipt root — the folder attachments are copied *from*. Read-only here. */
   attachmentSourceRoot: string;
+  /** The Document Library's folder — where document files are copied *from*. Read-only here. */
+  documentSourceRoot: string;
   lastRun?: ScheduledRun;
 }
 
@@ -120,8 +123,14 @@ function FolderField({
   );
 }
 
-export function BackupDataView({ settings, attachmentSourceRoot, lastRun }: BackupDataViewProps) {
+export function BackupDataView({
+  settings,
+  attachmentSourceRoot,
+  documentSourceRoot,
+  lastRun,
+}: BackupDataViewProps) {
   const [attachmentRoot, setAttachmentRoot] = useState(settings.attachmentRoot);
+  const [documentRoot, setDocumentRoot] = useState(settings.documentRoot);
   const [databaseRoot, setDatabaseRoot] = useState(settings.databaseRoot);
   // A string, not a number: an empty box must stay empty while being retyped rather
   // than snapping to 0, and the schema coerces on save.
@@ -134,6 +143,7 @@ export function BackupDataView({ settings, attachmentSourceRoot, lastRun }: Back
     setIsBusy(true);
     const result = await saveBackupFoldersAction({
       attachmentRoot,
+      documentRoot,
       databaseRoot,
       keepCount: Number(keepCount),
     });
@@ -170,36 +180,89 @@ export function BackupDataView({ settings, attachmentSourceRoot, lastRun }: Back
       {/* ------------------------------------------------------------- Attachments */}
       <div className="mt-6">
         <CollapsibleCard title="Attachment files" defaultOpen>
-          <p className="text-sm text-muted">
-            Every attachment that has changed since the last backup is copied across. If a file
-            of the same name is already in the backup folder and the newer one is replacing it,
-            the existing copy is renamed with the date and time first — so an older version is
-            never overwritten.
-          </p>
+          <Tabs
+            items={[
+              {
+                key: "hsa-receipts",
+                label: "HSA Receipts",
+                content: (
+                  <div className="mt-3">
+                    <p className="text-sm text-muted">
+                      Every attachment that has changed since the last backup is copied across.
+                      If a file of the same name is already in the backup folder and the newer
+                      one is replacing it, the existing copy is renamed with the date and time
+                      first — so an older version is never overwritten.
+                    </p>
 
-          <div className="mt-3 rounded-md border border-line bg-paper p-3 text-sm">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">
-              Copied from (HSA receipt folder)
-            </p>
-            {attachmentSourceRoot === "" ? (
-              <p className="mt-1 text-amber-300">
-                Not set. Choose it on Household → Configuration, or there will be nothing to
-                back up.
-              </p>
-            ) : (
-              <p className="mt-1 break-all font-mono text-ink">{attachmentSourceRoot}</p>
-            )}
-          </div>
+                    <div className="mt-3 rounded-md border border-line bg-paper p-3 text-sm">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                        Copied from (HSA receipt folder)
+                      </p>
+                      {attachmentSourceRoot === "" ? (
+                        <p className="mt-1 text-amber-300">
+                          Not set. Choose it on Household → Configuration, or there will be
+                          nothing to back up.
+                        </p>
+                      ) : (
+                        <p className="mt-1 break-all font-mono text-ink">
+                          {attachmentSourceRoot}
+                        </p>
+                      )}
+                    </div>
 
-          <FolderField
-            label="Back attachments up to"
-            placeholder="//NAS_DS223/backup/attachments"
-            hint="The folder the attachment files are copied into."
-            value={attachmentRoot}
-            onChange={setAttachmentRoot}
-            isBusy={isBusy}
-            onBusyChange={setIsBusy}
-            onNotice={setNotice}
+                    <FolderField
+                      label="Back attachments up to"
+                      placeholder="//NAS_DS223/backup/attachments"
+                      hint="The folder the attachment files are copied into."
+                      value={attachmentRoot}
+                      onChange={setAttachmentRoot}
+                      isBusy={isBusy}
+                      onBusyChange={setIsBusy}
+                      onNotice={setNotice}
+                    />
+                  </div>
+                ),
+              },
+              {
+                key: "document-library",
+                label: "Document Library",
+                content: (
+                  <div className="mt-3">
+                    <p className="text-sm text-muted">
+                      Every Document Library file that has changed since the last backup is
+                      copied across, with the same rule: an older copy of the same name is
+                      renamed with the date and time first, never overwritten.
+                    </p>
+
+                    <div className="mt-3 rounded-md border border-line bg-paper p-3 text-sm">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted">
+                        Copied from (Document Library folder)
+                      </p>
+                      {documentSourceRoot === "" ? (
+                        <p className="mt-1 text-amber-300">
+                          Not set. Choose it on the Document Library&apos;s Configuration
+                          screen, or the backup will not run.
+                        </p>
+                      ) : (
+                        <p className="mt-1 break-all font-mono text-ink">{documentSourceRoot}</p>
+                      )}
+                    </div>
+
+                    <FolderField
+                      label="Back documents up to"
+                      placeholder="//NAS_DS223/backup/documents"
+                      hint="The folder the Document Library files are copied into."
+                      value={documentRoot}
+                      onChange={setDocumentRoot}
+                      isBusy={isBusy}
+                      onBusyChange={setIsBusy}
+                      onNotice={setNotice}
+                    />
+                  </div>
+                ),
+              },
+            ]}
+            defaultActiveKey="hsa-receipts"
           />
         </CollapsibleCard>
       </div>

@@ -2134,7 +2134,7 @@ shell exists to remove.
 | Prop | Type | Notes |
 |------|------|-------|
 | `modules` | `TreeModule[]` | Every module the reader can reach, in registry order (`sequence`). Nothing here re-sorts. |
-| `home` | `TreeSection` | The Home leaf, drawn as the leading icon-only tab. |
+| `home` | `TreeSection` | The Home leaf, drawn as the leading icon-only tab. Its `href` and `label` are used; **its `icon` is not** — see *Home's mark comes from the slot* below. |
 | `activeHref` | `string` | The current path. Also closes the overflow menu on navigation. |
 | `activeModuleSlug` | `string?` | The highlighted tab — and the one `splitTabs` guarantees is never hidden in the menu. |
 | `adminModule` | `TreeModule?` | Administration as a final tab. `TwoTierShell` passes it only when `showAdmin`. |
@@ -2152,6 +2152,13 @@ then visibly collapses.
 
 **The active tab is swapped into the last slot**, never prepended. Prepending would shift
 every other tab sideways as the reader navigates, so tabs would never sit still.
+
+**Home's mark comes from the slot, not from `home.icon`.** The leading tab draws
+`SlotIcon` on `chrome_tree_home` — the same slot [`NavTree`](#navtree) uses, so a reader
+who has replaced Home's icon sees it in both nav shapes. `home.icon` is the string
+`"home"`, which is a **module** icon name and *not* a tree concept, so the bare
+`<TreeIcon name="home">` this tab shipped with resolved to `null` and drew an empty 16px
+box. Icons that mark a place go through a registered slot; that rule is what catches this.
 
 ## SectionStrip
 

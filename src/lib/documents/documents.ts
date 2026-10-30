@@ -27,6 +27,7 @@ import {
   sanitizeFileName,
   withCollisionSuffix,
 } from "./attachment-path";
+import { hashAndFindDuplicates } from "./content-hash";
 import type { DocumentFileStore } from "./file-store";
 import type { DocumentsRepository } from "./ports";
 import {
@@ -50,6 +51,7 @@ import type {
   DocumentSummary,
   DocumentTaxonomyItem,
   DocumentWithAttachments,
+  DuplicateMatch,
 } from "./types";
 
 /** The store plus the folder, as every file-touching use-case takes them. */
@@ -63,6 +65,19 @@ export interface DocumentFiles {
 export interface DocumentLimitsInput {
   maxFileBytes: number;
   maxFilesPerDocument: number;
+}
+
+/**
+ * What an upload reports back (migration 0163).
+ *
+ * The attachment was stored either way — `duplicates` is advisory. It is returned
+ * rather than logged because only the reader can tell a deliberate second filing from
+ * a mistake, and they can only tell while they are still looking at the upload.
+ */
+export interface AddAttachmentResult {
+  attachment: DocumentAttachment;
+  /** Other attachments holding these exact bytes. Empty when the file is new. */
+  duplicates: DuplicateMatch[];
 }
 
 /**
@@ -185,7 +200,12 @@ export function updateDocument(repo: DocumentsRepository, input: UpdateDocumentI
 }
 
 /**
- * Deletes a document, and optionally its files.
+ * Deletes a document, and optionally its files. **The permanent one.**
+ *
+ * Since migration 0163 this is no longer what the Delete button calls — that is
+ * `recycleDocuments`, which moves the document to the bin and keeps its index.
+ * This remains for the bin's own purge path and the CLI's `--forever`, and it is
+ * the only call here that destroys the mapping from stored file to original name.
  *
  * Rows first, then files — see the ordering note at the top of this file. When
  * `deleteFiles` is false the files are deliberately left where they are: the folder
@@ -228,13 +248,18 @@ export async function deleteDocument(
  * The mime type is taken from the **stored extension**, not from what the browser
  * claimed: a client can send any `Content-Type` it likes, and this value is what the
  * serving route will later hand back.
+ *
+ * Returns the stored attachment **and any duplicates** — other attachments in the
+ * library holding the same bytes (migration 0163). The upload still happens: filing
+ * the same scan under two documents is sometimes deliberate, and nothing here can
+ * tell that from a mistake, so the caller surfaces the match and carries on.
  */
 export async function addAttachment(
   repo: DocumentsRepository,
   files: DocumentFiles,
   limits: DocumentLimitsInput,
   input: { documentId: number; fileName: string; data: Buffer },
-): Promise<DocumentAttachment> {
+): Promise<AddAttachmentResult> {
   const root = requireRoot(files);
 
   const parsed = attachmentUploadSchema(limits.maxFileBytes).parse({
@@ -266,16 +291,24 @@ export async function addAttachment(
     }
   }
 
+  // Hashed and looked up BEFORE the write, so the answer describes the library as it
+  // was when the reader chose to upload. Hashing the buffer costs nothing next to the
+  // share write that follows — the bytes are already in memory.
+  const { contentHash, duplicates } = hashAndFindDuplicates(repo, input.data);
+
   await files.store.write(root, relativePath, input.data);
 
-  return repo.addAttachment({
+  const attachment = repo.addAttachment({
     documentId: parsed.documentId,
     fileName: relativePath.slice(relativePath.lastIndexOf("/") + 1),
     originalName: input.fileName,
     relativePath,
     mimeType: parsed.mimeType,
     byteSize: parsed.byteSize,
+    contentHash,
   });
+
+  return { attachment, duplicates };
 }
 
 /** One attachment's bytes, for the serving route. `undefined` when the file is gone. */

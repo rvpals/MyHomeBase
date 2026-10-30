@@ -43,8 +43,28 @@ export interface DocumentFileStore {
    *
    * A no-op when the folder isn't there — a document whose files were already moved or
    * removed by hand must still be deletable.
+   *
+   * **Returns where it put the folder**, relative to the root
+   * (`_deleted/doc_17_2026-10-30T…`), or `""` when there was nothing to move. The
+   * destination carries a timestamp generated here and recorded nowhere else, so a
+   * recycle bin that wants to find these files again has to be told — see migration
+   * 0163. Callers that only delete can ignore the return.
    */
-  moveToDeleted(root: string, documentId: number): Promise<void>;
+  moveToDeleted(root: string, documentId: number): Promise<string>;
+  /**
+   * Moves a binned folder back out of `_deleted/`, for a restore.
+   *
+   * `fromRelative` is the stamped folder `moveToDeleted` returned; `toDocumentId` is
+   * the id the document is being restored at, which may differ from the one it had.
+   * That is why this takes an explicit destination rather than deriving one: a
+   * restore landing on a fresh id must move `_deleted/doc_17_<stamp>/` to `doc_42/`
+   * and have the attachment rows rewritten to match, or every path would point at
+   * another document's folder.
+   *
+   * A no-op when the source isn't there, for the same reason `moveToDeleted` is: a
+   * bin row whose files were cleared by hand must still be restorable as an index.
+   */
+  restoreFromDeleted(root: string, fromRelative: string, toDocumentId: number): Promise<void>;
   /** Moves one file into `_deleted/`, for removing a single attachment. */
   moveFileToDeleted(root: string, relativePath: string): Promise<void>;
   /** Whether the root exists, is a folder, and accepts a write. */
@@ -114,14 +134,40 @@ export class NodeDocumentFileStore implements DocumentFileStore {
     }
   }
 
-  async moveToDeleted(root: string, documentId: number): Promise<void> {
+  async moveToDeleted(root: string, documentId: number): Promise<string> {
+    const relativeTo = `${DELETED_FOLDER}/doc_${documentId}_${deletedStamp()}`;
     const from = resolveInside(root, `doc_${documentId}`);
-    const to = resolveInside(root, `${DELETED_FOLDER}/doc_${documentId}_${deletedStamp()}`);
+    const to = resolveInside(root, relativeTo);
+    try {
+      await mkdir(path.dirname(to), { recursive: true });
+      await rename(from, to);
+      // The stamped destination, so a bin row can find these files again. Relative,
+      // like every other stored path here, so re-pointing the setting at a copy of
+      // the share keeps it working.
+      return relativeTo;
+    } catch (error) {
+      // A document with no files on disk is still a document, and must still delete.
+      // `""` says "nothing was moved", which is not the same as a failure.
+      if (errorCode(error) === "ENOENT") return "";
+      throw error;
+    }
+  }
+
+  async restoreFromDeleted(
+    root: string,
+    fromRelative: string,
+    toDocumentId: number,
+  ): Promise<void> {
+    if (fromRelative.trim() === "") return;
+    const from = resolveInside(root, fromRelative);
+    const to = resolveInside(root, `doc_${toDocumentId}`);
     try {
       await mkdir(path.dirname(to), { recursive: true });
       await rename(from, to);
     } catch (error) {
-      // A document with no files on disk is still a document, and must still delete.
+      // Nothing to move back: the bin row is still restorable as an index, and the
+      // document comes back with attachment rows whose files are gone. That is the
+      // honest outcome, and the integrity check is what surfaces it.
       if (errorCode(error) === "ENOENT") return;
       throw error;
     }

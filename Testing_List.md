@@ -146,6 +146,44 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-30 — Release (Pictionary, Document Library tree/bulk/recycle bin, student record, expense stats exclusions)
+
+**Migrations 0162, 0163 and 0164 must be applied on the NAS first.** Documents uploads and deletes
+fail without 0163, Pictionary import fails without 0164. **The Data backup refuses to run until a
+Document Library backup folder is set** (item 1). Items 1–2 are Backup, 3–13 Documents, 14–20
+Pictionary, 21 Arrow Clearing, 22–25 Attendance, 26–28 Expense and 29 the Home tab.
+**Item 25 is phone-only.**
+
+- [ ] **1.** Admin → Configuration → Backup Data: with no document folder set, Back up now reports "No document backup folder is set."; choose one, save, and the backup completes
+- [ ] **2.** Admin → Background Tasks: the data-backup job lists "Documents backed up to" with the chosen folder (or "No folder set")
+- [ ] **3.** Documents → **Document Tree**: categories on one side, tags in use beneath each, "Uncategorized" for the rest; clicking narrows the list and a document reads in the pane beside it
+- [ ] **4.** Tree counts match the number of rows the Home screen shows for the same category and tag
+- [ ] **5.** Documents home grid: tick several rows, bulk add a category and a tag, then bulk remove one; every selected row changes together
+- [ ] **6.** Bulk recycle several documents: they leave the list and their folders appear under `_deleted/` on the share
+- [ ] **7.** Documents → **Recycled Documents** lists them newest first with restore, delete-forever and empty-bin
+- [ ] **8.** Restore a recycled document whose id is still free: it returns with its categories, tags and attachments, and downloads work
+- [ ] **9.** Delete a document, file another, then restore the first: it returns under a new id and its attachments still download its own files
+- [ ] **10.** Delete-forever one recycled document and empty the bin: both are gone and the `_deleted/` folder no longer holds them
+- [ ] **11.** Attach a file already attached to another document: the editor warns "already attached to <title>" and still files it
+- [ ] **12.** CLI: `npm run cli -- documents-backfill-hashes --dry-run` lists what it would hash; a real run with `--limit 5` hashes five and a second run continues from there
+- [ ] **13.** Documents → Configuration and the document list still work for a document filed before this release (no hash yet)
+- [ ] **14.** Games → Arcade shows a **Pictionary** card; opening it asks for player names (typed, no accounts) and a round count
+- [ ] **15.** Play a round: the drawer sees the word and draws, the others guess, the timer runs and points are awarded; the canvas is cleared between turns
+- [ ] **16.** The summary screen shows standings, and no new row appears on the Arcade scoreboard
+- [ ] **17.** Games → Configuration: paste a list of words (one per line, comma-separated, and with a per-row tier); it reports added, already-in-bank and rejected counts
+- [ ] **18.** Re-import the same list: nothing is added; `Volcano` and `volcano` count as one word
+- [ ] **19.** Start a Pictionary session drawing from built-in only, custom only, and both; custom-only draws only your imported words
+- [ ] **20.** CLI: `npm run cli -- pictionary-words`, then `--add "volcano,bicycle" --tier easy --user 1`, then `--clear --tier easy`; the exit code is 1 when a row was rejected
+- [ ] **21.** Games → Arrow Clearing: boards on the harder tiers contain long, curling arrows wrapped around short ones, and every board is still solvable
+- [ ] **22.** Classroom → Attendance → Rosters: each student has an **Attendance Record** link that opens the Individual Student Record dialog
+- [ ] **23.** The record shows one section per current class with only the days that class's registers name the student, newest first, with totals; a student who joined mid-term has no phantom absences
+- [ ] **24.** Rosters no longer show Email and Note columns; Attendance Report has the dark header bar, a name column only as wide as the longest name, and column rules
+- [ ] **25.** Phone: the Report grid still scrolls sideways with the name column pinned and its header matching
+- [ ] **26.** Expense → Configuration: choose categories to exclude from statistics and save
+- [ ] **27.** Expense dashboard and charts omit those categories (totals, top vendors, top categories) while Expense → Transactions still lists every row; the top-spender cards show ten
+- [ ] **28.** CLI: `npm run cli -- expense-top-spenders` omits the same categories
+- [ ] **29.** Top-tabs navigation: the leading Home tab shows the Home icon (not an empty box), and an icon uploaded for Home shows in both the tabs and the side tree
+
 ## 2026-10-28 — Release (Document Library, Clips recycle bin, sticky section strip, grid Select mode)
 
 **Migrations 0159, 0160 and 0161 must be applied on the NAS first** — Documents items fail

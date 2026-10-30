@@ -122,6 +122,11 @@ export const DEFAULT_APP_SETTINGS: Setting[] = [
     description: 'Folder that attachment files are backed up into. "none" means not set.',
   },
   {
+    key: BACKUP_SETTING_KEYS.documentRoot,
+    value: NO_FOLDER,
+    description: 'Folder that Document Library files are backed up into. "none" means not set.',
+  },
+  {
     key: BACKUP_SETTING_KEYS.databaseRoot,
     value: NO_FOLDER,
     description:

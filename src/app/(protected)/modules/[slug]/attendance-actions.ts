@@ -8,6 +8,7 @@ import { cookies } from "next/headers";
 import {
   addStudent,
   attendanceSettingsToEntries,
+  buildIndividualStudentRecord,
   clearStudentActionIcon,
   createClass,
   createStudentAction,
@@ -30,6 +31,7 @@ import {
   updateStudentAction as updateStudentActionUseCase,
   type AttendanceSettings,
   type CreateClassInput,
+  type IndividualStudentRecord,
   type CreateStudentActionInput,
   type CreateStudentInput,
   type SaveAttendanceInput,
@@ -123,6 +125,27 @@ export async function deleteStudentsAction(ids: number[]): Promise<BulkActionRes
     return { ok: true, count };
   } catch (error) {
     return { ok: false, error: toMessage(error, "Failed to delete the students.") };
+  }
+}
+
+export interface StudentRecordResult extends ActionResult {
+  record?: IndividualStudentRecord;
+}
+
+/**
+ * The Individual Student Record, read on demand when a roster row is opened.
+ *
+ * An action rather than data passed down with the roster: the record reads
+ * every register of every class a student is in, which is far more than the
+ * grid needs and would be paid for all students on every page load. Nothing is
+ * written, so there is no revalidate here.
+ */
+export async function studentRecordAction(studentId: number): Promise<StudentRecordResult> {
+  await requireModuleAccess(CLASSROOM_MODULE_SLUG);
+  try {
+    return { ok: true, record: buildIndividualStudentRecord(deps.attendanceRepo, studentId) };
+  } catch (error) {
+    return { ok: false, error: toMessage(error, "Failed to load the student record.") };
   }
 }
 

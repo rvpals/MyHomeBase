@@ -1,5 +1,100 @@
 # Change History
 
+## 2026-10-30 — Pictionary, Document Library tree/bulk/recycle bin, student record, expense stats exclusions
+
+**Three migrations: 0162, 0163, 0164.** All additive. Apply them on the NAS before opening the
+affected screens:
+
+- **0162** seeds `backup_document_root` (`none`) in `sys_app_settings`.
+- **0163** adds `doc_attachments.content_hash` (+ a partial index) and four `doc_recycled_*`
+  tables behind the Documents bin. Without it, filing an attachment or deleting a document fails.
+- **0164** creates `gam_pictionary_words`, the custom Pictionary word bank.
+
+**Behaviour change to know about:** the Data backup now **refuses to run until a Document Library
+backup folder is set** (0162's seed is `none`). An install whose backup worked yesterday reports
+"No document backup folder is set." until an admin chooses one on Backup Data.
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not
+invoked, and nothing was loaded in a browser. Everything below is **unverified on screen** —
+`Testing_List.md` carries items for each part. Most of this work was written in earlier sessions
+and was read for this entry, not re-checked.
+
+### Games: Pictionary (migration 0164)
+
+- **A new pass-and-play game**, the arcade's eleventh. Several people share one device under
+  **typed names** (no accounts needed), take turns drawing a word on a canvas while the others
+  guess, and a summary screen shows standings. **Nothing is saved to `gam_scores`** — that table
+  names a player by account, and a typed name has nowhere to live there. Rules are pure functions
+  in `src/lib/games/game-pictionary.ts`; the drawing is view state and is never stored.
+- **Custom word bank.** Games → Configuration imports words from a pasted list or a text/CSV
+  file (one per line or comma-separated, with an optional per-row tier). Words are unique per tier
+  ignoring case, so re-importing a file is a no-op. A session can draw from built-in + custom,
+  built-in only, or custom only. The built-in 120-word bank stays in code.
+- **`pictionary-words` CLI** lists, adds (`--add … --user <id>`) and clears custom words, and can
+  print the built-in bank.
+- New icon slot `games_card_pictionary`.
+
+### Games: Arrow Clearing boards
+
+- Arrows can now be up to **36 cells long** (was 12). The generator first lays short "seed" arrows
+  until a tier-set share of the board is full, then draws the tier's long pieces with a **hug**
+  bias so their tails curl around the seeded ones — denser, more tangled boards. Tuned per
+  difficulty tier in `ARROW_DIFFICULTY_SETUP`.
+
+### Document Library: tree, bulk edit, recycle bin, duplicate detection (migration 0163)
+
+- **Document Tree** section: browse by category, narrow by tag, read a document beside the list.
+  Built from the same summaries as the grid so the counts cannot disagree with the rows.
+- **Bulk edit.** Tick several documents and add/remove categories and tags, or recycle them, in
+  one transaction. There is deliberately no bulk edit of title or description.
+- **Recycled Documents** section. Deleting a document moves its index rows to `doc_recycled_*`
+  and its folder to `_deleted/doc_<id>_<stamp>/`, and records that folder name so a restore is not
+  a guess. Restore at the original id if free; otherwise at a new id with every attachment path
+  rewritten. Restore never merges. Delete-forever and empty-bin are there too.
+- **Duplicate detection.** Every upload is SHA-256 hashed; the editor warns "already attached to
+  *Lease 2026*" and proceeds — it never blocks. The attachments route now returns `duplicates`.
+- **`documents-backfill-hashes` CLI** hashes files uploaded before 0163 (resumable, `--limit`,
+  `--dry-run`). Un-hashed rows just do not take part in detection until it reaches them.
+- `moveToDeleted` now returns where it put the folder; the file store gained `restoreFromDeleted`.
+- New icon slots `documents_section_tree` and `documents_section_recycled`.
+
+### Backup: Document Library files (migration 0162)
+
+- Backup Data has a **Documents backed up to** folder; the backup copies the Document Library's
+  files into it (source is the module's own `document_root`). It is **required**, like the
+  attachment and database folders, and the Background Tasks precondition list shows it.
+
+### Attendance: Individual Student Record, roster and report restyle
+
+- **Rosters → Attendance Record** opens an *Individual Student Record* dialog: one section per
+  current class, each listing only the days that class's registers name the student, newest first,
+  with totals and any actions noted. A day the class met without them is **not** counted absent.
+  Logic in `src/lib/attendance/student-record.ts`; icon slot `classroom_card_student_record`.
+- The roster grid drops its Email and Note columns.
+- **Report grid:** the header is now the inverted `bg-ink`/`text-paper` bar, the pinned name column
+  shrinks to the longest name instead of reserving a fixed slab, and cells have column rules. The
+  `.print-grid .truncate` print override was removed from `globals.css` since names no longer
+  truncate.
+
+### Expense: categories excluded from statistics
+
+- Expense → Configuration can list categories to **leave out of the statistics** — dashboard totals,
+  top vendors/categories and the charts. The Transactions list is untouched so an excluded row can
+  still be found and reconciled. The `expense-top-spenders` CLI applies the same exclusion.
+- The dashboard's top-spender cards now show **10** rows (was 5).
+
+### Navigation and Admin
+
+- **Top-tabs Home tab** now draws the `chrome_tree_home` slot instead of a bare glyph that resolved
+  to nothing, so an uploaded Home icon appears in both navigation shapes. Slot label changed to
+  "Home (navigation)"; the **id is unchanged**.
+- Documents home slot relabelled "Home screen" (id unchanged).
+
+### Docs
+
+`CLI_registry.md`, `coding-guide.md`, `components.md` and `modules.md` were updated for the above
+(Pictionary, `gam_pictionary_words`, `doc_recycled_*`, the Home tab note, the two new CLI commands).
+
 ## 2026-10-28 — Document Library module, Clips recycle bin, sticky section strip, grid Select mode
 
 **Three migrations: 0159, 0160, 0161.** All additive. They must be applied on the NAS

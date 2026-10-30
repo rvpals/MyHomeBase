@@ -10,10 +10,13 @@ export type {
   DocumentSummary,
   DocumentTaxonomyItem,
   DocumentWithAttachments,
+  DuplicateMatch,
+  RecycledDocument,
 } from "./types";
 
 export type {
   AttachmentWriteData,
+  BulkTaxonomyMode,
   DocumentsRepository,
   DocumentWriteData,
 } from "./ports";
@@ -89,9 +92,56 @@ export {
   setCategoryIcon,
   setTagIcon,
   updateDocument,
+  type AddAttachmentResult,
   type DocumentFiles,
   type DocumentLimitsInput,
 } from "./documents";
+
+// Content hashes, duplicate detection, bulk edits and the recycle bin (migration 0163).
+export {
+  UNHASHED,
+  findDuplicates,
+  hashAndFindDuplicates,
+  hashContent,
+  isHashed,
+} from "./content-hash";
+
+export {
+  BULK_TAXONOMY_MODES,
+  bulkSetTaxonomy,
+  bulkTaxonomySchema,
+  describeBulkResult,
+  type BulkTaxonomyInput,
+  type BulkTaxonomyResult,
+} from "./bulk";
+
+// `deleteDocument` above is now the permanent purge — the Delete button calls
+// `recycleDocuments`, and only the bin's own purge removes a document's index.
+export {
+  countRecycledDocuments,
+  deleteRecycledDocumentsForever,
+  emptyDocumentsRecycleBin,
+  listRecycledDocuments,
+  recycleDocuments,
+  restoreRecycledDocuments,
+  restoredFolderFor,
+  type DocumentPurgeResult,
+  type DocumentRecycleResult,
+  type DocumentRestoreResult,
+} from "./recycle";
+
+// The tree view's shaping (categories, the tags in use under each). Pure functions
+// over rows the caller already read — no repository, so a CLI can build the same tree.
+export {
+  UNCATEGORIZED_ID,
+  UNCATEGORIZED_LABEL,
+  attachTagIcons,
+  buildDocumentTree,
+  isInTreeSelection,
+  treeSelectionFilter,
+  type DocumentTreeCategory,
+  type DocumentTreeTag,
+} from "./tree";
 
 export {
   DOCUMENTS_MODULE_SLUG,

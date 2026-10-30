@@ -8,15 +8,17 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
 import { SlotIcon } from "@/components/slot-icon";
-import type { AttendanceClass, Student } from "@/lib/attendance";
+import type { AttendanceClass, IndividualStudentRecord, Student } from "@/lib/attendance";
 import type { NamedMapping } from "@/lib/csv-import";
 import { getIconSlot } from "@/lib/icons/slots";
 import { AttendanceRosterImportView } from "./attendance-roster-import-view";
+import { AttendanceStudentRecordView } from "./attendance-student-record-view";
 import {
   addStudentAction,
   deleteStudentAction,
   deleteStudentsAction,
   enrollStudentsAction,
+  studentRecordAction,
   updateStudentAction,
 } from "./attendance-actions";
 
@@ -27,6 +29,7 @@ const LABEL_CLASS = "text-xs font-medium uppercase tracking-wide text-muted";
 
 const ADD_STUDENT_CARD_SLOT = getIconSlot("classroom_card_add_student")!;
 const IMPORT_ROSTER_CARD_SLOT = getIconSlot("classroom_card_import_roster")!;
+const STUDENT_RECORD_SLOT = getIconSlot("classroom_card_student_record")!;
 
 interface StudentFormState {
   firstName: string;
@@ -58,6 +61,31 @@ export function AttendanceRostersView({
   const [error, setError] = useState<string>();
   const [isPending, startTransition] = useTransition();
 
+  // The student whose record is open, and the record itself once it arrives.
+  // Two pieces of state rather than one: the dialog opens immediately on the
+  // click and shows a loading line, so the read's latency isn't a dead button.
+  const [recordFor, setRecordFor] = useState<Student>();
+  const [record, setRecord] = useState<IndividualStudentRecord>();
+  const [recordError, setRecordError] = useState<string>();
+
+  function handleOpenRecord(student: Student) {
+    setRecordFor(student);
+    setRecord(undefined);
+    setRecordError(undefined);
+
+    startTransition(async () => {
+      const result = await studentRecordAction(student.id);
+      if (result.ok && result.record) setRecord(result.record);
+      else setRecordError(result.error ?? "Failed to load the student record.");
+    });
+  }
+
+  function handleCloseRecord() {
+    setRecordFor(undefined);
+    setRecord(undefined);
+    setRecordError(undefined);
+  }
+
   function handleDelete(student: Student) {
     setError(undefined);
     startTransition(async () => {
@@ -80,23 +108,18 @@ export function AttendanceRostersView({
       render: (row) => <span className="font-mono text-xs">{row.studentIdentifier || "—"}</span>,
     },
     {
-      key: "email",
-      header: "Email",
-      value: (row) => row.email,
-      render: (row) => row.email || "—",
-    },
-    {
-      key: "note",
-      header: "Note",
-      value: (row) => row.note,
-      render: (row) => row.note || "—",
-    },
-    {
       key: "actions",
       header: "Actions",
       excludeFromRecordView: true,
       render: (row) => (
         <span className="flex gap-3">
+          <button
+            type="button"
+            className="text-brass-dark hover:underline"
+            onClick={() => handleOpenRecord(row)}
+          >
+            Attendance Record
+          </button>
           <button
             type="button"
             className="text-brass-dark hover:underline"
@@ -158,6 +181,24 @@ export function AttendanceRostersView({
           />
         )}
       />
+
+      {recordFor && (
+        <Modal
+          title="Individual Student Record"
+          titleIcon={<SlotIcon slot={STUDENT_RECORD_SLOT} />}
+          description={`${recordFor.firstName} ${recordFor.lastName}`}
+          size="lg"
+          onClose={handleCloseRecord}
+        >
+          {recordError ? (
+            <p className="text-sm text-red-400">{recordError}</p>
+          ) : record ? (
+            <AttendanceStudentRecordView record={record} />
+          ) : (
+            <p className="text-sm text-muted">Loading the record…</p>
+          )}
+        </Modal>
+      )}
 
       {editing && (
         <Modal title={`Edit ${editing.firstName} ${editing.lastName}`} onClose={() => setEditing(undefined)}>

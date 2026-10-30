@@ -338,6 +338,22 @@ export class SqliteAttendanceRepository implements AttendanceRepository {
     return rows.map(toStudent);
   }
 
+  listClassesForStudent(studentId: number): AttendanceClass[] {
+    // Reuses selectClasses so the enrolled_count subquery stays identical to
+    // every other class read -- a hand-written SELECT here would be the one
+    // place that count could drift.
+    const rows = this.db
+      .prepare(
+        this.selectClasses(
+          `JOIN cls_class_enrollments e ON e.class_id = c.id
+           WHERE e.student_id = ?
+           ORDER BY c.name COLLATE NOCASE`,
+        ),
+      )
+      .all(studentId) as ClassRow[];
+    return rows.map(toClass);
+  }
+
   enrollStudents(classId: number, studentIds: number[]): number {
     // OR IGNORE leans on the unique (class_id, student_id) index so re-adding an
     // already-enrolled student is a no-op. `changes` then reports how many rows

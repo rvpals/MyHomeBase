@@ -49,6 +49,8 @@ export interface BackupSettings {
   enabled: boolean;
   /** Where attachment files are copied to. `""` = not set. */
   attachmentRoot: string;
+  /** Where the Document Library's files are copied to. `""` = not set. */
+  documentRoot: string;
   /** Where the database archives are written. `""` = not set. */
   databaseRoot: string;
   /** How many database archives to keep. Older ones are deleted after a good write. */
@@ -109,9 +111,11 @@ export interface DatabaseBackupSummary {
  */
 export type BackupPreflightFailure =
   | { kind: "attachment-root-not-set" }
+  | { kind: "document-root-not-set" }
   | { kind: "database-root-not-set" }
   | { kind: "keep-count-invalid"; keepCount: number }
   | { kind: "attachment-root-unusable"; path: string; reason: string }
+  | { kind: "document-root-unusable"; path: string; reason: string }
   | { kind: "database-root-unusable"; path: string; reason: string };
 
 export type BackupPreflight = { ok: true } | { ok: false; failure: BackupPreflightFailure };
@@ -122,6 +126,7 @@ export interface BackupRunSummary {
   /** Why it did not run. Only set when `ran` is false. */
   reason?: string;
   attachments?: AttachmentBackupSummary;
+  documents?: AttachmentBackupSummary;
   database?: DatabaseBackupSummary;
   /** The one-liner stored in `sys_scheduled_runs.last_detail`. */
   detail?: string;

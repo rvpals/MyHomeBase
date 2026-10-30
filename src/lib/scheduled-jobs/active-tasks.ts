@@ -243,6 +243,7 @@ function inactiveReason(
       return "Neither backup folder is set.";
     }
     if (backup.attachmentRoot === "") return "No attachment backup folder is set.";
+    if (backup.documentRoot === "") return "No document backup folder is set.";
     if (backup.databaseRoot === "") return "No database backup folder is set.";
     return "Switched off. Turn on “Run on a schedule” to arm it.";
   }

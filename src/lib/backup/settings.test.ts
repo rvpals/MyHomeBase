@@ -23,6 +23,7 @@ function settings(overrides: Partial<BackupSettings> = {}): BackupSettings {
   return {
     enabled: true,
     attachmentRoot: "D:/backup/attachments",
+    documentRoot: "D:/backup/documents",
     databaseRoot: "D:/backup/db",
     keepCount: 7,
     intervalCount: 1,
@@ -42,6 +43,7 @@ describe("resolveBackupSettings", () => {
       rows({
         [BACKUP_SETTING_KEYS.enabled]: "true",
         [BACKUP_SETTING_KEYS.attachmentRoot]: "D:/a",
+        [BACKUP_SETTING_KEYS.documentRoot]: "D:/d",
         [BACKUP_SETTING_KEYS.databaseRoot]: "D:/b",
         [BACKUP_SETTING_KEYS.keepCount]: "12",
         [BACKUP_SETTING_KEYS.intervalCount]: "6",
@@ -53,6 +55,7 @@ describe("resolveBackupSettings", () => {
     expect(resolved).toEqual({
       enabled: true,
       attachmentRoot: "D:/a",
+      documentRoot: "D:/d",
       databaseRoot: "D:/b",
       keepCount: 12,
       intervalCount: 6,
@@ -153,6 +156,15 @@ describe("checkBackupSettings / isBackupEnabled", () => {
     expect(result).toEqual({ ok: false, failure: { kind: "attachment-root-not-set" } });
     if (!result.ok) {
       expect(describeBackupPreflight(result.failure)).toContain("attachment backup folder");
+    }
+  });
+
+  it("names the missing document folder", () => {
+    const result = checkBackupSettings(settings({ documentRoot: "" }));
+
+    expect(result).toEqual({ ok: false, failure: { kind: "document-root-not-set" } });
+    if (!result.ok) {
+      expect(describeBackupPreflight(result.failure)).toContain("document backup folder");
     }
   });
 

@@ -68,6 +68,7 @@ export {
   checkBackupReady,
   loadAttachmentSourceRoot,
   loadBackupSettings,
+  loadDocumentSourceRoot,
   loadLastBackupRun,
   runDataBackupNow,
 } from "./backup-runner";

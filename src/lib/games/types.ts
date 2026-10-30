@@ -182,6 +182,33 @@ export type ArrowDifficulty = (typeof ARROW_DIFFICULTIES)[number];
  * Size is now driven by how long a board should take to clear, and difficulty by the
  * generator's placement rules rather than by scarcity.
  */
+/**
+ * How much longer every tier's arrows are than the original 2-12 cell tuning.
+ *
+ * The three weight tables below are the *original* shapes, stretched by this factor, so
+ * each tier keeps its character (Hard short-heavy, Nightmare peaking high) at three times
+ * the length. The generator's cap, `MAX_ARROW_LENGTH`, is 12 x this.
+ */
+const ARROW_LENGTH_SCALE = 3;
+
+/**
+ * Stretches a length-weight table `factor` times along the length axis, interpolating
+ * between the original entries so the distribution keeps its shape rather than gaining
+ * gaps. Index 0 and 1 stay zero — a one-cell arrow is never asked for.
+ */
+function stretchWeights(base: readonly number[], factor: number): number[] {
+  const top = (base.length - 1) * factor;
+  const out = new Array<number>(top + 1).fill(0);
+  for (let length = 2; length <= top; length += 1) {
+    const position = length / factor;
+    const low = Math.floor(position);
+    const blend = position - low;
+    const high = Math.min(low + 1, base.length - 1);
+    out[length] = base[low] * (1 - blend) + base[high] * blend;
+  }
+  return out;
+}
+
 export const ARROW_DIFFICULTY_SETUP: Record<
   ArrowDifficulty,
   {
@@ -189,6 +216,20 @@ export const ARROW_DIFFICULTY_SETUP: Record<
     arrows: number;
     gameKey: string;
     label: string;
+    /**
+     * Share of the board, in [0, 1), laid down as short "seed" arrows before the long ones
+     * start. The long arrows placed afterwards wrap around these, which is what makes a
+     * big piece *engulf* small ones: the small pieces' exit lanes end up running through
+     * the long piece's tail, so the long one has to leave first. Still solvable, because
+     * a later placement may sit across an earlier one's lane — only the reverse is banned.
+     */
+    seedCoverage: number;
+    /**
+     * How strongly a growing tail hugs existing arrows, in [0, 1]. At each step that does
+     * not carry straight on, the tail steps onto the free neighbour touching the most
+     * occupied cells with this probability. 0 is a plain random walk.
+     */
+    hug: number;
     /**
      * How often each arrow length is aimed for, as relative weights indexed by length.
      *
@@ -229,8 +270,10 @@ export const ARROW_DIFFICULTY_SETUP: Record<
     gameKey: "arrow-clearing-hard",
     label: "Hard",
     // The original tuning, untouched: this is the board every existing score was set on.
-    lengthWeights: [0, 0, 20, 16, 13, 10, 8, 7, 6, 5, 4, 3, 3],
+    lengthWeights: stretchWeights([0, 0, 20, 16, 13, 10, 8, 7, 6, 5, 4, 3, 3], ARROW_LENGTH_SCALE),
     straightBias: 0,
+    seedCoverage: 0.12,
+    hug: 0.6,
   },
   harder: {
     size: 50,
@@ -238,8 +281,11 @@ export const ARROW_DIFFICULTY_SETUP: Record<
     gameKey: "arrow-clearing-harder",
     label: "Harder",
     // Mass moved off the two-cell end and onto the middle and upper lengths.
-    lengthWeights: [0, 0, 3, 5, 8, 11, 13, 14, 14, 13, 12, 11, 10],
-    straightBias: 0.55,
+    lengthWeights: stretchWeights([0, 0, 3, 5, 8, 11, 13, 14, 14, 13, 12, 11, 10], ARROW_LENGTH_SCALE),
+    // Down from 0.55: the brief is *more* entangled, so tails turn more often.
+    straightBias: 0.25,
+    seedCoverage: 0.15,
+    hug: 0.75,
   },
   nightmare: {
     size: 50,
@@ -261,8 +307,11 @@ export const ARROW_DIFFICULTY_SETUP: Record<
       1: on this tier a two-cell stub is the shape the ladder exists to remove, and
       cramped spots have the 3-cell weight to fall back on.
     */
-    lengthWeights: [0, 0, 0, 2, 4, 7, 11, 14, 16, 15, 13, 10, 8],
-    straightBias: 0.7,
+    lengthWeights: stretchWeights([0, 0, 0, 2, 4, 7, 11, 14, 16, 15, 13, 10, 8], ARROW_LENGTH_SCALE),
+    // Down from 0.7, for the same reason as Harder.
+    straightBias: 0.35,
+    seedCoverage: 0.2,
+    hug: 0.9,
   },
 };
 
@@ -2087,3 +2136,222 @@ export const PROJECTILE_SPEED = 4;
  * have paid more.
  */
 export const BAZOOKA_GHOST_POINTS = 300;
+
+/* -----------------------------------------------------------------------------------
+   Pictionary.
+
+   The arcade's only pass-and-play game: one device, several people in the same room,
+   one of them drawing while the others watch and shout. Every other game here is one
+   player against a board or against bots, which is why this is the only state that
+   carries a *roster* rather than a single score.
+
+   What that changes, and what it deliberately doesn't:
+
+     - The drawing itself is NOT state. Strokes live in the canvas and are thrown away
+       when the turn ends — nothing here records what was drawn, and nothing persists it.
+       `gam_scores` stores a number, as it does for every other game.
+     - The clock is `secondsLeft` on the state and counts DOWN, unlike Minesweeper's and
+       Sudoku's `elapsedSeconds`. A turn is a fixed budget, so the number a player cares
+       about is what remains; scoring reads what was left when they got it.
+     - Players are TYPED NAMES and a session's scores are never saved. See
+       `PictionaryPlayer` for why that follows from how `gam_scores` identifies a player.
+----------------------------------------------------------------------------------- */
+
+/** The three word banks, easiest first. The order the picker shows them in. */
+export const PICTIONARY_TIERS = ["easy", "medium", "hard"] as const;
+
+export type PictionaryTier = (typeof PICTIONARY_TIERS)[number];
+
+/** One prompt: the word to draw and the tier it came from. */
+export interface PictionaryWord {
+  word: string;
+  tier: PictionaryTier;
+}
+
+/**
+ * One player in a session.
+ *
+ * A **typed name**, not a household account. Pictionary is played by whoever is in the
+ * room — a visiting cousin, a grandparent, two kids sharing a go — and requiring each of
+ * them to have an account was the wrong shape for a party game.
+ *
+ * The consequence, and it is deliberate: a session's scores are **not** written to the
+ * shared high-score board. `gam_scores` identifies a player by `user_id` and reads their
+ * name from `sys_users`, so there is nowhere for "Grandma" to live, and inventing a
+ * place for her would mean every other game's reads learning about a column only this
+ * one uses. A Pictionary score therefore lives as long as the summary screen does. See
+ * `standings`.
+ *
+ * `name` is the identity here, which is why `startGame` rejects a duplicate: two players
+ * called "Sam" would make the turn order and the judging buttons ambiguous.
+ */
+export interface PictionaryPlayer {
+  name: string;
+  /** Points banked this session — from drawing as well as from guessing. */
+  score: number;
+  /** Rounds this player has drawn. Used to deal turns out evenly. */
+  turnsTaken: number;
+}
+
+/**
+ * Where a session is within one round.
+ *
+ * A round is three screens, not one, because the device is shared: the word must be
+ * shown to the drawer *only*, so `handoff` exists to let them take the phone before it
+ * is revealed. Collapsing `handoff` into `drawing` would print the answer on a screen
+ * the guessers are looking at.
+ *
+ *   - `setup`    — choosing who is playing and at which tier. Before any round.
+ *   - `handoff`  — "pass to <name>", word hidden. The guessers may look.
+ *   - `drawing`  — the word is on screen and the clock runs. Only the drawer may look.
+ *   - `judging`  — time is up or the drawer stopped; pick who guessed it.
+ *   - `summary`  — every round played; the session's totals, ready to post.
+ */
+export type PictionaryPhase = "setup" | "handoff" | "drawing" | "judging" | "summary";
+
+/**
+ * How a round ended. `undefined` while it is still being played.
+ *
+ * `"skipped"` is distinct from `"missed"` on purpose: a skip is the drawer rejecting an
+ * unguessable prompt and costs nobody anything, where a miss is a round that ran its
+ * clock out and scores zero. Ranking them the same would make skipping free *and*
+ * invisible, and the summary could not explain where a round went.
+ */
+export type PictionaryRoundOutcome = "guessed" | "missed" | "skipped";
+
+/** A finished round, kept for the end-of-session summary. */
+export interface PictionaryRound {
+  /** The prompt, revealed in the summary however the round ended. */
+  word: string;
+  tier: PictionaryTier;
+  /** Who was drawing, by name — see `PictionaryPlayer`. */
+  drawer: string;
+  /** Who got it, when someone did. */
+  guesser?: string;
+  outcome: PictionaryRoundOutcome;
+  /** Seconds still on the clock when it was guessed. 0 for a miss or a skip. */
+  secondsLeft: number;
+}
+
+/**
+ * A whole Pictionary session, as one immutable value.
+ *
+ * Every rule in `game-pictionary.ts` takes one of these and returns the next, exactly
+ * as in `game-minesweeper.ts` — the view holds it in `useState` and owns only the
+ * canvas and the interval that ticks it.
+ */
+export interface PictionaryState {
+  phase: PictionaryPhase;
+  /** The roster, in turn order. At least two to start — see `startGame`. */
+  players: readonly PictionaryPlayer[];
+  /** Index into `players` of whoever is drawing this round. */
+  drawerIndex: number;
+  /** The tier every prompt is drawn from this session. */
+  tier: PictionaryTier;
+  /** The prompt for the current round. Absent in `setup` and `summary`. */
+  current?: PictionaryWord;
+  /** Words already shown, so a session does not repeat itself. See `pickWord`. */
+  used: readonly string[];
+  secondsLeft: number;
+  /** Rounds played so far, oldest first. */
+  rounds: readonly PictionaryRound[];
+  /** How many rounds this session runs for. */
+  totalRounds: number;
+  /**
+   * The words this session draws from, when it was given a pool.
+   *
+   * Carried on the state so every round of a session reads the same bank — a pool
+   * passed only to `startGame` would be lost by the second round. `undefined` means the
+   * built-in bank, which is what a test or a CLI session gets; see `drawFrom`.
+   */
+  pool?: readonly PictionaryWord[];
+}
+
+/** Seconds on the clock for one turn, by tier — a harder word is given longer. */
+export const PICTIONARY_TURN_SECONDS: Readonly<Record<PictionaryTier, number>> = {
+  easy: 60,
+  medium: 90,
+  hard: 120,
+};
+
+/**
+ * Points a correct guess is worth before the clock bonus, by tier.
+ *
+ * The spread is wide (50 → 150) so that choosing `hard` is a real decision rather than
+ * flavour: a session of hard words scores roughly three times an easy one, which is
+ * what stops the shared board from being a list of whoever picked `easy` most often.
+ */
+export const PICTIONARY_BASE_POINTS: Readonly<Record<PictionaryTier, number>> = {
+  easy: 50,
+  medium: 100,
+  hard: 150,
+};
+
+/**
+ * Points per second still on the clock when the guess lands.
+ *
+ * Deliberately small against the base: a fast guess should be worth more than a slow
+ * one, but not so much more that a round guessed at the buzzer scores nothing. At 2
+ * points a second an easy word is worth 50–170, so the bonus matters without dominating.
+ */
+export const PICTIONARY_SPEED_BONUS = 2;
+
+/**
+ * The guesser's share of a round's points, as a fraction. The drawer takes the rest.
+ *
+ * Both sides are paid because both did the work — a drawing nobody can read scores
+ * nothing, and so does a table that never guesses. The guesser takes the larger share
+ * since they are the one who had to be right. See `scoreFor`.
+ */
+export const PICTIONARY_GUESSER_SHARE = 0.6;
+
+/** Rounds in a session, and the bounds the picker offers. */
+export const PICTIONARY_DEFAULT_ROUNDS = 6;
+export const PICTIONARY_MIN_ROUNDS = 2;
+export const PICTIONARY_MAX_ROUNDS = 20;
+
+/** A session needs at least a drawer and one guesser. */
+export const PICTIONARY_MIN_PLAYERS = 2;
+
+/** The longest a typed player name may be, so one cannot break the turn banner. */
+export const PICTIONARY_MAX_NAME_LENGTH = 24;
+
+/**
+ * The most players one device can sensibly pass around.
+ *
+ * A limit rather than unbounded because the judging screen shows one button per
+ * guesser, and past about eight the row stops fitting a phone — the constraint is the
+ * shared screen, not the rules.
+ */
+export const PICTIONARY_MAX_PLAYERS = 8;
+
+/**
+ * A custom word as stored — the imported bank, not the built-in one.
+ *
+ * `PictionaryWord` is the shape the game plays with (a word and a tier, wherever it came
+ * from); this is that plus the row's own identity, so Configuration can list and delete
+ * individual entries. The game itself never sees this type: `listPlayableWords` flattens
+ * both banks to `PictionaryWord` precisely so no rule can behave differently for an
+ * imported word than for a built-in one.
+ */
+export interface StoredPictionaryWord extends PictionaryWord {
+  id: number;
+  /** Who imported it. `undefined` when that account has since been deleted. */
+  createdBy?: string;
+  createdAt: string;
+}
+
+/**
+ * Which bank a session draws its prompts from.
+ *
+ *   - `built-in` — only the words that ship with the app.
+ *   - `custom`   — only what this household imported.
+ *   - `both`     — the default: everything, with no distinction made between them.
+ *
+ * `custom` is offered because the whole point of importing a list of your own in-jokes
+ * is a session made of them; `built-in` because a household that imported a bad list
+ * should be able to play while it sorts that out, without deleting anything.
+ */
+export const PICTIONARY_SOURCES = ["both", "built-in", "custom"] as const;
+
+export type PictionarySource = (typeof PICTIONARY_SOURCES)[number];

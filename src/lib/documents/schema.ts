@@ -60,7 +60,7 @@ const taxonomyNameSchema = z
  *   who opened a box and typed nothing. Refusing the whole save over it would be
  *   telling them off for something they did not do.
  */
-const taxonomyListSchema = z
+export const taxonomyListSchema = z
   .array(z.string())
   .default([])
   .transform((names) => names.map((name) => name.trim()).filter((name) => name !== ""))

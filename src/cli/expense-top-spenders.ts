@@ -1,6 +1,15 @@
 // Prints the two rollups the Expense dashboard's "Interesting stats" card shows.
 // Handy for eyeballing the vendor fuzzy-grouping against the real database.
-import { listTransactions, totalsByCategory, vendorSpendTotals } from "@/lib/expense";
+import {
+  excludeCategoriesFromStats,
+  excludeCategoryTotals,
+  listTransactions,
+  resolveExpenseSettings,
+  totalsByCategory,
+  vendorSpendTotals,
+} from "@/lib/expense";
+import { listModuleSettingsFor } from "@/lib/module-settings";
+import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
 import { parseFlags } from "./parse-flags";
 
@@ -21,11 +30,19 @@ export function expenseTopSpendersCommand(args: string[]): void {
     return;
   }
 
+  // Same exclusion the dashboard applies, so the CLI ranks the same rows.
+  const expenseModule = getModuleBySlug(deps.moduleRepo, "expense");
+  const excluded = resolveExpenseSettings(
+    expenseModule ? listModuleSettingsFor(deps.moduleSettingsRepo, expenseModule.id) : [],
+  ).statsExcludedCategories;
+
   console.log(`Top ${limit} by vendor:`);
   // `vendorSpendTotals` so the CLI ranks the same rows the dashboard does —
   // payment and redemption lines derive a fictional vendor from statement prose
   // and are excluded by sign. Reading the rows here keeps that one function call.
-  for (const total of vendorSpendTotals(listTransactions(deps.expenseRepo)).slice(0, limit)) {
+  for (const total of vendorSpendTotals(
+    excludeCategoriesFromStats(listTransactions(deps.expenseRepo), excluded),
+  ).slice(0, limit)) {
     const name = total.vendor === "" ? "(unknown)" : total.vendor;
     console.log(
       `  ${formatCents(total.totalCents).padStart(12)}  ${name}` +
@@ -34,7 +51,10 @@ export function expenseTopSpendersCommand(args: string[]): void {
   }
 
   console.log(`\nTop ${limit} by category:`);
-  for (const total of totalsByCategory(deps.expenseRepo).slice(0, limit)) {
+  for (const total of excludeCategoryTotals(totalsByCategory(deps.expenseRepo), excluded).slice(
+    0,
+    limit,
+  )) {
     const name = total.categoryName === "" ? "(uncategorised)" : total.categoryName;
     console.log(
       `  ${formatCents(total.totalCents).padStart(12)}  ${name}  (${total.transactionCount} transaction(s))`,

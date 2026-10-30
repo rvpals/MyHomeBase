@@ -161,6 +161,30 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
+  // Pictionary — the arcade's only pass-and-play game: one device, several people in
+  // the same room, one of them drawing. Every other entry here is one player against a
+  // board or against bots.
+  //
+  // **The only game that posts nothing to the shared board.** Its players are typed
+  // names, not household accounts, because a party game is played by whoever is in the
+  // room — and `gam_scores` identifies a player by `user_id` and reads the name from
+  // `sys_users`, so there is nowhere for a guest's name to live. A session's scores
+  // therefore last as long as its summary screen; see `PictionaryPlayer` in `types.ts`.
+  //
+  // It keeps a catalogue entry because the catalogue is what the Arcade draws cards
+  // from, and the card is how the game is reached. `scoreUnit` is `"points"` for the
+  // Rules dialog and the card's copy; nothing will ever format a stored score with it,
+  // since no score is stored. The key is consequently NOT load-bearing the way every
+  // other key here is — nothing in `gam_scores` references it — but it is left as
+  // `pictionary` and should stay that way, since `gameSlotId` derives the icon slot id
+  // from it and that id IS permanent once an upload exists.
+  {
+    key: "pictionary",
+    name: "Pictionary",
+    description: "Draw the word and pass the device. Everyone else guesses out loud.",
+    status: "available",
+    scoreUnit: "points",
+  },
 ];
 
 /** The catalogue entry for `key`, or undefined when nothing matches. */

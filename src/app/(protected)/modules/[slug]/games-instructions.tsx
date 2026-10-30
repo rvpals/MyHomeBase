@@ -471,6 +471,64 @@ export function MahjongRules() {
   );
 }
 
+export function PictionaryRules() {
+  return (
+    <Section title="Playing Pictionary">
+      <p>
+        The one game here played by the whole room rather than by one person. Everyone
+        sits round a single device: each round it names a{" "}
+        <strong className="text-ink">drawer</strong>, shows them a word nobody else can
+        see, and starts a clock. They draw it; everyone else shouts guesses out loud.
+        When someone gets it, the drawer taps{" "}
+        <strong className="text-ink">Someone got it</strong> and then taps who.
+      </p>
+      <p>
+        Type everyone&rsquo;s name &mdash; anyone can play, not just people with an
+        account here &mdash; then pick how hard the words should be, and the session
+        deals turns out in order. Easy words give you 60 seconds, medium 90, hard 120
+        &mdash; and the harder tiers are worth considerably more, so a session of hard
+        words outscores an easy one even with fewer correct guesses.
+      </p>
+      <ul className="flex list-disc flex-col gap-1 pl-5">
+        <li>
+          <strong className="text-ink">No letters, numbers or talking.</strong> The
+          drawer draws and nothing else &mdash; the only rule the game really has.
+        </li>
+        <li>
+          <strong className="text-ink">Both sides score.</strong> A correct guess pays
+          the guesser and the drawer, since a drawing nobody can read is worth as little
+          as a table that never guesses. The guesser takes the larger share.
+        </li>
+        <li>
+          <strong className="text-ink">Guess fast for more.</strong> Every second left
+          on the clock adds to the round&rsquo;s points, so an early guess beats one at
+          the buzzer.
+        </li>
+        <li>
+          <strong className="text-ink">A word you can&rsquo;t draw can be skipped</strong>{" "}
+          before the clock starts. It costs nothing and you keep your turn &mdash; but
+          that word is gone for the rest of the session.
+        </li>
+        <li>
+          <strong className="text-ink">Nothing is saved at all.</strong> The drawing is
+          cleared at the end of every turn, and the scores go with the session.
+        </li>
+      </ul>
+      <p>
+        <strong className="text-ink">Scores stay on the summary screen.</strong> This is
+        the one game here that posts nothing to the high-score board: players are typed
+        names rather than accounts, and the board identifies a player by account. Write
+        the final scores down if they matter &mdash; closing the game forgets them.
+      </p>
+      <p>
+        You can add your own words in{" "}
+        <strong className="text-ink">Games &rarr; Configuration</strong>: type or paste a
+        list, pick a tier, and they join the built-in ones.
+      </p>
+    </Section>
+  );
+}
+
 export function PacmanRules() {
   return (
     <Section title="Playing Pac-Man">
@@ -584,6 +642,7 @@ function ArcadeInstructions() {
       <MahjongRules />
       <BridgeRules />
       <PacmanRules />
+      <PictionaryRules />
 
       <Section title="When a score is saved">
         <p>
@@ -664,6 +723,7 @@ const RULES_BY_GAME: Record<string, () => React.ReactNode> = {
   mahjong: MahjongRules,
   bridge: BridgeRules,
   pacman: PacmanRules,
+  pictionary: PictionaryRules,
 };
 
 /** Whether `gameKey` has rules to show, for deciding whether to offer the button. */

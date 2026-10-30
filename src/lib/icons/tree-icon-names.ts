@@ -96,6 +96,9 @@ export const TREE_ICON_NAMES = [
   "game-minesweeper",
   "game-mahjong",
   "game-pacman",
+  // Pictionary. A pencil mid-stroke over the line it is drawing — the drawing game,
+  // not a note being written, which is what the plain pencil glyph would say.
+  "game-pictionary",
   // Journal's Location Manager. A map pin — the mark for a single saved place.
   // Deliberately not `flash`/`plus`: this says *where*, not *do something*.
   "pin",

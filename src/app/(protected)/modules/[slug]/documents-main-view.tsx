@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { BulkConfirm } from "@/components/bulk-confirm";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
@@ -19,7 +20,12 @@ import type {
   DocumentTaxonomyItem,
 } from "@/lib/documents/types";
 import { PAGE_CONTAINER } from "../../page-container";
-import { deleteDocumentAction } from "./documents-actions";
+import { DocumentsBulkEdit } from "./documents-bulk-edit";
+import {
+  bulkRecycleAction,
+  bulkSetTaxonomyAction,
+  deleteDocumentAction,
+} from "./documents-actions";
 import { documentsEditorHref } from "./documents-sections";
 
 // Documents → Home screen. The list, its filters, and the way in to the editor.
@@ -94,8 +100,19 @@ export function DocumentsMainView({
   const [pendingDelete, setPendingDelete] = useState<DocumentSummary>();
   // Which document's files are on show. The whole row, so the dialog can title itself.
   const [showingFiles, setShowingFiles] = useState<DocumentSummary>();
-  const [alsoDeleteFiles, setAlsoDeleteFiles] = useState(false);
   const [error, setError] = useState<string>();
+  /** The outcome of the last bulk action, shown until the next one. */
+  const [notice, setNotice] = useState<string>();
+  /** A pending bulk recycle: the ticked rows and how to clear them afterwards. */
+  const [bulkConfirm, setBulkConfirm] = useState<{
+    rows: DocumentSummary[];
+    clearSelection: () => void;
+  }>();
+  /** A pending bulk taxonomy edit, same shape. */
+  const [bulkEdit, setBulkEdit] = useState<{
+    rows: DocumentSummary[];
+    clearSelection: () => void;
+  }>();
 
   function applyFilters(next: { search?: string; category?: string; tag?: string }) {
     const params = new URLSearchParams();
@@ -110,16 +127,57 @@ export function DocumentsMainView({
   function confirmDelete() {
     if (!pendingDelete) return;
     const id = pendingDelete.id;
-    const deleteFiles = alsoDeleteFiles;
     setError(undefined);
     startTransition(async () => {
-      const result = await deleteDocumentAction(id, deleteFiles);
+      const result = await deleteDocumentAction(id);
       if (!result.ok) {
         setError(result.error ?? "Could not delete that document.");
         return;
       }
       setPendingDelete(undefined);
-      setAlsoDeleteFiles(false);
+      router.refresh();
+    });
+  }
+
+  /** Moves a ticked selection to the bin. */
+  function recycleSelection(rows: DocumentSummary[], clearSelection: () => void) {
+    setError(undefined);
+    startTransition(async () => {
+      const result = await bulkRecycleAction(rows.map((row) => row.id));
+      if (!result.ok) {
+        setError(result.error ?? "Could not delete those documents.");
+        return;
+      }
+      setBulkConfirm(undefined);
+      setNotice(result.message);
+      clearSelection();
+      router.refresh();
+    });
+  }
+
+  /** Applies one taxonomy change to a ticked selection. */
+  function applyBulkTaxonomy(
+    rows: DocumentSummary[],
+    field: "categories" | "tags",
+    mode: "add" | "remove" | "replace",
+    names: string[],
+    clearSelection: () => void,
+  ) {
+    setError(undefined);
+    startTransition(async () => {
+      const result = await bulkSetTaxonomyAction({
+        ids: rows.map((row) => row.id),
+        field,
+        mode,
+        names,
+      });
+      if (!result.ok) {
+        setError(result.error ?? "Could not apply that change.");
+        return;
+      }
+      setBulkEdit(undefined);
+      setNotice(result.message);
+      clearSelection();
       router.refresh();
     });
   }
@@ -212,7 +270,6 @@ export function DocumentsMainView({
             disabled={isPending}
             onClick={() => {
               setPendingDelete(row);
-              setAlsoDeleteFiles(false);
               setError(undefined);
             }}
           >
@@ -310,6 +367,12 @@ export function DocumentsMainView({
           </p>
         )}
 
+        {notice && (
+          <p className="rounded-md border border-line bg-paper px-3 py-2 text-sm text-muted">
+            {notice}
+          </p>
+        )}
+
         <DataGrid
           columns={columns}
           rows={documents}
@@ -317,6 +380,25 @@ export function DocumentsMainView({
           storageKey="documents-list"
           emptyMessage="No documents yet. Use “File a document” to add the first one."
           exportFileName="documents"
+          enableSelection
+          renderSelectionActions={(selectedRows, clearSelection) => (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                disabled={isPending}
+                onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
+              >
+                Categories &amp; tags
+              </Button>
+              <Button
+                variant="danger"
+                disabled={isPending}
+                onClick={() => setBulkConfirm({ rows: selectedRows, clearSelection })}
+              >
+                Delete
+              </Button>
+            </div>
+          )}
         />
       </div>
 
@@ -343,9 +425,35 @@ export function DocumentsMainView({
         </Modal>
       )}
 
+      {bulkConfirm && (
+        <BulkConfirm
+          title="Move these documents to the bin?"
+          count={bulkConfirm.rows.length}
+          noun={{ one: "document", many: "documents" }}
+          caveat="They go to Recycled Documents with their files, and can be restored from there."
+          confirmLabel="Move to bin"
+          isBusy={isPending}
+          onConfirm={() => recycleSelection(bulkConfirm.rows, bulkConfirm.clearSelection)}
+          onCancel={() => setBulkConfirm(undefined)}
+        />
+      )}
+
+      {bulkEdit && (
+        <DocumentsBulkEdit
+          count={bulkEdit.rows.length}
+          categories={categories.map((item) => item.name)}
+          tags={tags.map((item) => item.name)}
+          isBusy={isPending}
+          onCancel={() => setBulkEdit(undefined)}
+          onApply={(field, mode, names) =>
+            applyBulkTaxonomy(bulkEdit.rows, field, mode, names, bulkEdit.clearSelection)
+          }
+        />
+      )}
+
       {pendingDelete && (
         <Modal
-          title="Delete this document?"
+          title="Move this document to the bin?"
           onClose={() => {
             if (!isPending) setPendingDelete(undefined);
           }}
@@ -366,29 +474,16 @@ export function DocumentsMainView({
         >
           <div className="flex flex-col gap-3 text-sm">
             <p className="text-ink">
-              <strong>{pendingDelete.title}</strong> will be removed from the library.
+              <strong>{pendingDelete.title}</strong> will be moved to{" "}
+              <strong>Recycled Documents</strong>, where you can restore it.
             </p>
 
             {pendingDelete.attachmentCount > 0 && (
-              <>
-                <label className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={alsoDeleteFiles}
-                    onChange={(event) => setAlsoDeleteFiles(event.target.checked)}
-                  />
-                  <span className="text-ink">
-                    Also delete its {pendingDelete.attachmentCount}{" "}
-                    {pendingDelete.attachmentCount === 1 ? "file" : "files"}
-                  </span>
-                </label>
-                <p className="text-xs text-muted">
-                  {alsoDeleteFiles
-                    ? "The files are moved to a _deleted folder on the server, not erased — you can still recover them by hand."
-                    : "The files stay on the server exactly where they are. Only the record goes."}
-                </p>
-              </>
+              <p className="text-xs text-muted">
+                Its {pendingDelete.attachmentCount}{" "}
+                {pendingDelete.attachmentCount === 1 ? "file goes" : "files go"} with it and
+                come back on a restore.
+              </p>
             )}
 
             {error && (

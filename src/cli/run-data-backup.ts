@@ -4,6 +4,7 @@ import {
   describeBackupPreflight,
   loadAttachmentSourceRoot,
   loadBackupSettings,
+  loadDocumentSourceRoot,
   loadLastBackupRun,
   runDataBackupNow,
 } from "@/lib/backup";
@@ -36,6 +37,8 @@ export async function runDataBackupCommand(args: string[]): Promise<void> {
     console.log(`Interval:       ${describeBackupInterval(settings)}`);
     console.log(`Attachments:    ${source || "(no source folder set)"}`);
     console.log(`  backed up to: ${settings.attachmentRoot || "(not set)"}`);
+    console.log(`Documents:      ${loadDocumentSourceRoot() || "(no source folder set)"}`);
+    console.log(`  backed up to: ${settings.documentRoot || "(not set)"}`);
     console.log(`Database to:    ${settings.databaseRoot || "(not set)"}`);
     console.log(`Keeping:        ${settings.keepCount} archive(s)`);
     console.log(`Ready:          ${ready.ok ? "yes" : describeBackupPreflight(ready.failure)}`);

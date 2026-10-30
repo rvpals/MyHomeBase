@@ -8,6 +8,7 @@ export const EXPENSE_SETTING_KEYS = {
   autoImportEnabled: "csv_autoimport_enabled",
   autoImportPath: "csv_autoimport_path",
   autoImportIntervalMinutes: "csv_autoimport_interval_minutes",
+  statsExcludedCategories: "stats_excluded_categories",
 } as const;
 
 export interface ExpenseSettings {
@@ -21,6 +22,22 @@ export interface ExpenseSettings {
   autoImportPath: string;
   /** Minutes between runs. 0 disables auto-import. */
   autoImportIntervalMinutes: number;
+  /**
+   * Category names left out of the statistics (totals, top spenders, charts).
+   * Stored as a JSON array because a category name may contain a comma.
+   */
+  statsExcludedCategories: string[];
+}
+
+function parseNameList(raw: string | undefined): string[] {
+  if (raw === undefined) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string" && item !== "");
+  } catch {
+    return [];
+  }
 }
 
 export const DEFAULT_AUTO_IMPORT_INTERVAL_MINUTES = 60;
@@ -48,6 +65,7 @@ export function resolveExpenseSettings(settings: ModuleSetting[]): ExpenseSettin
     autoImportEnabled,
     autoImportPath: (byKey.get(EXPENSE_SETTING_KEYS.autoImportPath) ?? "").trim(),
     autoImportIntervalMinutes,
+    statsExcludedCategories: parseNameList(byKey.get(EXPENSE_SETTING_KEYS.statsExcludedCategories)),
   };
 }
 
@@ -86,6 +104,12 @@ export function expenseSettingsToEntries(
     entries.push({
       key: EXPENSE_SETTING_KEYS.autoImportPath,
       value: settings.autoImportPath.trim(),
+    });
+  }
+  if (settings.statsExcludedCategories.length > 0) {
+    entries.push({
+      key: EXPENSE_SETTING_KEYS.statsExcludedCategories,
+      value: JSON.stringify(settings.statsExcludedCategories),
     });
   }
   return entries;

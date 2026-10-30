@@ -19,191 +19,8 @@ import {
   type DocumentFiles,
   type DocumentLimitsInput,
 } from "./documents";
-import type { DecodedImage } from "@/lib/shared/image-upload";
-import type { DocumentFileStore, DocumentRootCheck, FolderListing } from "./file-store";
-import type { AttachmentWriteData, DocumentsRepository, DocumentWriteData } from "./ports";
-import type {
-  Document,
-  DocumentAttachment,
-  DocumentSummary,
-  DocumentTaxonomyItem,
-} from "./types";
+import { FakeFileStore, FakeRepository } from "./test-fakes";
 
-// A hand-written in-memory repository, per ARCHITECTURE.md: fakes over mocks, so the
-// tests read as behaviour rather than as call-order assertions.
-class FakeRepository implements DocumentsRepository {
-  documents: Document[] = [];
-  attachments: DocumentAttachment[] = [];
-  categories = new Map<string, string>();
-  tags = new Map<string, string>();
-  private nextDocumentId = 1;
-  private nextAttachmentId = 1;
-
-  listDocuments(): DocumentSummary[] {
-    return this.documents.map((document) => {
-      const files = this.attachments.filter((a) => a.documentId === document.id);
-      return {
-        ...document,
-        attachmentCount: files.length,
-        totalBytes: files.reduce((sum, a) => sum + a.byteSize, 0),
-      };
-    });
-  }
-
-  getDocumentById(id: number): Document | undefined {
-    return this.documents.find((document) => document.id === id);
-  }
-
-  createDocument(input: DocumentWriteData): Document {
-    const document: Document = {
-      id: this.nextDocumentId++,
-      ...input,
-      createdAt: "2026-10-28T00:00:00Z",
-      updatedAt: "2026-10-28T00:00:00Z",
-    };
-    this.documents.push(document);
-    return document;
-  }
-
-  updateDocument(id: number, input: DocumentWriteData): Document {
-    const index = this.documents.findIndex((document) => document.id === id);
-    this.documents[index] = { ...this.documents[index], ...input };
-    return this.documents[index];
-  }
-
-  deleteDocument(id: number): void {
-    this.documents = this.documents.filter((document) => document.id !== id);
-    this.attachments = this.attachments.filter((a) => a.documentId !== id);
-  }
-
-  listAttachments(documentId: number): DocumentAttachment[] {
-    return this.attachments.filter((a) => a.documentId === documentId);
-  }
-
-  listAttachmentsForDocuments(documentIds: number[]): Map<number, DocumentAttachment[]> {
-    const map = new Map<number, DocumentAttachment[]>();
-    for (const id of documentIds) {
-      const list = this.listAttachments(id);
-      if (list.length > 0) map.set(id, list);
-    }
-    return map;
-  }
-
-  getAttachmentById(id: number): DocumentAttachment | undefined {
-    return this.attachments.find((a) => a.id === id);
-  }
-
-  addAttachment(input: AttachmentWriteData): DocumentAttachment {
-    const attachment: DocumentAttachment = {
-      id: this.nextAttachmentId++,
-      ...input,
-      sortOrder: this.listAttachments(input.documentId).length,
-      createdAt: "2026-10-28T00:00:00Z",
-    };
-    this.attachments.push(attachment);
-    return attachment;
-  }
-
-  deleteAttachment(id: number): void {
-    this.attachments = this.attachments.filter((a) => a.id !== id);
-  }
-
-  listCategories(): DocumentTaxonomyItem[] {
-    return [...this.categories].map(([name, description]) => this.item(name, description));
-  }
-
-  listTags(): DocumentTaxonomyItem[] {
-    return [...this.tags].map(([name, description]) => this.item(name, description));
-  }
-
-  private item(name: string, description: string): DocumentTaxonomyItem {
-    return {
-      name,
-      description,
-      hasIcon: false,
-      createdAt: "2026-10-28T00:00:00Z",
-      updatedAt: "2026-10-28T00:00:00Z",
-    };
-  }
-
-  upsertCategory(name: string, description: string): DocumentTaxonomyItem {
-    if (description !== "" || !this.categories.has(name)) this.categories.set(name, description);
-    return this.item(name, this.categories.get(name) ?? "");
-  }
-
-  upsertTag(name: string, description: string): DocumentTaxonomyItem {
-    if (description !== "" || !this.tags.has(name)) this.tags.set(name, description);
-    return this.item(name, this.tags.get(name) ?? "");
-  }
-
-  deleteCategory(name: string): void {
-    this.categories.delete(name);
-  }
-
-  deleteTag(name: string): void {
-    this.tags.delete(name);
-  }
-
-  categoryIcons = new Map<string, DecodedImage>();
-  tagIcons = new Map<string, DecodedImage>();
-
-  getCategoryIcon(name: string): DecodedImage | undefined {
-    return this.categoryIcons.get(name.toLowerCase());
-  }
-
-  getTagIcon(name: string): DecodedImage | undefined {
-    return this.tagIcons.get(name.toLowerCase());
-  }
-
-  setCategoryIcon(name: string, image: DecodedImage | null): void {
-    if (image) this.categoryIcons.set(name.toLowerCase(), image);
-    else this.categoryIcons.delete(name.toLowerCase());
-  }
-
-  setTagIcon(name: string, image: DecodedImage | null): void {
-    if (image) this.tagIcons.set(name.toLowerCase(), image);
-    else this.tagIcons.delete(name.toLowerCase());
-  }
-}
-
-/** An in-memory share. `moved` records what a delete sent to `_deleted/`. */
-class FakeFileStore implements DocumentFileStore {
-  files = new Map<string, Buffer>();
-  moved: string[] = [];
-
-  async write(_root: string, relativePath: string, data: Buffer): Promise<void> {
-    this.files.set(relativePath, data);
-  }
-
-  async read(_root: string, relativePath: string): Promise<Buffer | undefined> {
-    return this.files.get(relativePath);
-  }
-
-  async exists(_root: string, relativePath: string): Promise<boolean> {
-    return this.files.has(relativePath);
-  }
-
-  async moveToDeleted(_root: string, documentId: number): Promise<void> {
-    for (const key of [...this.files.keys()]) {
-      if (key.startsWith(`doc_${documentId}/`)) {
-        this.moved.push(key);
-        this.files.delete(key);
-      }
-    }
-  }
-
-  async moveFileToDeleted(_root: string, relativePath: string): Promise<void> {
-    if (this.files.delete(relativePath)) this.moved.push(relativePath);
-  }
-
-  async checkRoot(): Promise<DocumentRootCheck> {
-    return { kind: "ok", path: "/share/documents" };
-  }
-
-  async listFolders(): Promise<FolderListing> {
-    return { path: "/share", parent: null, folders: [] };
-  }
-}
 
 const LIMITS: DocumentLimitsInput = { maxFileBytes: 1024, maxFilesPerDocument: 3 };
 
@@ -299,7 +116,7 @@ describe("addAttachment", () => {
       null,
     );
 
-    const attachment = await addAttachment(repo, files, LIMITS, {
+    const { attachment } = await addAttachment(repo, files, LIMITS, {
       documentId: document.id,
       fileName: "Lease 2026.pdf",
       data: Buffer.from("pdf-bytes"),
@@ -319,12 +136,12 @@ describe("addAttachment", () => {
       null,
     );
 
-    const first = await addAttachment(repo, files, LIMITS, {
+    const { attachment: first } = await addAttachment(repo, files, LIMITS, {
       documentId: document.id,
       fileName: "Scan.pdf",
       data: Buffer.from("one"),
     });
-    const second = await addAttachment(repo, files, LIMITS, {
+    const { attachment: second } = await addAttachment(repo, files, LIMITS, {
       documentId: document.id,
       fileName: "Scan.pdf",
       data: Buffer.from("two"),
@@ -342,7 +159,7 @@ describe("addAttachment", () => {
       { title: "A", description: "", categories: [], tags: [] },
       null,
     );
-    const attachment = await addAttachment(repo, files, LIMITS, {
+    const { attachment } = await addAttachment(repo, files, LIMITS, {
       documentId: document.id,
       fileName: "page.html",
       data: Buffer.from("<script>"),
@@ -442,7 +259,7 @@ describe("readAttachment", () => {
       { title: "A", description: "", categories: [], tags: [] },
       null,
     );
-    const attachment = await addAttachment(repo, files, LIMITS, {
+    const { attachment } = await addAttachment(repo, files, LIMITS, {
       documentId: document.id,
       fileName: "a.pdf",
       data: Buffer.from("hello"),
@@ -459,7 +276,7 @@ describe("readAttachment", () => {
       { title: "A", description: "", categories: [], tags: [] },
       null,
     );
-    const attachment = await addAttachment(repo, files, LIMITS, {
+    const { attachment } = await addAttachment(repo, files, LIMITS, {
       documentId: document.id,
       fileName: "a.pdf",
       data: Buffer.from("hello"),
@@ -556,7 +373,7 @@ describe("removeAttachment", () => {
       { title: "A", description: "", categories: [], tags: [] },
       null,
     );
-    const attachment = await addAttachment(repo, files, LIMITS, {
+    const { attachment } = await addAttachment(repo, files, LIMITS, {
       documentId: document.id,
       fileName: "a.pdf",
       data: Buffer.from("x"),
@@ -575,7 +392,7 @@ describe("removeAttachment", () => {
       { title: "A", description: "", categories: [], tags: [] },
       null,
     );
-    const attachment = await addAttachment(repo, files, LIMITS, {
+    const { attachment } = await addAttachment(repo, files, LIMITS, {
       documentId: document.id,
       fileName: "a.pdf",
       data: Buffer.from("x"),
@@ -633,7 +450,7 @@ describe("buildDocumentArchive", () => {
       fileName: "there.pdf",
       data: Buffer.from("one"),
     });
-    const gone = await addAttachment(repo, files, LIMITS, {
+    const { attachment: gone } = await addAttachment(repo, files, LIMITS, {
       documentId: document.id,
       fileName: "gone.pdf",
       data: Buffer.from("two"),

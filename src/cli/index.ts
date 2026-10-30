@@ -19,6 +19,7 @@ import { consultTickerCommand } from "./consult-ticker";
 import { normalizeIconOverridesCommand } from "./normalize-icon-overrides";
 import { resizeCarouselImagesCommand } from "./resize-carousel-images";
 import { gameScoresCommand } from "./game-scores";
+import { pictionaryWordsCommand } from "./pictionary-words";
 import { favPhotosCommand } from "./fav-photos";
 import { favoriteQuotesCommand } from "./favorite-quotes";
 import { importCsvFilesCommand } from "./import-csv-files";
@@ -62,6 +63,7 @@ import { recipesCommand } from "./recipes";
 import { examsCommand } from "./exams";
 import { takeAttendanceCommand } from "./take-attendance";
 import { clipsCommand } from "./clips";
+import { documentsBackfillHashesCommand } from "./documents-backfill-hashes";
 import { listDocumentsCommand } from "./list-documents";
 import { todoCommand } from "./todo";
 import { taxLotsCommand } from "./tax-lots";
@@ -118,6 +120,7 @@ const commands: Record<string, Command> = {
   "color-themes": colorThemesCommand,
   "fav-photos": favPhotosCommand,
   "game-scores": gameScoresCommand,
+  "pictionary-words": pictionaryWordsCommand,
   "set-startup-message": setStartupMessageCommand,
   deployments: deploymentsCommand,
   "user-preferences": userPreferencesCommand,
@@ -127,6 +130,7 @@ const commands: Record<string, Command> = {
   hsa: hsaCommand,
   clips: clipsCommand,
   "list-documents": listDocumentsCommand,
+  "documents-backfill-hashes": documentsBackfillHashesCommand,
   todo: todoCommand,
   "take-attendance": takeAttendanceCommand,
   exams: examsCommand,

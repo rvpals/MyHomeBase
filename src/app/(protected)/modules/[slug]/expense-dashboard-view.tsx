@@ -181,7 +181,7 @@ export function ExpenseDashboardView({
       <CollapsibleCard title="Interesting stats" defaultOpen>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <SpendList
-            title="Top 5 biggest spenders by vendor"
+            title="Top 10 biggest spenders by vendor"
             hint={
               <>
                 Grouped on the vendor that post-import processing set, falling back to the leading
@@ -219,7 +219,7 @@ export function ExpenseDashboardView({
           </SpendList>
 
           <SpendList
-            title="Top 5 biggest spenders by category"
+            title="Top 10 biggest spenders by category"
             hint={
               <>
                 Out of {transactionCount} transaction(s).{" "}

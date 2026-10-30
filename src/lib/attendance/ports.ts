@@ -44,6 +44,15 @@ export interface AttendanceRepository {
   /** The students in a class, in roster order. */
   listStudentsInClass(classId: number): Student[];
   /**
+   * The classes a student is **currently** enrolled in, ordered by name.
+   *
+   * Enrollment, not history: a class the student has since left is absent here
+   * even when they have saved attendance days in it. The Individual Student
+   * Record is a view of where a student stands now, so that is the side of the
+   * split it wants; `listAttendanceRecordsForClass` is the other side.
+   */
+  listClassesForStudent(studentId: number): AttendanceClass[];
+  /**
    * Adds each student to the class, skipping any already enrolled. Returns how
    * many rows were actually added, so the caller can report "3 of 5 added".
    */

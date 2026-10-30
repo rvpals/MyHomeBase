@@ -1,4 +1,9 @@
-import { loadAttachmentSourceRoot, loadBackupSettings, loadLastBackupRun } from "@/lib/backup";
+import {
+  loadAttachmentSourceRoot,
+  loadBackupSettings,
+  loadDocumentSourceRoot,
+  loadLastBackupRun,
+} from "@/lib/backup";
 import { BackupDataView } from "./view";
 
 /**
@@ -22,6 +27,8 @@ export default async function BackupDataPage() {
       // here is what stops a reader configuring a backup and wondering why nothing
       // is copied when that root was never set.
       attachmentSourceRoot={loadAttachmentSourceRoot()}
+      // Likewise the Document Library's own folder, read-only.
+      documentSourceRoot={loadDocumentSourceRoot()}
       lastRun={loadLastBackupRun()}
     />
   );

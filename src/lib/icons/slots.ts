@@ -1187,7 +1187,7 @@ export const ICON_SLOTS: IconSlot[] = [
   },
 
   /* ---------------------------------------------------------------------------------
-     Document Library — its three sections.
+     Document Library — its five sections.
 
      The `new` and `edit` routes get no slot: they are not destinations in the nav,
      they are where the editor opens. A slot marks a PLACE, and "the form I am filling
@@ -1205,11 +1205,36 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "documents_section_tree",
+    label: "Document Tree",
+    group: "Document Library sections",
+    where: "Documents → section panel → Document Tree.",
+    // `network` is the registry's branching-structure glyph, and the position drew
+    // nothing before this slot existed — so the default has to be the mark the tree
+    // row already shows in the nav, not a new one. There is no `tree` concept.
+    defaultConcept: "network",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "documents_section_metadata",
     label: "Categories & Tags",
     group: "Document Library sections",
     where: "Documents → section panel → Categories & Tags.",
     defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "documents_section_recycled",
+    label: "Recycled Documents",
+    group: "Document Library sections",
+    where: "Documents → section panel → Recycled Documents.",
+    // The bin, which is what the screen is. Migration 0163 — deleting a document
+    // moves it here rather than destroying its index. Same concept as
+    // `clips_section_recycled`, deliberately: two bins that look different would
+    // be two things to learn.
+    defaultConcept: "trash",
     wired: true,
     namespace: "tree",
   },
@@ -1334,15 +1359,24 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "games_card_pictionary",
+    label: "Pictionary",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Pictionary card.",
+    defaultConcept: "game-pictionary",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Expense — nav sections.
   --------------------------------------------------------------------------------- */
   {
     id: "expense_section_main",
-    label: "Main (Dashboard)",
+    label: "Home screen",
     group: "Expense sections",
-    where: "Expense → section panel → Main (Dashboard).",
+    where: "Expense → section panel → Home screen.",
     defaultConcept: "grid",
     wired: true,
     namespace: "tree",
@@ -1559,6 +1593,19 @@ export const ICON_SLOTS: IconSlot[] = [
     // at all — an unknown key renders nothing, so this card's icon was silently
     // missing. Caught by the slots test, which checks every concept resolves.
     defaultConcept: "users",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "classroom_card_student_record",
+    label: "Student record",
+    group: "Classroom cards",
+    where: "Classroom → Rosters section → Individual Student Record dialog title.",
+    // `chart`, the set's "a record of results" glyph, matching the Report section
+    // this dialog is a per-student counterpart to. The two never appear together --
+    // one is a nav node, the other a dialog title -- so the shared concept reads as
+    // the same idea rather than as two things competing in one nav.
+    defaultConcept: "chart",
     wired: true,
     namespace: "tree",
   },
@@ -2208,16 +2255,23 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
-    // The tree's Home leaf. Distinct from `chrome_rail_home`, which is the *app
-    // mark* at the top of the module rail — that one is the application's identity
-    // and falls back to multi-colour artwork, this one is an ordinary row in a list
-    // of destinations and falls back to a glyph like every other row around it.
+    // Home as a *navigation row*. Distinct from `chrome_rail_home`, which is the
+    // *app mark* at the top of the module rail — that one is the application's
+    // identity and falls back to multi-colour artwork, this one is an ordinary row in
+    // a list of destinations and falls back to a glyph like every other row around it.
     // Two slots because a reader replacing the app mark and a reader replacing a
     // nav row are doing different things.
+    //
+    // **Both full-layout nav shapes draw it**: `NavTree`'s Home leaf and `NavTabs`'
+    // leading Home tab. One slot rather than two because the tree and the tab row are
+    // two shapes of one navigation — a reader picking a Home mark means it for
+    // "the way home", not for a particular layout. The id stays `chrome_tree_home`
+    // though the label no longer says "tree": ids are permanent once uploads exist.
     id: "chrome_tree_home",
-    label: "Home (navigation tree)",
+    label: "Home (navigation)",
     group: "Shared chrome",
-    where: "The navigation tree → the Home row at the very top, above the modules.",
+    where:
+      "The navigation tree → the Home row at the very top, above the modules; and the horizontal tab row → the leading Home tab.",
     // `grid`, the dashboard glyph — the Home row leads to the module grid. NOT
     // `home`: there is no such tree concept, so this row's icon was silently
     // missing. (`home` IS a MODULE icon name, which is the collision that makes this

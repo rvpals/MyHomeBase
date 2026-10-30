@@ -339,3 +339,71 @@ export interface AttendanceSessionSummary {
   presentCount: number;
   absentCount: number;
 }
+
+/**
+ * One day of one class, as it reads on a single student's record.
+ *
+ * Only days the student actually has an entry for are built into this shape --
+ * see `StudentClassRecord.days`. So `status` is required here, unlike
+ * `AttendanceDetailCell.status`, which is optional precisely because that grid
+ * must show a cell for every column whether the student was enrolled or not.
+ */
+export interface StudentAttendanceDay {
+  /** YYYY-MM-DD. */
+  attendanceDate: string;
+  /** `HH:MM` local, from when the register was last saved. */
+  sessionLabel: string;
+  status: AttendanceStatus;
+  /** Codes noted that day, in catalog order. Empty for most days. */
+  actions: RecordedStudentAction[];
+}
+
+/**
+ * One student's attendance within one class: every day that class took a
+ * register and carried this student, plus the totals across them.
+ *
+ * `className` is read live from the class rather than from the sessions'
+ * denormalized `className`. The two can disagree after a rename, and this
+ * record is a *current* view of a student rather than a reprint of a past
+ * sheet -- the opposite call from `AttendanceRecord`, whose stored names exist
+ * so an old report keeps reading the way it did.
+ */
+export interface StudentClassRecord {
+  classId: number;
+  className: string;
+  /** 1 = Monday to 5 = Friday, or `CLASS_WEEKDAY_UNSET` when never chosen. */
+  classWeekday: number;
+  /** The days this student has an entry for, newest first. */
+  days: StudentAttendanceDay[];
+  presentCount: number;
+  absentCount: number;
+  /**
+   * Days present as a share of days recorded, 0-1, or `undefined` when the
+   * class has no days for this student.
+   *
+   * Undefined rather than 0 on purpose: "attended none of the sessions" and
+   * "has no sessions yet" are different facts, and a bare 0% would report the
+   * second as the first.
+   */
+  attendanceRate?: number;
+}
+
+/**
+ * Everything the Individual Student Record shows: who the student is, and one
+ * section per class they are enrolled in.
+ *
+ * Built from **current enrollment**, so a class the student has since left
+ * drops off the record even if they have attendance days in it. That is the
+ * deliberate counterpart to `AttendanceDetailReport.rows`, which is built from
+ * the sessions instead so an unenrolled student still shows on their old
+ * class's grid. One answers "what is this class's history", the other "where
+ * does this student stand now".
+ */
+export interface IndividualStudentRecord {
+  student: Student;
+  /** One per enrolled class, ordered by class name. Empty when enrolled in none. */
+  classes: StudentClassRecord[];
+  /** Totals across every class in `classes`. */
+  presentCount: number;
+  absentCount: number;
+}

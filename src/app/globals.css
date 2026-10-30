@@ -2366,16 +2366,6 @@ html[data-music-player="minimized"] {
     overflow: visible !important;
   }
 
-  /* The student name is clamped and truncated on screen so one long name can't
-     widen the pinned column past a phone. On paper the column is as wide as it
-     needs to be, and a truncated name on a printed roster is a defect. */
-  .print-grid .truncate {
-    overflow: visible !important;
-    text-overflow: clip !important;
-    white-space: nowrap !important;
-    max-width: none !important;
-  }
-
   /* A legend is only useful whole: splitting it across the fold puts half the
      codes on a page the reader has to turn away from to use them. */
   .print-legend {

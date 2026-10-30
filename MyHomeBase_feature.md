@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (205 commits, 2026-07-12 to 2026-10-28) and `CHANGE_HISTORY.md`.
+project's git history (206 commits, 2026-07-12 to 2026-10-28) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -218,7 +218,11 @@ Attendance and exams, as two section groups.
 Take the register on a phone. **One register per class per day** (originally two), with
 rosters, classes, **student actions** (each with an uploadable icon), labels on the local
 clock, bigger cards in the register grid, a **printable attendance grid**, edit-records
-and report screens. The home screen opens on today's class.
+and report screens (a dark header bar over a name column only as wide as the longest
+name). Each student on the roster has an **Attendance Record** — an *Individual Student
+Record* showing, class by class, the days that class's registers name them, newest first,
+with totals. A day the class met without them is not counted absent. The home screen opens
+on today's class.
 
 ### Exam
 
@@ -239,7 +243,9 @@ Import a CSV and analyse it.
 
 Credit-card spending by category.
 
-- **Dashboard** with "Interesting stats" and top-5 cards that link through.
+- **Dashboard** with "Interesting stats" and top-10 cards that link through. Categories can be
+  **excluded from the statistics** (totals, top vendors and categories, charts) on
+  Configuration; the Transactions list still shows every row.
 - **Transactions** grouped by billing cycle, with editable rows and per-row Edit and
   Delete buttons. Column headers carry a **hint** mark saying what the column means
   (Amount spells out the sign convention), and **Vendor** is a picker over the saved
@@ -273,7 +279,15 @@ Stream ~20,000 songs off the NAS.
 An arcade with a scoreboard the whole house shares: **2048**, **Arrow Clearing** (a
 puzzle that cannot generate an unsolvable board, with difficulty tiers), **Tetris**,
 **Sudoku**, **Blackjack**, **Minesweeper**, **Mahjong Match**, **Mahjong** (four-player,
-against three bots), **Pac-Man** and **Bridge**.
+against three bots), **Pac-Man**, **Bridge** and **Pictionary**.
+
+- **Arrow Clearing** boards can hold arrows up to 36 cells long: short pieces are laid first and
+  the long ones hug them, so tails curl around the shorter arrows.
+- **Pictionary** is pass-and-play on one device under typed names — no accounts — with a
+  drawing canvas, a turn timer and a standings screen. Nothing is saved to the scoreboard.
+- **Configuration** imports a household's own Pictionary words (pasted or from a text/CSV
+  file, with an optional tier per row); a session can use the built-in bank, the custom list
+  or both. A `pictionary-words` CLI lists, adds and clears them.
 
 ## Picture Gallery
 
@@ -337,12 +351,20 @@ Filed household paperwork — leases, warranties, manuals — with the files the
 on a folder on the NAS.
 
 - **Home screen** — every document with its attachment count and size, a filter box (text,
-  category, tag), and the links into filing and editing a document.
+  category, tag), the links into filing and editing a document, and **bulk edit**: tick
+  several documents and add or remove categories and tags, or recycle them, in one step.
+- **Document Tree** — browse by category, narrow by tag, and read a document beside the list.
 - **Attachments** — one or more files per document. Images and PDFs display inline;
   anything else downloads, and **Download all** streams a zip. A file moved by hand on the
   share leaves the attachment listed and the download answering 404.
+- **Duplicate detection** — every upload is hashed; the editor warns when a file is already
+  attached to another document, but never blocks it. A `documents-backfill-hashes` CLI
+  hashes older files.
 - **Delete asks about the files** (default: keep them), and even when deleting them the
   folder is moved aside to `_deleted/` rather than removed.
+- **Recycled Documents** — a deleted document moves to a bin with its categories, tags and
+  attachment index. Restore it (under a new id if the old one is taken, with its file paths
+  rewritten), delete it for good, or empty the bin.
 - **Categories & Tags** — two managed lists, each with an uploadable icon.
 - **Configuration** — the document folder, and the size and count limits an administrator
   sets under Admin → Configuration → Application.
@@ -352,7 +374,7 @@ on a folder on the NAS.
 ## Admin
 
 - **Configuration** — module and application configuration (including the photo-culling
-  ceiling), **Backup Data**.
+  ceiling), **Backup Data** (database, attachment and Document Library folders, all required).
 - **Display Settings** — Color Themes, Icons (tabbed), Script Fonts, App Texture,
   Dashboard Widgets, Floating Components, Personal Toolbars (a shortcut can **open in a
   new tab**), Menu Items, Card Frames, Border Weight, Chrome Style, Scratchpad Categories.

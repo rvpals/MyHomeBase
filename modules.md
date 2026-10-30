@@ -1117,10 +1117,11 @@ is never retried at all. So a track is asked about at most once, ever.
 
 **Games** (`games`) — a small arcade with a shared high-score board. Sections:
 **Arcade** (the list of games; Play opens the board full-bleed), **Scores**, and
-**Configuration**. Library: `src/lib/games`. One table, `gam_scores`
-(`migrations/0074`); registered by `0075`. Ten games so far: **2048**,
+**Configuration** (the catalogue read-only, plus Pictionary's word bank). Library:
+`src/lib/games`. Two tables: `gam_scores` (`migrations/0074`, registered by `0075`) and
+`gam_pictionary_words` (`migrations/0164`). Eleven games so far: **2048**,
 **Arrow Clearing**, **Tetris**, **Sudoku**, **Blackjack**, **Minesweeper**,
-**Mahjong Match**, **Mahjong**, **Bridge**, and **Pac-Man**.
+**Mahjong Match**, **Mahjong**, **Bridge**, **Pac-Man**, and **Pictionary**.
 
 Five choices worth knowing, all recorded in `0074`'s log:
 
@@ -1170,6 +1171,30 @@ Five choices worth knowing, all recorded in `0074`'s log:
   `SqliteUserRepository.deleteUser` clears what it owns by hand and says so
   ("No FK to cascade (project convention)"). Every read LEFT JOINs instead, so an
   orphaned score renders as "Unknown player" rather than emptying the board.
+- **Pictionary is the one pass-and-play game, and the one that saves nothing.** Every
+  other game here is one player against a board or against bots, and writes a score row
+  for the signed-in user. Pictionary is several people round one device playing under
+  **typed names** — a visiting cousin, a grandparent, whoever is in the room — because
+  requiring an account each was the wrong shape for a party game. That choice decides the
+  rest: `gam_scores` identifies a player by `user_id` and reads the name from `sys_users`,
+  so there is nowhere for "Grandma" to live, and adding a `player_name` column would make
+  every other game's reads learn about a column only this one uses. So **a session's
+  scores live as long as its summary screen** and the module has no `saveSessionAction`.
+  It keeps a catalogue entry because that is what draws the Arcade card; its `key` is
+  consequently not load-bearing the way every other key is (nothing in `gam_scores`
+  references it) but must still stay put, since `gameSlotId` derives the permanent icon
+  slot id from it. There is no `scoreGame` either — `scoreFor` answers per name, and
+  `standings` is what the summary reads. The drawing is never state and never stored:
+  strokes live on the canvas and are cleared between turns.
+- **Pictionary's words are the module's first content table**, and the exception that
+  proves the catalogue rule rather than breaking it. A game key is *executable* — the
+  catalogue promises code exists to draw it. A word is *content* — the app needs no new
+  code to show a new noun, so a word nobody foresaw is not a broken anything. The built-in
+  bank stays in code (`pictionary-words.ts`); what a household types into Games →
+  Configuration goes in `gam_pictionary_words`. `listPlayableWords` joins the two into one
+  flat list, deliberately, so no rule can treat an imported prompt differently from a
+  shipped one. Migration `0164`'s log has the full reasoning, including why this is not a
+  `sys_module_settings` JSON blob.
 - **The board is shared, not per-user.** It answers "who is best at this", so no read
   filters by the viewer. Same call as `inv_ticker_favorites` (0058).
 - **A score is only saved when a game ends**, and the board is never sent to the
@@ -1748,6 +1773,13 @@ A game is **code plus one catalogue entry** — no migration, no new table, no n
 change, and nothing to register in `sys_modules`. That is the whole point of the
 catalogue decision above, and it is what makes this a four-step job rather than a
 module-sized one. Work bottom-up, as always.
+
+*One game has needed more than this.* Pictionary added a table (`gam_pictionary_words`,
+`0164`) because it carries **content a household authors** — its word bank — which is a
+different thing from the game itself. The rule still holds: the game is code, and the
+catalogue entry is all the *game* needed. If a new game wants a table, check you are
+storing content or a result and not a second catalogue; if it is a catalogue, it belongs
+in code.
 
 **1. The rules, as pure functions.** A new file in `src/lib/games/` — mirror
 [game-2048.ts](src/lib/games/game-2048.ts). Nothing about the game may live in the

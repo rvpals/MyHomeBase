@@ -37,7 +37,13 @@ export type Random = () => number;
  * Every tier's weight array must end at this index — the cap is what the view's layout
  * and the generator's cramped-corner fallback are both sized against.
  */
-export const MAX_ARROW_LENGTH = 12;
+export const MAX_ARROW_LENGTH = 36;
+
+/**
+ * Lengths the seed phase draws from: short pieces laid down first so the long ones have
+ * something to wrap around. Index = length, index 0 and 1 unused.
+ */
+const SEED_WEIGHTS: readonly number[] = [0, 0, 6, 5, 4, 3, 2];
 
 /**
  * The shortest arrow the generator will place.
@@ -61,6 +67,10 @@ interface Tuning {
   lengthWeights: readonly number[];
   /** How strongly a tail carries straight on, in [0, 1). */
   straightBias: number;
+  /** Chance a turning step hugs the most-occupied neighbour; see `ARROW_DIFFICULTY_SETUP.hug`. */
+  hug: number;
+  /** Board share laid as short seed arrows first; see `ARROW_DIFFICULTY_SETUP.seedCoverage`. */
+  seedCoverage: number;
 }
 
 /**
@@ -281,6 +291,7 @@ function growPath(
   board: OccupancyGrid,
   random: Random,
   straightBias: number,
+  hug: number,
 ): Cell[] {
   const cells: Cell[] = [head];
   const own = new Set<number>([head.row * board.size + head.col]);
@@ -349,9 +360,35 @@ function growPath(
       .map((next) => ({ next, cell: step(cursor, next) }))
       .filter((option) => usable(option.cell));
 
+    // Rolled before the empty check, for the same reproducibility reason as `goStraight`.
+    const goHug = random() < hug;
     if (options.length === 0) break;
-    cursor = options[0].cell;
-    heading = options[0].next;
+
+    /*
+      Hugging: take the option touching the most cells already on the board, so the tail
+      curls around existing arrows instead of wandering into open ground. `options` is
+      already shuffled, so ties fall to a random one. This is what lets a long piece
+      engulf the short ones seeded earlier — its tail ends up across their exit lanes.
+    */
+    let chosen = options[0];
+    if (goHug) {
+      let best = -1;
+      for (const option of options) {
+        let touching = 0;
+        for (const around of ALL_DIRECTIONS) {
+          const neighbour = step(option.cell, around);
+          if (neighbour.row < 0 || neighbour.row >= board.size) continue;
+          if (neighbour.col < 0 || neighbour.col >= board.size) continue;
+          if (board.isTaken(neighbour.row, neighbour.col)) touching += 1;
+        }
+        if (touching > best) {
+          best = touching;
+          chosen = option;
+        }
+      }
+    }
+    cursor = chosen.cell;
+    heading = chosen.next;
   }
 
   return cells;
@@ -379,14 +416,18 @@ function growPath(
  * not be.
  */
 export function generatePuzzle(difficulty: ArrowDifficulty, random: Random): ArrowPuzzle {
-  const { size, arrows: target, lengthWeights, straightBias } =
+  const { size, arrows: target, lengthWeights, straightBias, hug, seedCoverage } =
     ARROW_DIFFICULTY_SETUP[difficulty];
   const board = new OccupancyGrid(size);
   const placed: Arrow[] = [];
-  const tuning: Tuning = { lengthWeights, straightBias };
+  const tuning: Tuning = { lengthWeights, straightBias, hug, seedCoverage };
+  const seedTuning: Tuning = { lengthWeights: SEED_WEIGHTS, straightBias: 0, hug: 0, seedCoverage };
 
   for (let index = 0; index < target; index += 1) {
-    const placement = findPlacement(board, random, tuning);
+    // Seed phase first: short pieces until the board is `seedCoverage` full, then the
+    // tier's long, hugging pieces wrap around them.
+    const seeding = board.filledCount < seedCoverage * size * size;
+    const placement = findPlacement(board, random, seeding ? seedTuning : tuning);
     if (!placement) break;
 
     placed.push({ id: index + 1, cells: placement.cells, direction: placement.direction });
@@ -450,7 +491,11 @@ class OccupancyGrid {
     );
   }
 
+  /** How many cells are taken; the seed phase reads it to know when to stop. */
+  filledCount = 0;
+
   fill(cells: readonly Cell[]): void {
+    this.filledCount += cells.length;
     for (const { row, col } of cells) {
       this.cells[row * this.size + col] = 1;
       if (col < this.rowMinCol[row]) this.rowMinCol[row] = col;
@@ -608,6 +653,7 @@ function findPlacement(
         board,
         random,
         tuning.straightBias,
+        tuning.hug,
       );
       if (cells.length >= targetLength) {
         return { cells, direction: entry.direction, exact: true };

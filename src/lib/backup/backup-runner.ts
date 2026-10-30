@@ -5,6 +5,7 @@
 //
 // Same split, and the same reasons, as src/lib/scheduled-refresh/refresh-runner.ts.
 
+import { getDocumentSettings } from "@/lib/documents/settings";
 import { getHouseholdSettings } from "@/lib/household/settings";
 import { listSettings } from "@/lib/settings";
 import { toSqliteTimestampUtc } from "@/lib/shared/date";
@@ -60,6 +61,14 @@ export function loadAttachmentSourceRoot(): string {
 }
 
 /**
+ * Where the live Document Library files are: that module's own `document_root`,
+ * read rather than duplicated, for the same reason as `loadAttachmentSourceRoot`.
+ */
+export function loadDocumentSourceRoot(): string {
+  return getDocumentSettings(deps.moduleRepo, deps.moduleSettingsRepo).documentRoot;
+}
+
+/**
  * The settings check plus the one thing only the filesystem can answer: are both
  * folders actually writable?
  *
@@ -78,6 +87,18 @@ export async function checkBackupReady(settings: BackupSettings): Promise<Backup
         kind: "attachment-root-unusable",
         path: settings.attachmentRoot,
         reason: attachment.kind === "not-writable" ? attachment.reason : attachment.kind,
+      },
+    };
+  }
+
+  const documents = await deps.backupFileStore.checkRoot(settings.documentRoot);
+  if (documents.kind !== "ok") {
+    return {
+      ok: false,
+      failure: {
+        kind: "document-root-unusable",
+        path: settings.documentRoot,
+        reason: documents.kind === "not-writable" ? documents.reason : documents.kind,
       },
     };
   }
@@ -104,6 +125,11 @@ function describe(summary: BackupRunSummary): string {
   if (attachments) {
     parts.push(`${attachments.copied + attachments.replaced} attachment(s) backed up`);
     if (attachments.failed > 0) parts.push(`${attachments.failed} failed`);
+  }
+  const documents = summary.documents;
+  if (documents) {
+    parts.push(`${documents.copied + documents.replaced} document file(s) backed up`);
+    if (documents.failed > 0) parts.push(`${documents.failed} failed`);
   }
   if (summary.database) {
     const mb = (summary.database.archiveBytes / 1024 / 1024).toFixed(1);
@@ -152,6 +178,13 @@ export async function runDataBackupNow(
       );
     }
 
+    const documentSourceRoot = loadDocumentSourceRoot();
+    if (documentSourceRoot === "") {
+      return skipped(
+        "No Document Library folder is configured, so there are no documents to back up. Set one on the Document Library's Configuration screen.",
+      );
+    }
+
     // Stamped before the work, so a pass slower than the heartbeat cannot overlap
     // the next one. See migrations/0061.
     deps.scheduledRunRepo.start(DATA_BACKUP_JOB_KEY, toSqliteTimestampUtc(new Date()));
@@ -161,6 +194,13 @@ export async function runDataBackupNow(
       store: deps.backupFileStore,
       sourceRoot,
       backupRoot: settings.attachmentRoot,
+      now,
+    });
+
+    const documents = await backupAttachments({
+      store: deps.backupFileStore,
+      sourceRoot: documentSourceRoot,
+      backupRoot: settings.documentRoot,
       now,
     });
 
@@ -175,9 +215,9 @@ export async function runDataBackupNow(
 
     // The database archive is the part that must not silently half-succeed, and it
     // throws rather than reporting a partial. So `partial` here means exactly one
-    // thing: the archive landed but some attachments did not.
-    const status = attachments.failed === 0 ? "ok" : "partial";
-    const summary: BackupRunSummary = { ran: true, attachments, database, status };
+    // thing: the archive landed but some attachment or document files did not.
+    const status = attachments.failed === 0 && documents.failed === 0 ? "ok" : "partial";
+    const summary: BackupRunSummary = { ran: true, attachments, documents, database, status };
     summary.detail = describe(summary);
 
     deps.scheduledRunRepo.finish(DATA_BACKUP_JOB_KEY, status, summary.detail);

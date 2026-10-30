@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import type { AutoImportRunSummary, ExpenseSettings } from "@/lib/expense";
 import Link from "next/link";
-import { runAutoImportNowAction, saveExpenseFolderAction } from "./expense-actions";
+import {
+  runAutoImportNowAction,
+  saveExpenseFolderAction,
+  saveStatsExcludedCategoriesAction,
+} from "./expense-actions";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -18,7 +22,110 @@ const INPUT_CLASS =
  * This screen still shows whether the service is armed, read-only, because a folder
  * with nothing watching it is the confusing half of the old arrangement.
  */
-export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings }) {
+/**
+ * Which categories the statistics skip. Own state and Save button, separate from
+ * the folder form, so changing one never saves the other.
+ */
+function ExcludedCategoriesCard({
+  saved,
+  categoryNames,
+}: {
+  saved: string[];
+  categoryNames: string[];
+}) {
+  const router = useRouter();
+  const [selected, setSelected] = useState<string[]>(saved);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  // A category that was deleted after being excluded still sits in the setting;
+  // list it so it can be unticked rather than lingering invisibly.
+  const options = [
+    ...categoryNames,
+    ...saved.filter((name) => !categoryNames.includes(name)),
+  ];
+  const deleted = new Set(saved.filter((name) => !categoryNames.includes(name)));
+  const isDirty =
+    selected.length !== saved.length || selected.some((name) => !saved.includes(name));
+
+  function toggle(name: string) {
+    setMessage(undefined);
+    setSelected((current) =>
+      current.includes(name) ? current.filter((n) => n !== name) : [...current, name],
+    );
+  }
+
+  async function handleSave() {
+    setIsSaving(true);
+    setError(undefined);
+    setMessage(undefined);
+    try {
+      const result = await saveStatsExcludedCategoriesAction(selected);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setMessage("Excluded categories saved.");
+      router.refresh();
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-line bg-paper p-3">
+      <div>
+        <p className="text-sm font-medium text-ink">Exclude following category from statistics</p>
+        <p className="mt-1 text-xs text-muted">
+          Ticked categories are left out of the numbers that measure spending — the Total, Top
+          vendors and Top categories on the Home screen, and every chart and month-over-month trend.
+          Use it for money that moves rather than money spent, such as <strong>Payment</strong>{" "}
+          (card payments and transfers), so it doesn&apos;t distort your totals. Excluded
+          transactions are not deleted or hidden: they still appear on the Transactions screen, and
+          the To processed, Uncategorised and To reconcile counts still include them.
+        </p>
+      </div>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {message && <p className="text-sm text-emerald-400">{message}</p>}
+
+      {options.length === 0 ? (
+        <p className="text-xs text-muted">No categories yet — add some under Meta Data.</p>
+      ) : (
+        <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
+          {options.map((name) => (
+            <li key={name}>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(name)}
+                  onChange={() => toggle(name)}
+                />
+                <span className="truncate">{name}</span>
+                {deleted.has(name) && <span className="text-xs text-muted">(deleted)</span>}
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div>
+        <Button onClick={handleSave} disabled={isSaving || !isDirty}>
+          {isSaving ? "Saving…" : "Save exclusions"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function ExpenseSettingsView({
+  settings,
+  categoryNames,
+}: {
+  settings: ExpenseSettings;
+  categoryNames: string[];
+}) {
   const router = useRouter();
   const [path, setPath] = useState(settings.autoImportPath);
   const [isSaving, setIsSaving] = useState(false);
@@ -70,6 +177,11 @@ export function ExpenseSettingsView({ settings }: { settings: ExpenseSettings })
 
   return (
     <div className="flex flex-col gap-4">
+      <ExcludedCategoriesCard
+        saved={settings.statsExcludedCategories}
+        categoryNames={categoryNames}
+      />
+
       <p className="text-sm text-muted">
         Drop statement CSVs into a folder and the server imports them on a timer — applying the
         auto-categorise rules and skipping anything already imported.

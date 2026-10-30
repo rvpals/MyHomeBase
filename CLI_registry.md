@@ -86,6 +86,7 @@ alongside its row here.
 | [`color-themes`](#color-themes) | read (writes with `import`/`reset`/`delete`) | no |
 | [`fav-photos`](#fav-photos) | read (writes with `add`/`note`/`remove`) | no |
 | [`game-scores`](#game-scores) | read | no |
+| [`pictionary-words`](#pictionary-words) | read (writes with `add`/`clear`) | no |
 | [`deployments`](#deployments) | read (writes with `delete`/`prune`) | no |
 | [`ticker-monitors`](#ticker-monitors) | read (writes with `add`/`enable`/`disable`/`delete`/`run`) | no |
 | [`messages`](#messages) | read (writes with `read`/`read-all`/`file`/`delete`/`prune`) | no |
@@ -102,6 +103,7 @@ alongside its row here.
 | [`todo`](#todo) | read (writes with `--add`/`--done`/`--delete`/the list flags) | no |
 | [`clips`](#clips) | read (writes with `add`/`pin`/`colour`/`items`/`tick`/`link`/`delete`/`restore`; destroys with `delete --forever`/`purge`/`empty-bin`) | no |
 | [`list-documents`](#list-documents) | read (writes a file with `--zip`) | no |
+| [`documents-backfill-hashes`](#documents-backfill-hashes) | writes (fills `doc_attachments.content_hash`) | no |
 | [`menu-items`](#menu-items) | read (writes with `set`/`reset`) | no |
 | [`toolbars`](#toolbars) | read (writes with `add`/`set`/`delete`/the item flags) | no |
 
@@ -1318,6 +1320,26 @@ before the folder exists, only attaching is refused.
 
 Adding this command required **no change to `src/lib/documents`**, which is the property
 `ARCHITECTURE.md` asks of every use-case.
+
+## `documents-backfill-hashes`
+
+Fills in the SHA-256 content hashes migration 0163 deliberately did not backfill, so older attachments can take part in duplicate detection.
+
+```
+npm run cli -- documents-backfill-hashes
+npm run cli -- documents-backfill-hashes --limit 50
+npm run cli -- documents-backfill-hashes --dry-run
+npm run cli -- documents-backfill-hashes --limit 50 --dry-run
+```
+
+**Input** — `--limit <n>` caps how many files one run hashes (default 500). `--dry-run` takes no value, so it goes **last**: `parseFlags` consumes the token after every flag.
+
+**Why a command and not part of the migration** — hashing means reading each file off the NAS share over SMB, which does not belong in a migration. A run only looks at rows still carrying `''`, so an interrupted run resumes where it stopped and running it twice is safe. A file missing from the share is left un-hashed, not marked.
+
+**Calls** — `hashContent`, `readAttachment`, `findDuplicates`, `getDocumentSettings` from `src/lib/documents`.
+Source: [src/cli/documents-backfill-hashes.ts](src/cli/documents-backfill-hashes.ts)
+
+---
 
 ## `clips`
 
@@ -3296,6 +3318,46 @@ the date. Ties are broken in favour of whoever got there first, matching the scr
 unknown `--game`, a `--limit` over the cap). A zod failure is printed through
 `messageOf`, so it reads as one line rather than a wall of JSON.
 Source: [src/cli/game-scores.ts](src/cli/game-scores.ts)
+
+---
+
+## `pictionary-words`
+
+Reads and edits the Pictionary word bank — the terminal counterpart of the box on
+Games -> Configuration.
+
+```
+npm run cli -- pictionary-words
+npm run cli -- pictionary-words --tier hard
+npm run cli -- pictionary-words --built-in
+npm run cli -- pictionary-words --add "volcano,bicycle,hot air balloon" --tier medium --user 1
+npm run cli -- pictionary-words --clear --tier easy
+```
+
+**Input** — all optional. `--tier easy|medium|hard` narrows every mode to one tier.
+`--built-in` prints the list that ships with the app instead of the custom one.
+`--add <text>` takes exactly what the textarea takes (one word a line or comma
+separated, with an optional per-row tier after a comma) and requires `--user <id>`,
+since a word records who added it and a terminal has no session. `--clear` removes the
+custom words, limited to `--tier` when given.
+
+**Calls** — `importWords`, `listCustomWords`, `countCustomWords`, `clearCustomWords` on
+`deps.pictionaryWordsRepo`, and `listWordBank` for `--built-in` — the same use-cases the
+Configuration screen calls. The parsing is `parseWordList`, shared with the screen, so a
+list behaves identically in both.
+
+**Output** — the custom words as id, word, tier and importer, followed by a per-tier
+count; `--built-in` prints word and tier. `--add` reports how many were added, how many
+were already in the bank, how many repeated within the list given, and then each
+rejected line with its number and reason.
+
+**Exit** — 0 normally (including when nothing has been added — that's a fact, not an
+error); 1 when `--tier` names something unknown, when `--add` is given without a valid
+`--user`, when the schema rejects the input (an empty list, a list over 100,000
+characters), **and when some rows were rejected** — the good rows still land, but the
+exit code lets a script notice that not everything did. A zod failure is printed through
+`messageOf`, so it reads as one line rather than a wall of JSON.
+Source: [src/cli/pictionary-words.ts](src/cli/pictionary-words.ts)
 
 ---
 

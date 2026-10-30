@@ -16,6 +16,7 @@ import {
 } from "@/lib/csv-import";
 import {
   EXPENSE_SETTING_KEYS,
+  excludedCategoriesSchema,
   bulkEditTransactions,
   clearAccountImage,
   clearCategoryIcon,
@@ -478,6 +479,34 @@ export async function saveExpenseFolderAction(autoImportPath: string): Promise<A
   }
   revalidatePath(EXPENSE_MODULE_PATH);
   revalidatePath("/admin/background-tasks");
+  return { ok: true };
+}
+
+/** Saves the categories left out of the statistics; an empty list clears the setting. */
+export async function saveStatsExcludedCategoriesAction(names: string[]): Promise<ActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const expenseModule = getModuleBySlug(deps.moduleRepo, "expense");
+    if (!expenseModule) return { ok: false, error: "Expense module not found." };
+
+    const excluded = excludedCategoriesSchema.parse(names);
+    // Module-setting values must be non-empty, so an empty list deletes the row;
+    // `resolveExpenseSettings` reads a missing row as "exclude nothing".
+    if (excluded.length === 0) {
+      removeModuleSetting(
+        deps.moduleSettingsRepo,
+        expenseModule.id,
+        EXPENSE_SETTING_KEYS.statsExcludedCategories,
+      );
+    } else {
+      saveModuleSettingsPartial(deps.moduleSettingsRepo, expenseModule.id, [
+        { key: EXPENSE_SETTING_KEYS.statsExcludedCategories, value: JSON.stringify(excluded) },
+      ]);
+    }
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the excluded categories.");
+  }
+  revalidatePath(EXPENSE_MODULE_PATH);
   return { ok: true };
 }
 

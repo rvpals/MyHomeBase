@@ -32,6 +32,7 @@ import {
 export const BACKUP_SETTING_KEYS = {
   enabled: "backup_enabled",
   attachmentRoot: "backup_attachment_root",
+  documentRoot: "backup_document_root",
   databaseRoot: "backup_database_root",
   keepCount: "backup_keep_count",
   intervalCount: "backup_interval_count",
@@ -88,6 +89,7 @@ export function resolveBackupSettings(rows: { key: string; value: string }[]): B
   return {
     enabled: rawEnabled?.trim().toLowerCase() === "true",
     attachmentRoot: readFolder(byKey.get(BACKUP_SETTING_KEYS.attachmentRoot)),
+    documentRoot: readFolder(byKey.get(BACKUP_SETTING_KEYS.documentRoot)),
     databaseRoot: readFolder(byKey.get(BACKUP_SETTING_KEYS.databaseRoot)),
     keepCount:
       Number.isFinite(rawKeep) && rawKeep >= MIN_KEEP_COUNT && rawKeep <= MAX_KEEP_COUNT
@@ -122,6 +124,10 @@ export function backupSettingsToEntries(
     {
       key: BACKUP_SETTING_KEYS.attachmentRoot,
       value: settings.attachmentRoot.trim() === "" ? NO_FOLDER : settings.attachmentRoot.trim(),
+    },
+    {
+      key: BACKUP_SETTING_KEYS.documentRoot,
+      value: settings.documentRoot.trim() === "" ? NO_FOLDER : settings.documentRoot.trim(),
     },
     {
       key: BACKUP_SETTING_KEYS.databaseRoot,
@@ -226,6 +232,7 @@ export function checkBackupSettings(settings: BackupSettings): BackupPreflight {
 
 function findSettingsFailure(settings: BackupSettings): BackupPreflightFailure | undefined {
   if (settings.attachmentRoot === "") return { kind: "attachment-root-not-set" };
+  if (settings.documentRoot === "") return { kind: "document-root-not-set" };
   if (settings.databaseRoot === "") return { kind: "database-root-not-set" };
   if (
     !Number.isInteger(settings.keepCount) ||
@@ -247,6 +254,10 @@ export function describeBackupPreflight(failure: BackupPreflightFailure): string
   switch (failure.kind) {
     case "attachment-root-not-set":
       return "No attachment backup folder is set. Choose one on Administration → Configuration → Backup Data.";
+    case "document-root-not-set":
+      return "No document backup folder is set. Choose one on Administration → Configuration → Backup Data.";
+    case "document-root-unusable":
+      return `The server cannot write to the document backup folder ${failure.path} (${failure.reason}).`;
     case "database-root-not-set":
       return "No database backup folder is set. Choose one on Administration → Configuration → Backup Data.";
     case "keep-count-invalid":

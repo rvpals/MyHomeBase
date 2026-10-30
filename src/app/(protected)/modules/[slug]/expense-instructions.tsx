@@ -33,7 +33,7 @@ function MainInstructions() {
         <p>Use the tree on the left. Each section does one job:</p>
         <ul className="flex list-disc flex-col gap-1 pl-5">
           <li>
-            <strong className="text-ink">Main (Dashboard)</strong> — the headline numbers, plus
+            <strong className="text-ink">Home screen</strong> — the headline numbers, plus
             &ldquo;Interesting stats&rdquo;: your biggest vendors and biggest categories. The
             counters link through to wherever the work is.
           </li>
@@ -129,7 +129,7 @@ function MainInstructions() {
           <li>
             <strong className="text-ink">By category</strong> is the same breakdown{" "}
             <strong className="text-ink">Charts and Analysis</strong> shows in full, trimmed to the
-            top five. Rows with no category are pooled as <Code>uncategorised</Code>.
+            top ten. Rows with no category are pooled as <Code>uncategorised</Code>.
           </li>
         </ul>
       </Section>

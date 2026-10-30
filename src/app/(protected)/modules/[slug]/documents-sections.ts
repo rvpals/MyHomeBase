@@ -12,14 +12,28 @@ import type { TreeIconConcept } from "@/lib/icons/tree-icon-names";
  * `configuration` is last on purpose — the usual "settings at the bottom" place,
  * matching every other module's shell.
  *
- * Three sections, so no group headings: `modules.md` puts the nesting threshold at
- * about six.
+ * Five sections, so still no group headings: `modules.md` puts the nesting threshold
+ * at about six.
+ *
+ * `tree` sits next to `main` because they are the same documents seen two ways — the
+ * flat grid with its bulk edits, and the category/tag tree with a reading pane. Not a
+ * replacement for either: a reader who knows the title searches the grid, a reader
+ * who is browsing opens the tree.
  *
  * There is no separate "All Documents" row. The home screen *is* the list, filter box
  * and all — the shape Clips settled on when it absorbed its own `all` section. A second
  * route showing the same documents would have been the same screen twice.
+ *
+ * `recycled` sits immediately before `configuration` (migration 0163), the same place
+ * Clips puts its bin: it is a destination you visit to undo something, not a setting.
  */
-export const DOCUMENTS_SECTIONS = ["main", "metadata", "configuration"] as const;
+export const DOCUMENTS_SECTIONS = [
+  "main",
+  "tree",
+  "metadata",
+  "recycled",
+  "configuration",
+] as const;
 
 export type DocumentsSection = (typeof DOCUMENTS_SECTIONS)[number];
 
@@ -52,9 +66,17 @@ export const DOCUMENTS_SECTION_INFO: Record<
     label: "Home screen",
     description: "Every document — file one, filter them, open what you need.",
   },
+  tree: {
+    label: "Document Tree",
+    description: "Browse by category, narrow by tag, and read a document beside the list.",
+  },
   metadata: {
     label: "Categories & Tags",
     description: "The two lists a document is filed under, and their icons.",
+  },
+  recycled: {
+    label: "Recycled Documents",
+    description: "Deleted documents — restore one, or remove it for good.",
   },
   configuration: {
     label: "Configuration",
@@ -73,7 +95,13 @@ export const DOCUMENTS_SECTION_INFO: Record<
  */
 export const DOCUMENTS_SECTION_ICONS: Record<DocumentsSection, TreeIconConcept> = {
   main: "grid",
+  // `network` rather than a new glyph: it is the registry's branching-structure mark,
+  // so registering the slot draws what the position would have drawn anyway. There is
+  // no "tree" concept in TREE_ICON_NAMES, and adding one for a single section would
+  // mean a glyph nothing else asks for.
+  tree: "network",
   metadata: "list",
+  recycled: "trash",
   configuration: "gear",
 };
 

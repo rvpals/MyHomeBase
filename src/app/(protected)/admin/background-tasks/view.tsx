@@ -477,7 +477,7 @@ export function BackgroundTasksView({
   // Both folders set is what makes the job runnable at all; the switch only decides
   // whether it runs *on its own*. Saying which is missing is the whole point of
   // showing the preconditions here rather than only on the configuration screen.
-  const backupConfigured = backup.attachmentRoot !== "" && backup.databaseRoot !== "";
+  const backupConfigured = backup.attachmentRoot !== "" && backup.documentRoot !== "" && backup.databaseRoot !== "";
 
   // Stocks refresh form state.
   const [refreshEnabled, setRefreshEnabled] = useState(autoRefresh.autoRefreshEnabled);
@@ -862,6 +862,13 @@ export function BackgroundTasksView({
                 <Precondition
                   label="Attachments backed up to"
                   value={backup.attachmentRoot}
+                  missing="No folder set — the backup cannot run."
+                  href="/admin/configuration/backup"
+                  hrefLabel="Backup Data →"
+                />
+                <Precondition
+                  label="Documents backed up to"
+                  value={backup.documentRoot}
                   missing="No folder set — the backup cannot run."
                   href="/admin/configuration/backup"
                   hrefLabel="Backup Data →"

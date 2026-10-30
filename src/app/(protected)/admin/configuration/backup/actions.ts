@@ -37,7 +37,7 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 }
 
 /**
- * Saves the two folders and the keep count — and only those three keys.
+ * Saves the three folders and the keep count — and only those four keys.
  *
  * A partial save, not a whole-form one. The schedule (the switch, the cadence and
  * the anchor time) is owned by Administration → Background Tasks now, so writing
@@ -60,6 +60,10 @@ export async function saveBackupFoldersAction(
       {
         key: BACKUP_SETTING_KEYS.attachmentRoot,
         value: validated.attachmentRoot.trim() === "" ? NO_FOLDER : validated.attachmentRoot.trim(),
+      },
+      {
+        key: BACKUP_SETTING_KEYS.documentRoot,
+        value: validated.documentRoot.trim() === "" ? NO_FOLDER : validated.documentRoot.trim(),
       },
       {
         key: BACKUP_SETTING_KEYS.databaseRoot,

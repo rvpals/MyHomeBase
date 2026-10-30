@@ -62,6 +62,13 @@ export function DocumentsEditorView({
   const [pending, setPending] = useState<File[]>([]);
 
   const [error, setError] = useState<string>();
+  /**
+   * Files that attached but already exist elsewhere in the library (migration 0163).
+   *
+   * Separate from `error` because it is not one: everything saved. Keeping them apart
+   * stops a notice being styled, worded or dismissed as a failure.
+   */
+  const [duplicateNotice, setDuplicateNotice] = useState<string[]>();
   const [busyMessage, setBusyMessage] = useState<string>();
 
   const isEditing = document !== undefined;
@@ -77,11 +84,17 @@ export function DocumentsEditorView({
    * Uploads the pending files to a document that already exists.
    *
    * A route handler rather than a server action, because a server action's body limit
-   * is about 1 MB and a scan is not. Returns the names that were refused so the form
-   * can name them instead of silently dropping them.
+   * is about 1 MB and a scan is not.
+   *
+   * Returns two lists, and they mean opposite things. `failures` are files that did
+   * NOT attach, which is an error the form has to stay open for. `duplicates` DID
+   * attach — they are advisory, flagging that the same bytes are already filed
+   * elsewhere (migration 0163), and the save goes through regardless.
    */
-  async function uploadPending(documentId: number): Promise<string[]> {
-    if (pending.length === 0) return [];
+  async function uploadPending(
+    documentId: number,
+  ): Promise<{ failures: string[]; duplicates: string[] }> {
+    if (pending.length === 0) return { failures: [], duplicates: [] };
     const form = new FormData();
     for (const file of pending) form.append("files", file);
 
@@ -99,8 +112,15 @@ export function DocumentsEditorView({
       ok: boolean;
       stored: number[];
       failed: { name: string; error: string }[];
+      duplicates?: { name: string; alsoIn: string[] }[];
     };
-    return result.failed.map((entry) => `${entry.name}: ${entry.error}`);
+    return {
+      failures: result.failed.map((entry) => `${entry.name}: ${entry.error}`),
+      // Advisory: these files DID attach. Migration 0163.
+      duplicates: (result.duplicates ?? []).map(
+        (entry) => `${entry.name} is already attached to ${entry.alsoIn.join(", ")}`,
+      ),
+    };
   }
 
   function save() {
@@ -136,7 +156,7 @@ export function DocumentsEditorView({
 
         if (pending.length > 0) {
           setBusyMessage(`Uploading ${pending.length} ${pending.length === 1 ? "file" : "files"}…`);
-          const failures = await uploadPending(documentId!);
+          const { failures, duplicates } = await uploadPending(documentId!);
           if (failures.length > 0) {
             // The document itself saved — only some files did not. Say exactly which,
             // and stay on the form so they can be re-picked.
@@ -145,6 +165,17 @@ export function DocumentsEditorView({
             setError(
               `The document was saved, but these files were not attached — ${failures.join("; ")}`,
             );
+            router.refresh();
+            return;
+          }
+          if (duplicates.length > 0) {
+            // Everything saved and every file attached — this is a notice, not an
+            // error, so it is worded as one. Staying on the form is the point: the
+            // reader can only act on "you already have this" while they are still
+            // here, and navigating away would make the warning pointless.
+            setBusyMessage(undefined);
+            setPending([]);
+            setDuplicateNotice(duplicates);
             router.refresh();
             return;
           }
@@ -270,6 +301,24 @@ export function DocumentsEditorView({
         >
           {error}
         </p>
+      )}
+
+      {duplicateNotice && (
+        <div className="mt-4 rounded-md border border-line bg-paper px-3 py-2 text-sm">
+          <p className="text-ink">
+            Saved. The library already holds the same file{" "}
+            {duplicateNotice.length === 1 ? "as this one" : "as some of these"}:
+          </p>
+          <ul className="mt-1 list-disc pl-5 text-muted">
+            {duplicateNotice.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-muted">
+            Filing the same file twice is sometimes what you want, so it was attached
+            anyway. Remove it below if it was not.
+          </p>
+        </div>
       )}
 
       <div className="mt-6 flex flex-wrap gap-2">

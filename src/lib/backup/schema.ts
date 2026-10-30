@@ -51,6 +51,7 @@ export const startTimeSchema = z
 export const backupSettingsInputSchema = z.object({
   enabled: z.boolean(),
   attachmentRoot: backupFolderSchema,
+  documentRoot: backupFolderSchema,
   databaseRoot: backupFolderSchema,
   keepCount: keepCountSchema,
   intervalCount: intervalCountSchema,
@@ -80,6 +81,7 @@ export type BackupScheduleInput = z.infer<typeof backupScheduleInputSchema>;
  */
 export const backupFoldersInputSchema = z.object({
   attachmentRoot: backupFolderSchema,
+  documentRoot: backupFolderSchema,
   databaseRoot: backupFolderSchema,
   keepCount: keepCountSchema,
 });

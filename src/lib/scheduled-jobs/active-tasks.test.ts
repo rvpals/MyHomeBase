@@ -27,6 +27,7 @@ function expenseSettings(overrides: Partial<ExpenseSettings> = {}): ExpenseSetti
     autoImportEnabled: true,
     autoImportPath: "C:/statements",
     autoImportIntervalMinutes: 60,
+    statsExcludedCategories: [],
     ...overrides,
   };
 }
@@ -39,6 +40,7 @@ function backupSettings(overrides: Partial<BackupSettings> = {}): BackupSettings
   return {
     enabled: false,
     attachmentRoot: "D:/backup/attachments",
+    documentRoot: "D:/backup/documents",
     databaseRoot: "D:/backup/db",
     keepCount: 7,
     intervalCount: 1,

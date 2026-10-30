@@ -1,17 +1,29 @@
 "use client";
 
-import { GAME_CATALOGUE } from "@/lib/games";
+import {
+  GAME_CATALOGUE,
+  type PictionaryTier,
+  type StoredPictionaryWord,
+} from "@/lib/games";
+import { GamesWordsView } from "./games-words-view";
 
 // The Games module's Configuration screen.
 //
-// There is nothing to configure yet, and this screen says so plainly rather than
-// shipping a settings form with no settings in it. What it does show is the catalogue
-// read-only, which is the useful thing here: it answers "what can this install
-// play?" and makes clear the list is part of the build rather than data an admin
-// could add a row to. No `sys_module_settings` keys, so no settings.ts in the
-// library module (modules.md step 6 — only if needed).
+// The catalogue is shown read-only, which answers "what can this install play?" and
+// makes clear the list is part of the build rather than data an admin could add a row
+// to. Below it sits the one thing here that IS data: Pictionary's custom word bank.
+//
+// Still no `sys_module_settings` keys, so still no settings.ts in the library module
+// (modules.md step 6 — only if needed): the words live in their own table, because a
+// growing collection is not a setting. See migration 0164's log.
 
-export function GamesConfigurationView() {
+export function GamesConfigurationView({
+  words,
+  wordCounts,
+}: {
+  words: readonly StoredPictionaryWord[];
+  wordCounts: Record<PictionaryTier, number>;
+}) {
   return (
     <div className="flex flex-col gap-6">
       <section className="rounded-xl border border-line bg-paper-raised p-5">
@@ -36,6 +48,8 @@ export function GamesConfigurationView() {
           ))}
         </ul>
       </section>
+
+      <GamesWordsView words={words} counts={wordCounts} />
 
       <section className="rounded-xl border border-line bg-paper-raised p-5">
         <h2 className="font-display text-base text-ink">Scores</h2>

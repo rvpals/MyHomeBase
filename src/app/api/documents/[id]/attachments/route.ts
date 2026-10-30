@@ -52,18 +52,28 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const limits = documentLimits();
   const stored: number[] = [];
   const failed: { name: string; error: string }[] = [];
+  // Files that were stored but already exist elsewhere in the library (migration
+  // 0163). Advisory, not a failure: filing the same scan under two documents is
+  // sometimes deliberate, so the upload succeeds and the editor says so.
+  const duplicates: { name: string; alsoIn: string[] }[] = [];
 
   // Files are stored one at a time and failures are collected rather than thrown. A
   // reader who dropped six files and had one refused for being too large should keep
   // the other five — failing the whole batch would make them re-pick everything.
   for (const file of files) {
     try {
-      const attachment = await addAttachment(deps.documentsRepo, documentFiles(), limits, {
+      const result = await addAttachment(deps.documentsRepo, documentFiles(), limits, {
         documentId,
         fileName: file.name,
         data: Buffer.from(await file.arrayBuffer()),
       });
-      stored.push(attachment.id);
+      stored.push(result.attachment.id);
+      if (result.duplicates.length > 0) {
+        duplicates.push({
+          name: file.name,
+          alsoIn: result.duplicates.map((match) => match.documentTitle),
+        });
+      }
     } catch (error) {
       failed.push({
         name: file.name,
@@ -73,6 +83,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   // `ok` reports whether everything landed; `stored` and `failed` say exactly what did
-  // and didn't, so the editor can name the ones that were refused.
-  return NextResponse.json({ ok: failed.length === 0, stored, failed });
+  // and didn't, so the editor can name the ones that were refused. `duplicates` is
+  // separate from both: those files DID land.
+  return NextResponse.json({ ok: failed.length === 0, stored, failed, duplicates });
 }

@@ -36,9 +36,10 @@ import { saveScoreAction } from "./games-actions";
  * How long a clearing arrow takes to slide off the board, in ms.
  *
  * Slow enough to read. At 420ms a piece crossing a 50-cell board was moving faster than
- * the eye tracks, so the clear registered as a blink rather than as travel.
+ * the eye tracks, so the clear registered as a blink rather than as travel. 700ms read
+ * as a touch sluggish across a full board, so it is eased down to 520ms.
  */
-const CLEAR_MS = 700;
+const CLEAR_MS = 520;
 
 /** How long the blocked shake and its red route flash last, in ms. */
 const BLOCKED_MS = 420;

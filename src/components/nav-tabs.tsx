@@ -19,12 +19,20 @@
 // component only supplies the measurement, which is what keeps the rule testable.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { getIconSlot } from "@/lib/icons";
 import { splitTabs, type TreeModule, type TreeSection } from "@/lib/navigation";
 import { navTextureVars, type ResolvedNavTexture } from "@/lib/nav-texture";
 import { ModuleIcon } from "./module-icons";
 import { NavLinkRow, NavRowPending } from "./nav-pending";
-import { TreeIcon } from "./tree-icons";
+import { SlotIcon } from "./slot-icon";
 import type { CSSProperties, ReactNode } from "react";
+
+// The same slot the tree's Home row draws, on purpose: the tree and this tab row
+// are two shapes of one navigation, so a reader who has replaced Home's mark sees
+// it in both. Going through the slot is also what keeps this tab from drawing
+// nothing — `home.icon` is `"home"`, which is a MODULE icon name and not a tree
+// concept, so a bare `<TreeIcon name="home">` here rendered an empty 16px box.
+const HOME_SLOT = getIconSlot("chrome_tree_home")!;
 
 /** Width reserved for Home, "More", and the utility cluster before tabs are placed. */
 const CHROME_RESERVE_PX = 190;
@@ -166,14 +174,10 @@ export function NavTabs({
       // texture, not an optional one, so an unset picture means no vars at all.
       style={texture ? (navTextureVars(texture) as CSSProperties) : undefined}
     >
-      <TabLink
-        href={home.href}
-        title={home.label}
-        slug={undefined}
-        icon={home.icon ?? "home"}
-        active={activeHref === home.href}
-      >
-        <TreeIcon name={home.icon ?? "home"} className="h-4 w-4 shrink-0" />
+      {/* No `icon`/`slug`: the slot below is the only source of Home's mark, and
+          passing them as well would read as a fallback `TabLink` never reaches. */}
+      <TabLink href={home.href} title={home.label} active={activeHref === home.href}>
+        <SlotIcon slot={HOME_SLOT} className="h-4 w-4 shrink-0" />
       </TabLink>
 
       {visible.map((module) => (

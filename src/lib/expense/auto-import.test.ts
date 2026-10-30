@@ -75,6 +75,7 @@ describe("resolveExpenseSettings", () => {
         autoImportEnabled,
         autoImportPath: "/volume1/statements",
         autoImportIntervalMinutes: 45,
+        statsExcludedCategories: [],
       };
       const rebuilt = resolveExpenseSettings(
         expenseSettingsToEntries(original).map((entry, index) => ({
@@ -93,6 +94,7 @@ describe("resolveExpenseSettings", () => {
       autoImportEnabled: true,
       autoImportPath: "",
       autoImportIntervalMinutes: 5,
+      statsExcludedCategories: [],
     });
     expect(entries.every((entry) => entry.value !== "")).toBe(true);
     expect(entries.some((entry) => entry.key === EXPENSE_SETTING_KEYS.autoImportPath)).toBe(false);
@@ -308,6 +310,7 @@ const ENABLED: ExpenseSettings = {
   autoImportEnabled: true,
   autoImportPath: "/watch",
   autoImportIntervalMinutes: 30,
+  statsExcludedCategories: [],
 };
 
 const FIXED_NOW = () => new Date(2026, 7, 2, 14, 5, 1); // 2026-08-02 14:05:01 local
@@ -316,7 +319,12 @@ describe("runAutoImport", () => {
   it("does nothing when auto-import isn't configured", () => {
     const { repo } = memoryExpenseRepo();
     const summary = runAutoImport(
-      { autoImportEnabled: true, autoImportPath: "", autoImportIntervalMinutes: 0 },
+      {
+        autoImportEnabled: true,
+        autoImportPath: "",
+        autoImportIntervalMinutes: 0,
+        statsExcludedCategories: [],
+      },
       {
         expenseRepo: repo,
         mappingRepo: fakeMappingRepo([]),

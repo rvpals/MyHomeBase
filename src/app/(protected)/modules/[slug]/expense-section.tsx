@@ -9,6 +9,8 @@
 import { listNamedMappings } from "@/lib/csv-import";
 import {
   countUnprocessed,
+  excludeCategoriesFromStats,
+  excludeCategoryTotals,
   listAccounts,
   listCategories,
   listRuleTypes,
@@ -37,7 +39,7 @@ import { ExpenseTransactionsView } from "./expense-transactions-view";
 import { CollapsibleCard } from "@/components/collapsible-card";
 
 const EXPENSE_MODULE_SLUG = "expense";
-const TOP_SPENDER_COUNT = 5;
+const TOP_SPENDER_COUNT = 10;
 
 function loadSettings() {
   const expenseModule = getModuleBySlug(deps.moduleRepo, EXPENSE_MODULE_SLUG);
@@ -64,9 +66,13 @@ function SectionBody({
   switch (section) {
     case "main": {
       const transactions = listTransactions(deps.expenseRepo);
+      // Statistics skip the excluded categories; the work-queue counts below keep
+      // reading every row so nothing needing attention disappears.
+      const excluded = loadSettings().statsExcludedCategories;
+      const statTransactions = excludeCategoriesFromStats(transactions, excluded);
       return (
         <ExpenseDashboardView
-          totalCents={transactions.reduce((sum, transaction) => sum + transaction.amountCents, 0)}
+          totalCents={statTransactions.reduce((sum, transaction) => sum + transaction.amountCents, 0)}
           transactionCount={transactions.length}
           unprocessedCount={countUnprocessed(deps.expenseRepo)}
           uncategorisedCount={transactions.filter((t) => t.categoryName === "").length}
@@ -78,8 +84,11 @@ function SectionBody({
           // list, and the plain rollup invents vendors from statement prose on
           // payment and redemption lines ("ONLINE PAYMENT THANK YOU" -> ONLINE).
           // Those net negative, so the sign filter drops them.
-          topVendors={vendorSpendTotals(transactions).slice(0, TOP_SPENDER_COUNT)}
-          topCategories={totalsByCategory(deps.expenseRepo).slice(0, TOP_SPENDER_COUNT)}
+          topVendors={vendorSpendTotals(statTransactions).slice(0, TOP_SPENDER_COUNT)}
+          topCategories={excludeCategoryTotals(
+            totalsByCategory(deps.expenseRepo),
+            excluded,
+          ).slice(0, TOP_SPENDER_COUNT)}
           categories={listCategories(deps.expenseRepo)}
           vendors={listVendors(deps.expenseRepo)}
         />
@@ -116,10 +125,11 @@ function SectionBody({
     case "charts": {
       // Read once and reused: the vendor rollup and the month-over-month cards
       // both walk the whole table, and this section previously read it twice.
-      const transactions = listTransactions(deps.expenseRepo);
+      const excluded = loadSettings().statsExcludedCategories;
+      const transactions = excludeCategoriesFromStats(listTransactions(deps.expenseRepo), excluded);
       return (
         <ExpenseChartsView
-          totals={totalsByCategory(deps.expenseRepo)}
+          totals={excludeCategoryTotals(totalsByCategory(deps.expenseRepo), excluded)}
           // Rolled up from the rows in hand rather than through totalsByVendor,
           // so the vendor chart doesn't cost a second read of the table.
           vendorTotals={vendorTotals(transactions)}
@@ -158,7 +168,12 @@ function SectionBody({
       );
 
     case "settings":
-      return <ExpenseSettingsView settings={loadSettings()} />;
+      return (
+        <ExpenseSettingsView
+          settings={loadSettings()}
+          categoryNames={listCategories(deps.expenseRepo).map((category) => category.name)}
+        />
+      );
 
     default:
       return null;

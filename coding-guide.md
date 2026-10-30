@@ -19,12 +19,12 @@ module is obvious from the name alone. New tables must follow this.
 | `cls_` | Classroom (Attendance **and** Exam — one prefix) | `cls_students`, `cls_classes`, `cls_class_enrollments`, `cls_attendance_records`, `cls_attendance_entries`, `cls_student_actions`, `cls_attendance_entry_actions`, `cls_exams`, `cls_exam_questions` |
 | `ico_` | Icon customisation — platform-wide, not a feature module | `ico_slot_overrides` |
 | `mus_` | Music Library | `mus_tracks`, `mus_albums`, `mus_scan_runs`, `mus_track_lyrics`, `mus_playlists`, `mus_playlist_tracks`, `mus_play_events`, `mus_magic_list`, `mus_magic_list_tracks`, `mus_play_queue`, `mus_play_queue_state` |
-| `gam_` | Games | `gam_scores` |
+| `gam_` | Games | `gam_scores`, `gam_pictionary_words` |
 | `pho_` | Picture Gallery | `pho_albums`, `pho_album_photos`, `pho_magic_list`, `pho_magic_list_photos`, `pho_photo_index`, `pho_magic_scan_run` |
 | `tol_` | Tools | `tol_uploaded_databases`, `tol_uploaded_csv_files`, `tol_todo_categories`, `tol_todo_items` |
 | `hsh_` | Household | `hsh_recipes`, `hsh_recipe_tags`, `hsh_hsa_expenses`, `hsh_hsa_cards` |
 | `clp_` | Clips | `clp_clips`, `clp_categories`, `clp_tags`, `clp_clip_categories`, `clp_clip_tags`, `clp_clip_images`, `clp_clip_links` |
-| `doc_` | Document Library | `doc_documents`, `doc_attachments`, `doc_categories`, `doc_tags`, `doc_document_categories`, `doc_document_tags` |
+| `doc_` | Document Library | `doc_documents`, `doc_attachments`, `doc_categories`, `doc_tags`, `doc_document_categories`, `doc_document_tags`, `doc_recycled_documents`, `doc_recycled_attachments`, `doc_recycled_document_categories`, `doc_recycled_document_tags` |
 
 **Attendance became Classroom in migration 0143**, and the prefix moved `att_` -> `cls_`
 with it. Attendance is now one of two *section groups* inside Classroom (the other is
