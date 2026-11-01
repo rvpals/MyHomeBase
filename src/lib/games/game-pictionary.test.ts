@@ -12,6 +12,7 @@ import {
   standings,
   startGame,
   stopDrawing,
+  swapWord,
   tick,
   tickIntervalMs,
   type PictionaryEntrant,
@@ -252,6 +253,73 @@ describe("missRound", () => {
   it("does nothing outside judging", () => {
     const handoff = session();
     expect(missRound(handoff, first)).toBe(handoff);
+  });
+});
+
+describe("swapWord", () => {
+  const pool = [
+    { word: "alpha", tier: "easy" as const },
+    { word: "beta", tier: "easy" as const },
+    { word: "gamma", tier: "easy" as const },
+  ];
+
+  it("changes the prompt without ending the round", () => {
+    const state = startGame(ROSTER, "easy", 6, first, pool);
+    const swapped = swapWord(state, first);
+
+    expect(swapped.current?.word).not.toBe(state.current?.word);
+    expect(swapped.rounds).toHaveLength(0);
+    expect(roundNumber(swapped)).toBe(1);
+  });
+
+  it("keeps the same drawer and their turn", () => {
+    const state = startGame(ROSTER, "easy", 6, first, pool);
+    const swapped = swapWord(state, first);
+
+    expect(currentDrawer(swapped)?.name).toBe("Min");
+    expect(swapped.players.every((player) => player.turnsTaken === 0)).toBe(true);
+  });
+
+  it("does not hand back the word just rejected", () => {
+    const state = startGame(ROSTER, "easy", 6, first, pool);
+    const swapped = swapWord(state, first);
+
+    expect(swapped.used).toContain(state.current?.word);
+    expect(swapped.used).toContain(swapped.current?.word);
+  });
+
+  it("does not refill the clock", () => {
+    // Reading, rejecting and drawing all come out of one turn's budget.
+    let state = beginTurn(startGame(ROSTER, "easy", 6, first, pool));
+    state = tick(tick(tick(state)));
+    const before = state.secondsLeft;
+
+    expect(swapWord(state, first).secondsLeft).toBe(before);
+  });
+
+  it("works once the clock is running, not just on the reveal", () => {
+    const drawing = beginTurn(startGame(ROSTER, "easy", 6, first, pool));
+    const swapped = swapWord(drawing, first);
+
+    expect(swapped.phase).toBe("drawing");
+    expect(swapped.current?.word).not.toBe(drawing.current?.word);
+  });
+
+  it("does nothing while a round is being judged", () => {
+    // A stray tap must not change the word the round is about to be scored on.
+    const judging = toJudging(startGame(ROSTER, "easy", 6, first, pool));
+    expect(swapWord(judging, first)).toBe(judging);
+  });
+
+  it("does nothing on the summary screen", () => {
+    const done = awardRound(toJudging(session(1)), "Alex", first);
+    expect(swapWord(done, first)).toBe(done);
+  });
+
+  it("recycles rather than running out when every word has been used", () => {
+    let state = startGame(ROSTER, "easy", 6, first, pool);
+    for (let i = 0; i < 5; i += 1) state = swapWord(state, first);
+    expect(pool.map((entry) => entry.word)).toContain(state.current?.word);
   });
 });
 

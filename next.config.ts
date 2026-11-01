@@ -5,9 +5,27 @@ const nextConfig: NextConfig = {
   // node_modules) so REBUILD_PUBLISH.bat can copy a flat deployment folder
   // instead of shipping the whole source tree + dev node_modules.
   output: "standalone",
-  // better-sqlite3 is a native addon; keep it a real require() instead of
-  // letting webpack try to bundle it, so its .node binary gets traced as-is.
-  serverExternalPackages: ["better-sqlite3"],
+  // Native addons and the libraries that load them: keep each a real require()
+  // instead of letting the bundler try to inline it, so the `.node` binary gets
+  // traced as-is.
+  //
+  // `better-sqlite3` was the original. The other three arrived with the Document
+  // Library's OCR (migration 0165), and leaving them out fails the BUILD, not just
+  // runtime:
+  //
+  //     ./node_modules/@napi-rs/canvas/js-binding.js
+  //     Error: non-ecmascript placeable asset
+  //     asset is not placeable in ESM chunks, so it doesn't have a module id
+  //
+  // An `await import()` does NOT hide a package from Turbopack. It still traces the
+  // import graph statically and tries to place every file it finds, so the lazy
+  // import in `text-engines.ts` kept the app booting cheaply but did nothing for the
+  // build. Laziness is a *runtime* optimisation; this list is what makes it a
+  // bundling one, and the two are independent.
+  //
+  // `tesseract.js` and `unpdf` are here for the same reason one step removed: both
+  // ship WASM and worker files that are assets rather than modules.
+  serverExternalPackages: ["better-sqlite3", "@napi-rs/canvas", "tesseract.js", "unpdf"],
   // Opening the dev DB during "Collecting page data" makes file-trace pick up
   // data/*.db and .env as if the build depended on them, baking the current
   // dev database and secrets straight into .next/standalone. Neither belongs

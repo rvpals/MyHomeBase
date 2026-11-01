@@ -1,5 +1,6 @@
 import { CollapsibleCard } from "@/components/collapsible-card";
 import {
+  DOCUMENT_PREFILL_FIELDS,
   attachTagIcons,
   buildDocumentTree,
   getDocument,
@@ -7,10 +8,14 @@ import {
   listAttachmentsFor,
   listCategories,
   listDocuments,
+  listEnabledPrefillTemplates,
+  listPrefillSuggestions,
+  listPrefillTemplates,
   listRecycledDocuments,
   listTags,
   treeSelectionFilter,
   type DocumentAttachment,
+  type DocumentPrefillField,
   type DocumentWithAttachments,
 } from "@/lib/documents";
 import { deps } from "@/lib/wiring";
@@ -21,6 +26,7 @@ import { DocumentsMainView } from "./documents-main-view";
 import { DocumentsMetadataView } from "./documents-metadata-view";
 import { DocumentsRecycleView } from "./documents-recycle-view";
 import { DocumentsShell } from "./documents-shell";
+import { DocumentsTemplatesView } from "./documents-templates-view";
 import { DocumentsTreeView } from "./documents-tree-view";
 import { configuredDocumentRoot, documentLimits } from "./documents-root";
 import {
@@ -46,6 +52,7 @@ const EDITOR_INFO = {
 export async function DocumentsSection({
   view,
   search,
+  searchContents = false,
   category,
   tag,
   documentId,
@@ -56,6 +63,8 @@ export async function DocumentsSection({
   /** The list's filters, parsed from search params by the route so they survive a
       refresh and a bookmark — not client state. */
   search?: string;
+  /** From `?contents=1` — whether `search` also looks inside the filed files. */
+  searchContents?: boolean;
   category?: string;
   tag?: string;
   /** From `?id=` on the edit route. */
@@ -75,6 +84,7 @@ export async function DocumentsSection({
     view === "main"
       ? listDocuments(deps.documentsRepo, {
           search: search ?? "",
+          searchContents,
           categories: category ? [category] : [],
           tags: tag ? [tag] : [],
         })
@@ -122,6 +132,31 @@ export async function DocumentsSection({
   // The bin, read only on its own screen: it is a separate table, so nothing else
   // pays for it.
   const recycled = view === "recycled" ? listRecycledDocuments(deps.documentsRepo) : [];
+
+  // Prefill templates: the whole list on the Templates screen, the enabled ones for
+  // the New Document form's picker. `edit` deliberately gets neither — prefilling a
+  // document that already exists is a different gesture, and offering it there would
+  // invite a filer to half-overwrite something they filed months ago.
+  const prefillTemplates =
+    view === "templates"
+      ? listPrefillTemplates(deps.documentsRepo)
+      : view === "new"
+        ? listEnabledPrefillTemplates(deps.documentsRepo)
+        : [];
+
+  // Suggestions are read here, on the server, and handed down as plain data — one
+  // read per suggesting field rather than a round trip each time the editor's
+  // dropdown changes. Both lists are small (the managed category/tag lists) so
+  // shipping them costs less than the actions would.
+  const prefillSuggestions =
+    view === "templates"
+      ? (Object.fromEntries(
+          DOCUMENT_PREFILL_FIELDS.map((entry) => [
+            entry.field,
+            listPrefillSuggestions(deps.documentsRepo, entry.field),
+          ]),
+        ) as Record<DocumentPrefillField, string[]>)
+      : ({} as Record<DocumentPrefillField, string[]>);
 
   // Both lists feed the filter chips AND the editor's pick-or-type boxes, from one
   // read — so the two can never offer different vocabularies.
@@ -173,6 +208,7 @@ export async function DocumentsSection({
               categories={categories}
               tags={tags}
               search={search ?? ""}
+              searchContents={searchContents}
               category={category ?? ""}
               tag={tag ?? ""}
             />
@@ -197,6 +233,12 @@ export async function DocumentsSection({
           {view === "metadata" && (
             <DocumentsMetadataView categories={categories} tags={tags} />
           )}
+          {view === "templates" && (
+            <DocumentsTemplatesView
+              templates={prefillTemplates}
+              suggestions={prefillSuggestions}
+            />
+          )}
           {view === "recycled" && <DocumentsRecycleView documents={recycled} />}
           {view === "configuration" && (
             <DocumentsConfigurationView
@@ -215,6 +257,7 @@ export async function DocumentsSection({
               maxFileBytes={limits.maxFileBytes}
               maxFilesPerDocument={limits.maxFilesPerDocument}
               isFolderConfigured={root !== ""}
+              prefillTemplates={prefillTemplates}
             />
           )}
         </div>

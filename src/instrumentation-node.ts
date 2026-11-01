@@ -61,6 +61,7 @@ const globalForAutoImport = globalThis as unknown as {
   __stockAutoRefreshStarted?: boolean;
   __dataBackupStarted?: boolean;
   __helloWorldStarted?: boolean;
+  __documentTextIndexStarted?: boolean;
 };
 
 /** Deletes auth events past their retention window. Armed on its own daily timer. */
@@ -247,6 +248,50 @@ async function armDataBackup() {
  * for six weeks (see the comment at the top of `src/instrumentation.ts`). Arming this
  * one and watching its last-run stamp advance answers that question directly.
  */
+/**
+ * Reads the text inside filed documents so the Document Library can search contents.
+ *
+ * On the same 60s heartbeat as the others, but the job's own interval is hours — the
+ * tick re-reads the settings each time and returns immediately unless a pass is due,
+ * so an idle scheduler costs one query a minute.
+ *
+ * **This is the only job here that can run for minutes.** A pass drains up to
+ * `batchSize` files, and a scanned page costs seconds plus ~320MB of RSS. It is safe
+ * to leave armed because the work list shrinks: migration 0166 means a file is read
+ * once and only a re-upload puts it back, so a fully-indexed library makes every
+ * later pass a no-op.
+ */
+async function armDocumentTextIndex() {
+  if (globalForAutoImport.__documentTextIndexStarted) return;
+  globalForAutoImport.__documentTextIndexStarted = true;
+
+  // Imported lazily so the Edge/build passes never pull in better-sqlite3 -- and so
+  // the 46MB of OCR this job can reach never loads on an install that leaves it off.
+  const { runTextIndexNow } = await import("@/lib/documents/text-index-runner");
+
+  const tick = async () => {
+    try {
+      const summary = await runTextIndexNow();
+      // Silent unless a pass actually ran, so an idle scheduler doesn't write a line
+      // a minute saying "not due yet".
+      if (summary.ran) {
+        const line = `[document text] ${summary.detail}`;
+        if (summary.status === "failed") console.error(line);
+        else console.log(line);
+      }
+    } catch (error) {
+      // Belt and braces: the runner swallows its own errors, but an unhandled
+      // rejection in a timer callback can take the server down.
+      console.error("[document text] tick failed:", error);
+    }
+  };
+
+  const timer = setInterval(tick, HEARTBEAT_MS);
+  timer.unref?.();
+
+  console.log("[document text] scheduler armed (60s heartbeat).");
+}
+
 async function armHelloWorld() {
   if (globalForAutoImport.__helloWorldStarted) return;
   globalForAutoImport.__helloWorldStarted = true;
@@ -291,6 +336,7 @@ async function armAll() {
   await armStockAutoRefresh();
   await armDataBackup();
   await armHelloWorld();
+  await armDocumentTextIndex();
 
   if (globalForAutoImport.__expenseAutoImportStarted) return;
   globalForAutoImport.__expenseAutoImportStarted = true;

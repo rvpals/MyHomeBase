@@ -5,8 +5,18 @@
 // view or an action is the import that makes a module impossible to move later.
 
 export type {
+  AttachmentText,
+  AttachmentTextSearchHit,
+  AttachmentTextSource,
+  AttachmentTextStatus,
+  AttachmentTextSummary,
   Document,
   DocumentAttachment,
+  DocumentPrefillField,
+  DocumentPrefillFieldValue,
+  DocumentPrefillFormValues,
+  DocumentPrefillMode,
+  DocumentPrefillTemplate,
   DocumentSummary,
   DocumentTaxonomyItem,
   DocumentWithAttachments,
@@ -15,6 +25,7 @@ export type {
 } from "./types";
 
 export type {
+  AttachmentTextWriteData,
   AttachmentWriteData,
   BulkTaxonomyMode,
   DocumentsRepository,
@@ -32,16 +43,23 @@ export {
   createDocumentSchema,
   deleteDocumentSchema,
   documentFilterSchema,
+  documentPrefillFieldSchema,
+  documentPrefillFieldValueSchema,
+  documentPrefillModeSchema,
   documentTaxonomySchema,
   formatBytes,
+  parseStoredDocumentPrefillFields,
   removeAttachmentSchema,
+  saveDocumentPrefillTemplateSchema,
   updateDocumentSchema,
   type AttachmentUploadInput,
   type CreateDocumentInput,
   type DeleteDocumentInput,
   type DocumentFilterInput,
+  type DocumentPrefillTemplateWriteData,
   type DocumentTaxonomyInput,
   type RemoveAttachmentInput,
+  type SaveDocumentPrefillTemplateInput,
   type UpdateDocumentInput,
 } from "./schema";
 
@@ -58,12 +76,20 @@ export {
   withCollisionSuffix,
 } from "./attachment-path";
 
-export {
-  NodeDocumentFileStore,
-  resolveInside,
-  type DocumentFileStore,
-  type DocumentRootCheck,
-  type FolderListing,
+// Types only, matching the music barrel. `file-store.ts` imports `node:fs/promises`,
+// and ANY value re-export from it — the class or the pure `resolveInside` helper alike,
+// since they share the module — drags that into the client bundle of every component
+// that touches this barrel, failing the production build ("the chunking context does
+// not support external modules"). A `export type` erases at compile time and is safe.
+//
+// The values live one import away, and their only real consumers already reach for
+// them there: `wiring.ts` for the store, `file-store.test.ts` for the helper.
+//
+//   import { NodeDocumentFileStore, resolveInside } from "@/lib/documents/file-store";
+export type {
+  DocumentFileStore,
+  DocumentRootCheck,
+  FolderListing,
 } from "./file-store";
 
 export { SqliteDocumentsRepository } from "./repository";
@@ -156,3 +182,88 @@ export {
   type DocumentLimits,
   type DocumentSettings,
 } from "./settings";
+
+// Extracted text, OCR and full-text search (migration 0165).
+//
+// `nodeTextExtractionEngines` is exported from here but reaches `unpdf`,
+// `tesseract.js` and `@napi-rs/canvas` only through lazy `await import()`s — naming it
+// costs nothing, and no page that does not run an extraction ever loads them.
+export {
+  MIN_TEXT_LAYER_CHARS,
+  extractText,
+  extractTextWithOcr,
+  formatElapsed,
+  normaliseExtractedText,
+  type TextExtractionEngines,
+  type TextExtractionResult,
+  type TextExtractionSource,
+  type TextExtractionStatus,
+} from "./text-extract";
+
+export {
+  OCR_PAGE_LIMIT,
+  OCR_RENDER_DPI,
+  nodeTextExtractionEngines,
+} from "./text-engines";
+
+export {
+  extractAttachmentText,
+  extractDocumentText,
+  findDocumentIdsByContent,
+  forgetAttachmentText,
+  getAttachmentText,
+  listDocumentText,
+  searchDocumentText,
+  describeTextIndexPass,
+  runTextIndexPass,
+  summariseExtraction,
+  type ExtractionRunResult,
+  type TextIndexDeps,
+  type TextIndexPassResult,
+} from "./text-index";
+
+// The background indexing job (migration 0166): its settings, cadence and runner.
+//
+// `text-index-runner` is NOT re-exported here. It imports `@/lib/wiring`, so pulling
+// it through the barrel would drag the composition root into every importer — the
+// scheduler and the CLI reach it by its own path instead.
+export {
+  DEFAULT_TEXT_INDEX_BATCH,
+  DEFAULT_TEXT_INDEX_ENABLED,
+  DEFAULT_TEXT_INDEX_INTERVAL_HOURS,
+  DEFAULT_TEXT_INDEX_OCR,
+  TEXT_INDEX_SETTING_KEYS,
+  TEXT_INDEX_SETTING_KEY_LIST,
+  describeTextIndexInterval,
+  isTextIndexJobEnabled,
+  isTextIndexPassDue,
+  resolveTextIndexJobSettings,
+  type TextIndexJobSettings,
+} from "./text-index-job";
+
+// Prefill templates (migration 0169): a named set of field values a new document can
+// be filed from. The apply step is pure, so the same merge runs in the New Document
+// form, in the CLI's `documents-templates apply`, and in a test.
+export {
+  DOCUMENT_PREFILL_FIELDS,
+  DOCUMENT_PREFILL_SUGGESTION_LIMIT,
+  applyPrefillTemplate,
+  deletePrefillTemplate,
+  describePrefillFields,
+  documentPrefillFieldIsList,
+  documentPrefillFieldLabel,
+  documentPrefillFieldSuggests,
+  emptyPrefillValues,
+  formStateToPrefillValues,
+  getPrefillTemplate,
+  getPrefillTemplateByName,
+  joinPrefillList,
+  listEnabledPrefillTemplates,
+  listPrefillSuggestions,
+  listPrefillTemplates,
+  prefillValuesToFormState,
+  savePrefillTemplate,
+  setPrefillTemplateEnabled,
+  splitPrefillList,
+  type DocumentPrefillFormState,
+} from "./prefill";

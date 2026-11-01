@@ -34,6 +34,7 @@ import {
   nextRunDueAtMs as stockNextRunDueAtMs,
 } from "@/lib/scheduled-refresh/settings";
 import type { ScheduledRefreshSettings } from "@/lib/scheduled-refresh/types";
+import type { TextIndexJobSettings } from "@/lib/documents/text-index-job";
 import {
   JOB_KEYS,
   type ActiveTaskRow,
@@ -112,6 +113,8 @@ export interface ActiveTaskInputs {
   expense: ExpenseSettings;
   backup: BackupSettings;
   helloWorld: HelloWorldSettings;
+  /** The Document Library's text-indexing job (migration 0166). */
+  textIndex: TextIndexJobSettings;
   /** Injected so the never-run backup's anchor time is testable without a clock. */
   nowMs?: number;
 }
@@ -130,6 +133,8 @@ export interface JobSettings {
   expense: ExpenseSettings;
   backup: BackupSettings;
   helloWorld: HelloWorldSettings;
+  /** The Document Library's text-indexing job (migration 0166). */
+  textIndex: TextIndexJobSettings;
 }
 
 /**
@@ -150,6 +155,10 @@ export function isJobArmed(key: string, settings: JobSettings): boolean {
   // Just the switch: this job has no folder and no external precondition, so there
   // is nothing that could be switched on and still unable to run.
   if (key === JOB_KEYS.helloWorld) return isHelloWorldEnabled(settings.helloWorld);
+  // Just the switch, like Hello, world!: the document folder is checked by the runner
+  // and reported as the inactive reason below, not treated as disarmed here -- a
+  // library with no folder yet is a normal state, not a misconfiguration.
+  if (key === JOB_KEYS.documentTextIndex) return settings.textIndex.enabled;
   return false;
 }
 
@@ -165,10 +174,11 @@ export function listActiveTasks({
   expense,
   backup,
   helloWorld,
+  textIndex,
   nowMs = Date.now(),
 }: ActiveTaskInputs): ActiveTaskRow[] {
   const rows: ActiveTaskRow[] = [];
-  const settings: JobSettings = { autoRefresh, expense, backup, helloWorld };
+  const settings: JobSettings = { autoRefresh, expense, backup, helloWorld, textIndex };
 
   for (const { descriptor, lastRun } of jobs) {
     if (!isJobArmed(descriptor.key, settings)) continue;
@@ -188,6 +198,13 @@ export function listActiveTasks({
       nextRun = intervalNextRun(hasRun, expenseNextRunDueAtMs(lastRunAtMs, expense));
     } else if (descriptor.key === JOB_KEYS.helloWorld) {
       nextRun = intervalNextRun(hasRun, helloWorldNextRunDueAtMs(lastRunAtMs, helloWorld));
+    } else if (descriptor.key === JOB_KEYS.documentTextIndex) {
+      nextRun = intervalNextRun(
+        hasRun,
+        lastRunAtMs === undefined
+          ? undefined
+          : lastRunAtMs + textIndex.intervalHours * 60 * 60 * 1000,
+      );
     } else {
       // The backup job knows its own anchor time, so unlike the others a never-run
       // backup still has a real "next run" — the next time its start time comes round.
@@ -219,8 +236,15 @@ export function listActiveTasks({
  */
 function inactiveReason(
   key: string,
-  { autoRefresh, expense, backup }: JobSettings,
+  { autoRefresh, expense, backup, textIndex }: JobSettings,
 ): string {
+  if (key === JOB_KEYS.documentTextIndex) {
+    // Mirrors the runner's own order: it refuses on a missing folder even when the
+    // switch is on, so naming the switch alone would send the reader in a circle.
+    if (!textIndex.enabled) return "Switched off. Turn on “Run on a schedule” to arm it.";
+    return "Switched on but not running — check the Document text indexing card.";
+  }
+
   if (key === JOB_KEYS.helloWorld) {
     // The only possible reason: there is no folder or other precondition to miss.
     return "Switched off. Turn on “Run on a schedule” to arm it.";
@@ -268,9 +292,10 @@ export function listInactiveTasks({
   expense,
   backup,
   helloWorld,
+  textIndex,
 }: ActiveTaskInputs): InactiveTaskRow[] {
   const rows: InactiveTaskRow[] = [];
-  const settings: JobSettings = { autoRefresh, expense, backup, helloWorld };
+  const settings: JobSettings = { autoRefresh, expense, backup, helloWorld, textIndex };
 
   for (const { descriptor, lastRun } of jobs) {
     if (isJobArmed(descriptor.key, settings)) continue;

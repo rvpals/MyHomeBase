@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (206 commits, 2026-07-12 to 2026-10-28) and `CHANGE_HISTORY.md`.
+project's git history (207 commits, 2026-07-12 to 2026-10-30) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -285,6 +285,8 @@ against three bots), **Pac-Man**, **Bridge** and **Pictionary**.
   the long ones hug them, so tails curl around the shorter arrows.
 - **Pictionary** is pass-and-play on one device under typed names — no accounts — with a
   drawing canvas, a turn timer and a standings screen. Nothing is saved to the scoreboard.
+  The drawer can **hide the word** (Start guessing / Peek) before turning the screen round,
+  and **New word** swaps it for another while keeping the turn and the clock.
 - **Configuration** imports a household's own Pictionary words (pasted or from a text/CSV
   file, with an optional tier per row); a session can use the built-in bank, the custom list
   or both. A `pictionary-words` CLI lists, adds and clears them.
@@ -353,6 +355,14 @@ on a folder on the NAS.
 - **Home screen** — every document with its attachment count and size, a filter box (text,
   category, tag), the links into filing and editing a document, and **bulk edit**: tick
   several documents and add or remove categories and tags, or recycle them, in one step.
+- **Search inside files** — each attachment's text is read once (an embedded PDF text layer,
+  or OCR for scans) and indexed; a **Search inside files** toggle makes the filter box look
+  there too. An **OCR / Re-read** button beside a title reads one document on demand and shows
+  what it found. A **Document text indexing** background job (off by default) does the rest on
+  a schedule, and a `documents-index-text` CLI can fill and search the index.
+- **Prefill Templates** — named sets of title, description, categories and tags that the New
+  Document form can start from; applying one fills only blank fields. A template can be
+  disabled without deleting it, and a `documents-templates` CLI manages them.
 - **Document Tree** — browse by category, narrow by tag, and read a document beside the list.
 - **Attachments** — one or more files per document. Images and PDFs display inline;
   anything else downloads, and **Download all** streams a zip. A file moved by hand on the
@@ -385,7 +395,11 @@ on a folder on the NAS.
 - **Locations** — Location Manager with Venn and Graph views, bulk location edit, and
   location metadata.
 - **Security** — Login and Visit tabs, IP blacklist.
-- **Background Tasks** and **Message Queue** (readable, deletable, purgeable).
+- **Background Tasks**, **System Log** and **Message Queue** (readable, deletable, purgeable).
+  The System Log records what the code did — **DEBUG** and **OPERATIONAL** lines, each behind
+  its own switch (both off by default) in Application Configuration, capped at a row limit,
+  with every background job's trigger and finish logged automatically. A `system-log` CLI
+  tails and searches it.
 - **SQL Explorer** — schema browser with prose for every table, tables grouped by
   module, BLOB cells fetched on demand, saved statements, table-name suggestions, a
   Table Usage tab, and a Truncate button behind a row-counting warning.

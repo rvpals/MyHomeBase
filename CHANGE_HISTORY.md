@@ -1,5 +1,103 @@
 # Change History
 
+## 2026-10-31 — Document Library text search and OCR, prefill templates, System Log, Pictionary word controls
+
+**Five migrations: 0165, 0166, 0167, 0168, 0169.** All additive. Apply them on the NAS before
+opening the affected screens:
+
+- **0165** creates `doc_attachment_text` and the `doc_text_fts` FTS5 index (plus three triggers) behind
+  searching *inside* filed documents.
+- **0166** adds `doc_attachment_text.ocr_attempted` and backfills it, so the background job never
+  re-OCRs a scan it has already failed to read.
+- **0167** creates `sys_system_log`, the new System Log table.
+- **0168** seeds `system_log_debug`, `system_log_operational` (both `false`) and
+  `system_log_max_rows` (`5000`) in `sys_app_settings`.
+- **0169** creates `doc_prefill_templates` for the Document Library's prefill templates.
+
+**Deployment change to know about:** OCR needs three native/WASM packages and an English language
+model on the NAS. `scripts/publish-nas.mjs` now ships the `linux-arm64-gnu` `@napi-rs/canvas`,
+the whole of `tesseract.js-core` (~44 MB, which the bundler cannot trace) and `tessdata/eng.traineddata`
+(~5 MB). A **republish is required** — copying only the markdown is not enough. Each step warns rather
+than aborts, so read the publish output for `!` lines. `MYHOMEBASE_TESSDATA` must point at the
+shipped `tessdata` folder, or the NAS tries to download the model on first OCR.
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not
+invoked, and nothing was loaded in a browser. Everything below is **unverified on screen** —
+`Testing_List.md` carries items for each part. Most of this work was written in earlier sessions
+and was read for this entry, not re-checked.
+
+### Documents: search inside files (migrations 0165, 0166)
+
+- **Text is recovered once per attachment and cached**, then indexed with SQLite FTS5. Two paths,
+  cheap one first: an embedded PDF text layer (`unpdf`, ~170 ms, exact) and, only when a page
+  comes back empty, **OCR** (`tesseract.js` at 300 DPI, ~3.7 s a page on the dev box). A scan
+  OCR could not read is remembered and not retried until the file's bytes change.
+- **An OCR / Re-read button beside each document's title** runs the expensive path for one
+  document and opens a dialog with the recovered text, whether each file came from its text
+  layer or OCR, and what it cost. A "Searchable" / "OCR" chip shows which documents are indexed.
+- **A "Search inside files" toggle** on the Documents filter row makes the search box also
+  consult the index (`?contents=1`). It never triggers an extraction — only reads what exists.
+- **Document text indexing** is a new scheduled job in Admin → Background Tasks. **Off by
+  default**; every 6 hours, up to 25 files a pass, with an optional "Read scans with OCR"
+  switch. Settings are edited on the card, and **Run now** works whether or not it is armed.
+- **`documents-index-text` CLI** fills the index and searches it (`--search`), with `--ocr`,
+  `--limit`, `--dry-run` and `--scheduled`. Run it locally against the NAS database to keep the
+  ~320 MB an OCR worker needs off a 2 GB NAS.
+- `next.config.ts` lists `@napi-rs/canvas`, `tesseract.js` and `unpdf` as
+  `serverExternalPackages` — a lazy `await import()` does not hide them from Turbopack, and
+  without the entry the **build** fails. `.gitignore` guards against a stray `eng.traineddata`
+  (tesseract caches it in the working directory); the deliberate copy is `tessdata/`.
+
+### Documents: Prefill Templates (migration 0169)
+
+- **A sixth section, Prefill Templates**, brings the Journal's templates to the Document
+  Library: a named set of Title / Description / Categories / Tags that a new document can start
+  from. The New Document form gains a picker; applying a template **fills only blank fields**,
+  so the wrong pick cannot lose work. Templates can be disabled to hide them from the picker
+  without deleting them. Edit is deliberately not offered a picker.
+- Categories and tags in a template are picked with the shared `TokenPicker` and stored as
+  comma-separated text; the CLI splits on commas only, so "Car insurance" stays one category.
+- **`documents-templates` CLI** — `list`, `show`, `apply`, `set`, `enable`, `disable`, `delete`.
+- New icon slot for the section (`templates`, glyph `copy`). The New / Edit document screen
+  drops its hand-rolled `TaxonomyPicker` for `TokenPicker`.
+
+### Admin: System Log (migrations 0167, 0168)
+
+- **A new Administration → System Log screen** between Background Tasks and Message Queue,
+  showing `sys_system_log`: timestamp, kind, source, message and detail, newest first, filterable.
+- **Two independent switches, both off by default**, under Configuration → Application
+  Configuration: **DEBUG** and **OPERATIONAL**, plus a row cap (5,000) the repository enforces on
+  insert. They take effect within about five seconds, with no restart.
+- **Every scheduled job's trigger and finish is logged OPERATIONAL** by one decorator,
+  `withSystemLog`, wrapped around the run repository in `wiring.ts` — no per-runner changes.
+- A line costs nothing when its switch is off (the message may be a thunk) and a logging call
+  never throws. A third channel beside `sys_messages` and `sys_scheduled_run_history`; it never
+  reaches the bell.
+- **`system-log` CLI** — `tail`, `find`, `status`, `clear`, printing oldest-first. There is
+  deliberately no `write` command and nothing that turns the switches on.
+- Background Tasks learns the new job (`isJobArmed` / active tasks) so it doesn't read "Not Armed".
+
+### Games: Pictionary word controls
+
+- **The drawer can hide the word.** "Start guessing" blanks the prompt before the screen is turned
+  round; "Peek at the word" brings it back. View state only — the library has no opinion on it.
+- **"New word"** swaps the prompt for another and **keeps the turn and the clock** (`swapWord`;
+  the rejected word is used up for the session). Allowed from the hand-over screen too.
+- The old hand-over "Skip this word" is renamed **"Skip the turn"**, which is what it always did.
+  The in-game instructions describe all three.
+
+### Data grid
+
+- **`searchValue` on a column** feeds extra text to the grid's search box only — never to sort,
+  per-column filter, CSV or totals — so a title cell that also shows a description is found by
+  either. Both the full and the compact grid honour it.
+
+### Not verified
+
+Nothing was run: no typecheck, lint, tests, build, or browser. The FTS triggers, the backfill and
+the tesseract/canvas shipping steps in particular were not exercised against the NAS. Migrations
+were **not** applied from this session.
+
 ## 2026-10-30 — Pictionary, Document Library tree/bulk/recycle bin, student record, expense stats exclusions
 
 **Three migrations: 0162, 0163, 0164.** All additive. Apply them on the NAS before opening the

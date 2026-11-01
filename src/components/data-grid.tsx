@@ -52,6 +52,17 @@ export interface DataGridColumn<T> {
    * is provided.
    */
   value?: (row: T) => CellValue;
+  /**
+   * Extra text this column contributes to the **search box only**. Use it when a
+   * cell renders more than `value` carries — a title with a description under it,
+   * a name with a subtitle — so the search finds what the eye can read.
+   *
+   * Deliberately separate from `value`: that one is also the sort identity, the
+   * per-column filter and the CSV cell, so folding a subtitle into it would make
+   * the column sort and export as "title description". A column may set this
+   * without setting `value`, which makes it searchable but not sortable.
+   */
+  searchValue?: (row: T) => string;
   /** Disable sorting for this column even when `value` is set. */
   sortable?: boolean;
   /**
@@ -504,7 +515,7 @@ function DataGridFull<T>({
   );
 
   const searchableColumns = useMemo(
-    () => visibleColumns.filter((column) => column.value !== undefined),
+    () => visibleColumns.filter((column) => column.value !== undefined || column.searchValue !== undefined),
     [visibleColumns],
   );
 
@@ -519,7 +530,12 @@ function DataGridFull<T>({
 
     return rows.filter((row) => {
       if (hasSearch) {
-        const values = searchableColumns.map((column) => column.value!(row));
+        // A column can offer a sortable `value`, extra `searchValue` text, or both;
+        // every piece it offers is a separate haystack, so a term may land in any.
+        const values = searchableColumns.flatMap((column) => [
+          ...(column.value ? [column.value(row)] : []),
+          ...(column.searchValue ? [column.searchValue(row)] : []),
+        ]);
         if (!matchesSearch(values, search)) return false;
       }
       return activeFilters.every(([key, filter]) => {

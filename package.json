@@ -26,6 +26,7 @@
     "cli": "tsx --env-file-if-exists=.env src/cli/index.ts"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.1.0",
     "better-sqlite3": "12.9.0",
     "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",
@@ -37,6 +38,8 @@
     "react-leaflet": "^5.0.0",
     "recharts": "^3.9.2",
     "sharp": "^0.35.4",
+    "tesseract.js": "^7.0.0",
+    "unpdf": "^2.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

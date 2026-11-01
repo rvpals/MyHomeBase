@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BackupSettings } from "@/lib/backup/types";
+import type { TextIndexJobSettings } from "@/lib/documents/text-index-job";
 import type { ExpenseSettings } from "@/lib/expense/settings";
 import type { HelloWorldSettings } from "@/lib/hello-world/types";
 import type { ScheduledRefreshSettings } from "@/lib/scheduled-refresh/types";
@@ -61,6 +62,19 @@ function helloWorldSettings(overrides: Partial<HelloWorldSettings> = {}): HelloW
   };
 }
 
+/** The Document Library's indexing job, off by default like the others here. */
+function textIndexSettings(
+  overrides: Partial<TextIndexJobSettings> = {},
+): TextIndexJobSettings {
+  return {
+    enabled: false,
+    intervalHours: 6,
+    ocrEnabled: true,
+    batchSize: 25,
+    ...overrides,
+  };
+}
+
 /** Every job's settings in one bag, with everything overridable per test. */
 function allSettings(overrides: Partial<JobSettings> = {}): JobSettings {
   return {
@@ -68,6 +82,7 @@ function allSettings(overrides: Partial<JobSettings> = {}): JobSettings {
     expense: expenseSettings(),
     backup: backupSettings(),
     helloWorld: helloWorldSettings(),
+    textIndex: textIndexSettings(),
     ...overrides,
   };
 }

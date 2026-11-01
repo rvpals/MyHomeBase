@@ -3,6 +3,7 @@ import { getModuleBySlug } from "@/lib/modules";
 import { resolveExpenseSettings } from "@/lib/expense/settings";
 import { loadBackupSettings } from "@/lib/backup";
 import { loadHelloWorldSettings } from "@/lib/hello-world";
+import { loadTextIndexJobSettings } from "@/lib/documents/text-index-runner";
 import { listActiveTasks, listInactiveTasks, listScheduledJobs } from "@/lib/scheduled-jobs";
 import { resolveScheduledRefreshSettings } from "@/lib/scheduled-refresh";
 import { deps } from "@/lib/wiring";
@@ -38,13 +39,16 @@ export default async function BackgroundTasksPage() {
 
   // Hello, world!'s are app-wide for the same reason — see migrations/0136.
   const helloWorld = loadHelloWorldSettings();
+  // The Document Library's indexing job (migration 0166). Module settings, so this
+  // reads the module's rows rather than `sys_app_settings`.
+  const textIndex = loadTextIndexJobSettings();
 
   // Computed here rather than in the view: which jobs are armed is logic, and the
   // view is a client component that must not import the lib index (it re-exports a
   // SQLite repository). The view renders these rows as given.
   // Two complementary lists from the same inputs, so every job lands in exactly one
   // of the card's two tabs — never both, never neither.
-  const taskInputs = { jobs, autoRefresh, expense, backup, helloWorld };
+  const taskInputs = { jobs, autoRefresh, expense, backup, helloWorld, textIndex };
   const activeTasks = listActiveTasks(taskInputs);
   const inactiveTasks = listInactiveTasks(taskInputs);
 
@@ -57,6 +61,7 @@ export default async function BackgroundTasksPage() {
       expense={expense}
       backup={backup}
       helloWorld={helloWorld}
+      textIndex={textIndex}
     />
   );
 }

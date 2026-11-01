@@ -35,6 +35,8 @@ function document(
     tags,
     attachmentCount: 0,
     totalBytes: 0,
+    // The tree does not read this; present because `DocumentSummary` requires it.
+    textState: "none",
     createdBy: null,
     createdAt: STAMP,
     updatedAt: STAMP,

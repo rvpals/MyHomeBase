@@ -23,6 +23,7 @@ import {
   skipRound,
   startPictionary,
   stopDrawing,
+  swapWord,
   tickPictionary,
   type PictionaryState,
   type PictionaryTier,
@@ -156,6 +157,14 @@ export function GamePictionaryView({
   const drawingRef = useRef(false);
   const [erasing, setErasing] = useState(false);
 
+  /*
+    Whether the prompt is currently hidden behind the Peek button.
+
+    Starts false so a turn opens with the word on screen — the drawer has just taken the
+    device and needs to read it. They hide it themselves with "Start guessing".
+  */
+  const [wordHidden, setWordHidden] = useState(false);
+
   const context = useCallback((): CanvasRenderingContext2D | undefined => {
     return canvasRef.current?.getContext("2d") ?? undefined;
   }, []);
@@ -253,7 +262,12 @@ export function GamePictionaryView({
   // round rather than on every state change within one.
   const round = state ? roundNumber(state) : 0;
   useEffect(() => {
-    if (phase === "handoff") clearCanvas();
+    if (phase !== "handoff") return;
+    clearCanvas();
+    // Show the next drawer their word when they begin. Without this reset the prompt
+    // would still be hidden from whoever draws next, and they would have to peek at a
+    // word they have not been shown once.
+    setWordHidden(false);
   }, [clearCanvas, phase, round]);
 
   /* ---------------------------------------------------------------------------------
@@ -303,6 +317,19 @@ export function GamePictionaryView({
   const skip = useCallback(() => {
     setState((current) => (current ? skipRound(current, Math.random) : current));
   }, []);
+
+  /*
+    A different word, same turn. Distinct from `skip` above, which gives the turn up:
+    this is the drawer looking at "gravity", deciding they cannot picture it, and asking
+    for another — they keep their go and the clock keeps its position.
+
+    The canvas is cleared with it, so a half-drawn attempt at the rejected word does not
+    carry over into the new one.
+  */
+  const newWord = useCallback(() => {
+    clearCanvas();
+    setState((current) => (current ? swapWord(current, Math.random) : current));
+  }, [clearCanvas]);
 
   const stop = useCallback(() => {
     setState((current) => (current ? stopDrawing(current) : current));
@@ -392,14 +419,49 @@ export function GamePictionaryView({
               <p className="text-xs uppercase tracking-wide text-muted">
                 {drawer.name} is drawing
               </p>
-              {/* The word stays on screen while drawing — the drawer needs it, and they
-                  are the one holding the device. It is hidden in `judging` so the
-                  guessers can be shown the screen again. */}
-              {phase === "drawing" && (
-                <p className="font-display text-2xl text-ink max-lg:text-xl">
-                  {state.current?.word}
-                </p>
-              )}
+              {/*
+                The word, and the control that hides it.
+
+                It has to be hideable: the drawer needs the prompt, but the guessers are
+                watching this same screen to see the drawing, so leaving it up gives the
+                round away. The drawer reads it, taps "Start guessing", and the prompt is
+                replaced by a Peek button only they will use.
+
+                View state, not a phase: whether the prompt is currently on screen says
+                nothing about the rules of the round, and the clock runs the same either
+                way. Putting it in `PictionaryState` would make "is the word visible" a
+                thing the library had an opinion about.
+              */}
+              {phase === "drawing" &&
+                (wordHidden ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setWordHidden(false)}
+                    title="Show the word again — don't let the others see"
+                  >
+                    Peek at the word
+                  </Button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="mr-1 font-display text-2xl text-ink max-lg:text-xl">
+                      {state.current?.word}
+                    </p>
+                    <Button size="sm" onClick={() => setWordHidden(true)}>
+                      Start guessing
+                    </Button>
+                    {/* Beside the word, because this is the one place the drawer can
+                        judge whether they can draw it. Keeps the turn — see `swapWord`. */}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={newWord}
+                      title="Draw a different word and keep your turn"
+                    >
+                      New word
+                    </Button>
+                  </div>
+                ))}
             </div>
 
             <div className="text-right">
@@ -629,12 +691,19 @@ function HandoffScreen({
       <h3 className="font-display text-3xl text-ink max-lg:text-2xl">Pass to {drawerName}</h3>
       <p className="max-w-md text-sm text-muted">
         {drawerName}, take the device and tap below — everyone else, look away. The word
-        appears on the next screen and the clock starts with it.
+        appears on the next screen with the clock; read it, then tap{" "}
+        <strong className="text-ink">Start guessing</strong> to hide it before you turn
+        the screen round. Can&rsquo;t picture it? <strong className="text-ink">New
+        word</strong> there gives you another and keeps your turn.
       </p>
       <div className="flex flex-wrap justify-center gap-2">
         <Button onClick={onStart}>I&rsquo;m {drawerName} — show the word</Button>
-        <Button variant="secondary" onClick={onSkip} title="Swap this word for another">
-          Skip this word
+        <Button
+          variant="secondary"
+          onClick={onSkip}
+          title="Give up this turn and pass to the next player"
+        >
+          Skip the turn
         </Button>
       </div>
     </div>

@@ -9,15 +9,20 @@
 import type Database from "better-sqlite3";
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import type {
+  AttachmentTextWriteData,
   AttachmentWriteData,
   BulkTaxonomyMode,
   DocumentsRepository,
   DocumentWriteData,
 } from "./ports";
-import type { DocumentFilterInput } from "./schema";
+import type { DocumentFilterInput, DocumentPrefillTemplateWriteData } from "./schema";
+import { parseStoredDocumentPrefillFields } from "./schema";
 import type {
+  AttachmentText,
+  AttachmentTextSearchHit,
   Document,
   DocumentAttachment,
+  DocumentPrefillTemplate,
   DocumentSummary,
   DocumentTaxonomyItem,
   DuplicateMatch,
@@ -36,6 +41,10 @@ interface DocumentRow {
 interface SummaryRow extends DocumentRow {
   attachment_count: number;
   total_bytes: number | null;
+  /** 1 when any attachment yielded text. MAX over a CASE, so never NULL for a row. */
+  has_text: number;
+  /** 1 when any of that text came from OCR rather than an embedded layer. */
+  has_ocr: number;
 }
 
 interface AttachmentRow {
@@ -124,6 +133,78 @@ function toDocument(row: DocumentRow, categories: string[], tags: string[]): Doc
   };
 }
 
+interface AttachmentTextRow {
+  attachment_id: number;
+  document_id: number;
+  body: string;
+  status: string;
+  source: string;
+  page_count: number;
+  char_count: number;
+  confidence: number | null;
+  elapsed_ms: number;
+  content_hash: string;
+  indexed_at: string;
+  error: string;
+  ocr_attempted: number;
+}
+
+function toAttachmentText(row: AttachmentTextRow): AttachmentText {
+  return {
+    attachmentId: row.attachment_id,
+    documentId: row.document_id,
+    body: row.body,
+    status: row.status as AttachmentText["status"],
+    source: row.source as AttachmentText["source"],
+    pageCount: row.page_count,
+    charCount: row.char_count,
+    // NULL means a text-layer read, which has no confidence to report. Mapped back to
+    // `undefined` rather than 0 so the view can tell "not applicable" from "recognised
+    // nothing" -- the two render very differently.
+    confidence: row.confidence === null ? undefined : row.confidence,
+    elapsedMs: row.elapsed_ms,
+    contentHash: row.content_hash,
+    indexedAt: row.indexed_at,
+    error: row.error,
+    // SQLite has no boolean; the column is INTEGER 0/1 (migration 0166).
+    ocrAttempted: row.ocr_attempted === 1,
+  };
+}
+
+/**
+ * Turns what a reader typed into an FTS5 MATCH expression.
+ *
+ * **Every token is double-quoted**, which is the point. FTS5's query language gives
+ * meaning to `AND`, `OR`, `NOT`, `NEAR`, `*`, `^`, `:`, `-` and `"` -- so a reader
+ * searching for `AT&T` or `re: lease` or an unbalanced quote would otherwise get a
+ * syntax error instead of results. Quoting makes every token a literal phrase, and an
+ * embedded `"` is escaped by doubling it, as SQL does.
+ *
+ * A trailing `*` survives on the last token so prefix search still works: typing
+ * "zott" and getting the Zottoli report is the behaviour a search box implies.
+ *
+ * Tokens join with AND -- two words should narrow the result, not widen it, matching
+ * how the taxonomy filters already behave.
+ */
+export function toMatchExpression(query: string): string {
+  const wantsPrefix = query.trimEnd().endsWith("*");
+  const tokens = query
+    .replace(/[*^]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token !== "");
+  if (tokens.length === 0) return "";
+
+  return tokens
+    .map((token, index) => {
+      const quoted = `"${token.replace(/"/g, '""')}"`;
+      // Only the final token gets the prefix star -- `"lease"* "agree"*` would ask for
+      // two prefixes and find far less than the reader meant.
+      return wantsPrefix && index === tokens.length - 1 ? `${quoted}*` : quoted;
+    })
+    .join(" AND ");
+}
+
 function toAttachment(row: AttachmentRow): DocumentAttachment {
   return {
     id: row.id,
@@ -150,6 +231,34 @@ function toTaxonomyItem(row: TaxonomyRow): DocumentTaxonomyItem {
   };
 }
 
+interface PrefillTemplateRow {
+  id: number;
+  name: string;
+  description: string;
+  is_enabled: number;
+  fields_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const PREFILL_TEMPLATE_COLUMNS =
+  "SELECT id, name, description, is_enabled, fields_json, created_at, updated_at";
+
+function toPrefillTemplate(row: PrefillTemplateRow): DocumentPrefillTemplate {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    isEnabled: row.is_enabled === 1,
+    // Forgiving on purpose: a template whose JSON has rotted comes back empty and
+    // re-editable rather than throwing on the way out of the database. See
+    // migration 0169.
+    fields: parseStoredDocumentPrefillFields(row.fields_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export class SqliteDocumentsRepository implements DocumentsRepository {
   constructor(private readonly db: Database.Database) {}
 
@@ -164,8 +273,28 @@ export class SqliteDocumentsRepository implements DocumentsRepository {
     if (filter.search !== "") {
       // LIKE with an escaped pattern: `%` and `_` typed into the search box are
       // literal characters to a reader, not wildcards.
-      where.push("(d.title LIKE @search ESCAPE '\\' OR d.description LIKE @search ESCAPE '\\')");
+      const titleMatch =
+        "d.title LIKE @search ESCAPE '\\' OR d.description LIKE @search ESCAPE '\\'";
       params.search = `%${filter.search.replace(/[\\%_]/g, "\\$&")}%`;
+
+      const contentsExpression = filter.searchContents ? toMatchExpression(filter.search) : "";
+      if (contentsExpression !== "") {
+        // The contents match is an EXISTS against the FTS index rather than a join,
+        // so a document whose three attachments all match still appears once — a join
+        // would multiply the row and the GROUP BY totals below would be wrong.
+        //
+        // OR, not AND: "lease" should find the document *titled* Lease as well as the
+        // one that merely mentions it. Narrowing is what the taxonomy filters are for.
+        where.push(
+          `(${titleMatch}
+            OR EXISTS (SELECT 1 FROM doc_text_fts f
+                         JOIN doc_attachment_text t ON t.attachment_id = f.rowid
+                        WHERE t.document_id = d.id AND doc_text_fts MATCH @ftsQuery))`,
+        );
+        params.ftsQuery = contentsExpression;
+      } else {
+        where.push(`(${titleMatch})`);
+      }
     }
 
     // Each taxonomy filter is an EXISTS per name, so several names mean "has all of
@@ -191,11 +320,23 @@ export class SqliteDocumentsRepository implements DocumentsRepository {
 
     const rows = this.db
       .prepare(
+        // `has_text` / `has_ocr` ride along as aggregates rather than a second query:
+        // the badge is per-row state, and fetching it separately would be one query
+        // per page at best and N at worst. A correlated EXISTS per row would also do,
+        // but this reuses the join the counts already need.
+        //
+        // Counted over `extracted` rows only: a `needs-ocr` or `failed` row means the
+        // file was looked at and yielded nothing, which is not something to badge as
+        // searchable.
         `SELECT d.id, d.title, d.description, d.created_by, d.created_at, d.updated_at,
                 COUNT(a.id) AS attachment_count,
-                SUM(a.byte_size) AS total_bytes
+                SUM(a.byte_size) AS total_bytes,
+                MAX(CASE WHEN tx.status = 'extracted' THEN 1 ELSE 0 END) AS has_text,
+                MAX(CASE WHEN tx.status = 'extracted' AND tx.source = 'ocr' THEN 1 ELSE 0 END)
+                  AS has_ocr
            FROM doc_documents d
            LEFT JOIN doc_attachments a ON a.document_id = d.id
+           LEFT JOIN doc_attachment_text tx ON tx.attachment_id = a.id
           ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
           GROUP BY d.id
           ORDER BY d.updated_at DESC, d.id DESC`,
@@ -219,6 +360,9 @@ export class SqliteDocumentsRepository implements DocumentsRepository {
       // SUM over no rows is NULL, which would reach a view as `null` and render as
       // "null bytes". A document with no attachments is 0.
       totalBytes: row.total_bytes ?? 0,
+      // `ocr` outranks `text-layer`: a document holding both has text that was partly
+      // guessed at, and that is the honest claim to make. See `DocumentTextState`.
+      textState: row.has_ocr === 1 ? "ocr" : row.has_text === 1 ? "text-layer" : "none",
       createdBy: row.created_by,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -896,5 +1040,247 @@ export class SqliteDocumentsRepository implements DocumentsRepository {
       .prepare(`DELETE FROM doc_recycled_documents WHERE id = ?`)
       .run(recycledId);
     return result.changes > 0;
+  }
+
+  // -------------------------------------------------------------------------
+  // Extracted text and full-text search (migration 0165)
+  // -------------------------------------------------------------------------
+
+  getAttachmentText(attachmentId: number): AttachmentText | undefined {
+    const row = this.db
+      .prepare(`SELECT * FROM doc_attachment_text WHERE attachment_id = ?`)
+      .get(attachmentId) as AttachmentTextRow | undefined;
+    return row ? toAttachmentText(row) : undefined;
+  }
+
+  listAttachmentTextForDocument(documentId: number): AttachmentText[] {
+    const rows = this.db
+      .prepare(
+        `SELECT t.* FROM doc_attachment_text t
+           JOIN doc_attachments a ON a.id = t.attachment_id
+          WHERE t.document_id = ?
+          ORDER BY a.sort_order, a.id`,
+      )
+      .all(documentId) as AttachmentTextRow[];
+    return rows.map(toAttachmentText);
+  }
+
+  putAttachmentText(input: AttachmentTextWriteData): void {
+    // INSERT OR REPLACE rather than an UPSERT clause: replacing the row fires the
+    // delete and insert triggers in turn, which is exactly what keeps the external
+    // content FTS index from holding the previous text. An UPDATE that touched only
+    // some columns would too, but REPLACE says "this row is the extraction now",
+    // which is what a re-run means.
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO doc_attachment_text
+           (attachment_id, document_id, body, status, source, page_count, char_count,
+            confidence, elapsed_ms, content_hash, indexed_at, error, ocr_attempted)
+         VALUES (@attachmentId, @documentId, @body, @status, @source, @pageCount, @charCount,
+                 @confidence, @elapsedMs, @contentHash, datetime('now'), @error, @ocrAttempted)`,
+      )
+      .run({
+        attachmentId: input.attachmentId,
+        documentId: input.documentId,
+        body: input.body,
+        status: input.status,
+        source: input.source,
+        pageCount: input.pageCount,
+        charCount: input.charCount,
+        // `?? null` and not `?? 0`: a text-layer read has no confidence, and storing
+        // zero would read back as "OCR that recognised nothing".
+        confidence: input.confidence ?? null,
+        elapsedMs: input.elapsedMs,
+        contentHash: input.contentHash,
+        error: input.error,
+        ocrAttempted: input.ocrAttempted ? 1 : 0,
+      });
+  }
+
+  deleteAttachmentText(attachmentId: number): void {
+    this.db.prepare(`DELETE FROM doc_attachment_text WHERE attachment_id = ?`).run(attachmentId);
+  }
+
+  searchAttachmentText(query: string): AttachmentTextSearchHit[] {
+    const expression = toMatchExpression(query);
+    if (expression === "") return [];
+
+    let rows: AttachmentTextSearchHit[];
+    try {
+      rows = (
+        this.db
+          .prepare(
+            `SELECT t.attachment_id AS attachmentId,
+                    t.document_id   AS documentId,
+                    a.original_name AS originalName,
+                    snippet(doc_text_fts, 0, '[', ']', '...', 12) AS snippet
+               FROM doc_text_fts f
+               JOIN doc_attachment_text t ON t.attachment_id = f.rowid
+               JOIN doc_attachments a     ON a.id = t.attachment_id
+              WHERE doc_text_fts MATCH ?
+              ORDER BY rank
+              LIMIT 200`,
+          )
+          .all(expression) as AttachmentTextSearchHit[]
+      );
+    } catch {
+      // A MATCH expression this build rejects must not take the search box down.
+      // `toMatchExpression` quotes everything, so reaching here means something
+      // genuinely unparseable -- fall through to the substring scan below.
+      rows = [];
+    }
+
+    if (rows.length > 0) return rows;
+
+    // The documented fallback. `unicode61` indexes a CJK run as ONE token, so a
+    // two-character fragment of a longer run matches nothing -- measured, see the
+    // migration log. A LIKE scan over the cached text covers it. Only reached when
+    // FTS found nothing, so the common path never pays for it.
+    return this.db
+      .prepare(
+        `SELECT t.attachment_id AS attachmentId,
+                t.document_id   AS documentId,
+                a.original_name AS originalName,
+                substr(t.body, MAX(1, instr(lower(t.body), lower(@needle)) - 40), 160) AS snippet
+           FROM doc_attachment_text t
+           JOIN doc_attachments a ON a.id = t.attachment_id
+          WHERE t.body LIKE @pattern ESCAPE '\\'
+          LIMIT 200`,
+      )
+      .all({
+        needle: query,
+        // `%`, `_` and `\` typed into the search box are literal characters to a
+        // reader, not wildcards — the same escaping `listDocuments` does.
+        pattern: `%${query.replace(/[\\%_]/g, "\\$&")}%`,
+      }) as AttachmentTextSearchHit[];
+  }
+
+  listUnindexedAttachments(limit: number, skipAttemptedScans = false): DocumentAttachment[] {
+    // "Unindexed" means no row, or a row describing bytes the file no longer has --
+    // the same hash comparison `extractAttachmentText` makes, expressed in SQL so the
+    // work list can be built without reading every file.
+    //
+    // Those three conditions are the whole of "has this changed since we read it",
+    // and a re-upload fails all of them because its bytes hash differently. That is
+    // what makes "don't re-OCR until a new file is uploaded" fall out of migration
+    // 0165 rather than needing a flag of its own.
+    const staleOrMissing = `t.attachment_id IS NULL
+             OR t.content_hash = ''
+             OR t.content_hash <> a.content_hash`;
+
+    // What a SCHEDULED pass asks for (migration 0166).
+    //
+    // A row that is current but not `extracted` is a scan. Whether it is work depends
+    // on something the hash cannot tell us: has OCR already been run against these
+    // bytes? If it has and came back empty, recognising it again produces the same
+    // nothing at ~10s a page on the DS223 -- so an unattended pass must skip it, and
+    // keep skipping it until the file itself changes.
+    //
+    // A CALLER THAT WILL RUN OCR (the CLI's `--ocr`) leaves this false and so still
+    // sees every scan, attempted or not: asking for OCR explicitly is not the same as
+    // a timer asking.
+    const unattemptedScans = `(t.content_hash = a.content_hash
+                               AND t.status <> 'extracted'
+                               AND t.ocr_attempted = 0)`;
+
+    // Both modes include the scans; they differ only in whether a scan OCR has
+    // ALREADY been run against counts as work. `skipAttemptedScans` is what a
+    // scheduled pass sets, and it is the whole of "don't do it twice".
+    const where = skipAttemptedScans
+      ? `${staleOrMissing} OR ${unattemptedScans}`
+      : `${staleOrMissing} OR (t.content_hash = a.content_hash AND t.status <> 'extracted')`;
+
+    const rows = this.db
+      .prepare(
+        `SELECT a.* FROM doc_attachments a
+           LEFT JOIN doc_attachment_text t ON t.attachment_id = a.id
+          WHERE ${where}
+          ORDER BY a.id
+          LIMIT ?`,
+      )
+      .all(limit) as AttachmentRow[];
+    return rows.map(toAttachment);
+  }
+
+  // -------------------------------------------------------------------------
+  // Prefill templates (migration 0169)
+  // -------------------------------------------------------------------------
+
+  listPrefillTemplates(): DocumentPrefillTemplate[] {
+    const rows = this.db
+      .prepare(
+        `${PREFILL_TEMPLATE_COLUMNS} FROM doc_prefill_templates ORDER BY name COLLATE NOCASE`,
+      )
+      .all() as PrefillTemplateRow[];
+    return rows.map(toPrefillTemplate);
+  }
+
+  getPrefillTemplateById(id: number): DocumentPrefillTemplate | undefined {
+    const row = this.db
+      .prepare(`${PREFILL_TEMPLATE_COLUMNS} FROM doc_prefill_templates WHERE id = ?`)
+      .get(id) as PrefillTemplateRow | undefined;
+    return row ? toPrefillTemplate(row) : undefined;
+  }
+
+  getPrefillTemplateByName(name: string): DocumentPrefillTemplate | undefined {
+    // NOCASE matches idx_doc_prefill_templates_name, so this finds "utility bill"
+    // for "Utility Bill" -- which is what the uniqueness check in the use-case needs.
+    const row = this.db
+      .prepare(
+        `${PREFILL_TEMPLATE_COLUMNS} FROM doc_prefill_templates WHERE name = ? COLLATE NOCASE`,
+      )
+      .get(name) as PrefillTemplateRow | undefined;
+    return row ? toPrefillTemplate(row) : undefined;
+  }
+
+  // Create and update in one method: the input's optional id decides which. An
+  // update rewrites every column, matching how the editor works -- it loads the
+  // whole template and saves the whole template, so there is no partial write.
+  savePrefillTemplate(input: DocumentPrefillTemplateWriteData): DocumentPrefillTemplate {
+    const params = {
+      name: input.name,
+      description: input.description,
+      isEnabled: input.isEnabled ? 1 : 0,
+      fieldsJson: JSON.stringify(input.fields),
+    };
+
+    if (input.id !== undefined) {
+      this.db
+        .prepare(
+          `UPDATE doc_prefill_templates
+              SET name = @name,
+                  description = @description,
+                  is_enabled = @isEnabled,
+                  fields_json = @fieldsJson
+            WHERE id = @id`,
+        )
+        .run({ ...params, id: input.id });
+      const updated = this.getPrefillTemplateById(input.id);
+      if (!updated) throw new Error(`Prefill template ${input.id} no longer exists.`);
+      return updated;
+    }
+
+    const result = this.db
+      .prepare(
+        `INSERT INTO doc_prefill_templates (name, description, is_enabled, fields_json)
+         VALUES (@name, @description, @isEnabled, @fieldsJson)`,
+      )
+      .run(params);
+    const created = this.getPrefillTemplateById(Number(result.lastInsertRowid));
+    if (!created) throw new Error(`Failed to read back prefill template "${input.name}".`);
+    return created;
+  }
+
+  deletePrefillTemplate(id: number): void {
+    this.db.prepare("DELETE FROM doc_prefill_templates WHERE id = ?").run(id);
+  }
+
+  setPrefillTemplateEnabled(id: number, isEnabled: boolean): DocumentPrefillTemplate {
+    this.db
+      .prepare("UPDATE doc_prefill_templates SET is_enabled = ? WHERE id = ?")
+      .run(isEnabled ? 1 : 0, id);
+    const updated = this.getPrefillTemplateById(id);
+    if (!updated) throw new Error(`Prefill template ${id} no longer exists.`);
+    return updated;
   }
 }

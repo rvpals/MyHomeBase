@@ -45,6 +45,7 @@ import { playQueueCommand } from "./play-queue";
 import { musicLibraryCommand, scanMusicCommand } from "./scan-music";
 import { refreshPositionsCommand } from "./refresh-positions";
 import { messagesCommand } from "./messages";
+import { systemLogCommand } from "./system-log";
 import { ipListsCommand } from "./ip-lists";
 import { tickerMonitorsCommand } from "./ticker-monitors";
 import { watchListsCommand } from "./watch-lists";
@@ -64,6 +65,8 @@ import { examsCommand } from "./exams";
 import { takeAttendanceCommand } from "./take-attendance";
 import { clipsCommand } from "./clips";
 import { documentsBackfillHashesCommand } from "./documents-backfill-hashes";
+import { documentsTemplatesCommand } from "./documents-templates";
+import { documentsIndexTextCommand } from "./documents-index-text";
 import { listDocumentsCommand } from "./list-documents";
 import { todoCommand } from "./todo";
 import { taxLotsCommand } from "./tax-lots";
@@ -82,6 +85,7 @@ const commands: Record<string, Command> = {
   "ticker-monitors": tickerMonitorsCommand,
   "watch-lists": watchListsCommand,
   messages: messagesCommand,
+  "system-log": systemLogCommand,
   "ip-lists": ipListsCommand,
   "run-data-backup": runDataBackupCommand,
   "run-hello-world": runHelloWorldCommand,
@@ -131,6 +135,8 @@ const commands: Record<string, Command> = {
   clips: clipsCommand,
   "list-documents": listDocumentsCommand,
   "documents-backfill-hashes": documentsBackfillHashesCommand,
+  "documents-templates": documentsTemplatesCommand,
+  "documents-index-text": documentsIndexTextCommand,
   todo: todoCommand,
   "take-attendance": takeAttendanceCommand,
   exams: examsCommand,

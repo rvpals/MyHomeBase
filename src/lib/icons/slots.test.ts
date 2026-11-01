@@ -181,7 +181,7 @@ describe("sectionSlotId", () => {
         "user-management",
         "daily-quote", "daily-quote-list", "daily-quote-add", "daily-quote-import",
         "todo-lists",
-        "security", "background-tasks", "sql-explorer", "about",
+        "security", "background-tasks", "system-log", "sql-explorer", "about",
       ],
     };
 

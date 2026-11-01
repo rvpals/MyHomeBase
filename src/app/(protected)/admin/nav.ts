@@ -299,6 +299,23 @@ export const adminNav: SectionNode[] = [
   },
   {
     // Fresh and permanent -- `SectionPanel` derives this section's icon slot from
+    // the id (`admin_section_system_log`), so renaming it later orphans any
+    // uploaded override.
+    //
+    // Between Background Tasks and Message Queue on purpose: those two plus this
+    // one are the app's three after-the-fact channels -- what the jobs did, what
+    // the code said, and what a reader still has to act on -- and reading them as
+    // a group is the point.
+    id: "system-log",
+    label: "System Log",
+    href: "/admin/system-log",
+    hint: "What the application has been doing — DEBUG and OPERATIONAL lines",
+    // `list`, not `history`: Background Tasks above already wears `history`, and
+    // there is no terminal or console glyph in the baked icon sets.
+    icon: "list",
+  },
+  {
+    // Fresh and permanent -- `SectionPanel` derives this section's icon slot from
     // the id, so renaming it later orphans any uploaded override.
     //
     // Sits after Background Tasks and before SQL Explorer: it belongs with the

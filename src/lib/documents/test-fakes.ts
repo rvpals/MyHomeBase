@@ -15,14 +15,19 @@
 import type { DecodedImage } from "@/lib/shared/image-upload";
 import type { DocumentFileStore, DocumentRootCheck, FolderListing } from "./file-store";
 import type {
+  AttachmentTextWriteData,
   AttachmentWriteData,
   BulkTaxonomyMode,
   DocumentsRepository,
   DocumentWriteData,
 } from "./ports";
+import type { DocumentPrefillTemplateWriteData } from "./schema";
 import type {
+  AttachmentText,
+  AttachmentTextSearchHit,
   Document,
   DocumentAttachment,
+  DocumentPrefillTemplate,
   DocumentSummary,
   DocumentTaxonomyItem,
   DuplicateMatch,
@@ -60,6 +65,15 @@ export class FakeRepository implements DocumentsRepository {
         ...document,
         attachmentCount: files.length,
         totalBytes: files.reduce((sum, a) => sum + a.byteSize, 0),
+        // Mirrors the repository's aggregate: `ocr` outranks `text-layer`, and a row
+        // that yielded no text does not count at all.
+        textState: (() => {
+          const read = files
+            .map((a) => this.texts.get(a.id))
+            .filter((t) => t !== undefined && t.status === "extracted");
+          if (read.length === 0) return "none" as const;
+          return read.some((t) => t!.source === "ocr") ? ("ocr" as const) : ("text-layer" as const);
+        })(),
       };
     });
   }
@@ -144,6 +158,88 @@ export class FakeRepository implements DocumentsRepository {
 
   listUnhashedAttachments(limit: number): DocumentAttachment[] {
     return this.attachments.filter((a) => a.contentHash === "").slice(0, limit);
+  }
+
+  // -------------------------------------------------------------------------
+  // Extracted text and search (migration 0165)
+  // -------------------------------------------------------------------------
+
+  /** Keyed by attachment id, exactly as the real table's primary key is. */
+  texts = new Map<number, AttachmentText>();
+
+  getAttachmentText(attachmentId: number): AttachmentText | undefined {
+    const row = this.texts.get(attachmentId);
+    return row ? { ...row } : undefined;
+  }
+
+  listAttachmentTextForDocument(documentId: number): AttachmentText[] {
+    return [...this.texts.values()]
+      .filter((row) => row.documentId === documentId)
+      .map((row) => ({ ...row }));
+  }
+
+  putAttachmentText(input: AttachmentTextWriteData): void {
+    this.texts.set(input.attachmentId, {
+      attachmentId: input.attachmentId,
+      documentId: input.documentId,
+      body: input.body,
+      status: input.status,
+      source: input.source,
+      pageCount: input.pageCount,
+      charCount: input.charCount,
+      confidence: input.confidence,
+      elapsedMs: input.elapsedMs,
+      contentHash: input.contentHash,
+      indexedAt: STAMP,
+      error: input.error,
+      ocrAttempted: input.ocrAttempted,
+    });
+  }
+
+  deleteAttachmentText(attachmentId: number): void {
+    this.texts.delete(attachmentId);
+  }
+
+  /**
+   * A case-insensitive substring scan, NOT an FTS5 emulation.
+   *
+   * Deliberate: a fake that tried to reproduce tokenising, stemming and diacritic
+   * folding would be a second search engine to keep correct, and a test passing
+   * against it would say nothing about the real one. The repository's own behaviour
+   * is proven against a real SQLite database instead; what this fake is for is
+   * letting the use-cases above be tested without one.
+   */
+  searchAttachmentText(query: string): AttachmentTextSearchHit[] {
+    const needle = query.toLowerCase();
+    const hits: AttachmentTextSearchHit[] = [];
+    for (const row of this.texts.values()) {
+      const at = row.body.toLowerCase().indexOf(needle);
+      if (at < 0) continue;
+      const attachment = this.attachments.find((a) => a.id === row.attachmentId);
+      hits.push({
+        attachmentId: row.attachmentId,
+        documentId: row.documentId,
+        originalName: attachment?.originalName ?? "",
+        snippet: row.body.slice(Math.max(0, at - 20), at + 60),
+      });
+    }
+    return hits;
+  }
+
+  listUnindexedAttachments(limit: number, skipAttemptedScans = false): DocumentAttachment[] {
+    return this.attachments
+      .filter((a) => {
+        const row = this.texts.get(a.id);
+        // Never read, read before hashes existed, or the bytes have changed.
+        if (row === undefined || row.contentHash === "" || row.contentHash !== a.contentHash) {
+          return true;
+        }
+        // Current, but not readable text: a scan. Work unless OCR already tried it
+        // and the caller asked to skip those (migration 0166).
+        if (row.status !== "extracted") return !(skipAttemptedScans && row.ocrAttempted);
+        return false;
+      })
+      .slice(0, limit);
   }
 
   // -------------------------------------------------------------------------
@@ -326,6 +422,79 @@ export class FakeRepository implements DocumentsRepository {
   setTagIcon(name: string, image: DecodedImage | null): void {
     if (image) this.tagIcons.set(name.toLowerCase(), image);
     else this.tagIcons.delete(name.toLowerCase());
+  }
+
+  // --- Prefill templates (migration 0169) ---------------------------------
+  //
+  // Stored as domain objects rather than as rows with a `fields_json` string: the
+  // JSON round-trip is the real repository's business, and a fake that re-parsed it
+  // would be testing `JSON.stringify` rather than the use-cases.
+
+  prefillTemplates: DocumentPrefillTemplate[] = [];
+  private nextPrefillId = 1;
+
+  listPrefillTemplates(): DocumentPrefillTemplate[] {
+    return [...this.prefillTemplates].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+  }
+
+  getPrefillTemplateById(id: number): DocumentPrefillTemplate | undefined {
+    return this.prefillTemplates.find((template) => template.id === id);
+  }
+
+  getPrefillTemplateByName(name: string): DocumentPrefillTemplate | undefined {
+    // Case-insensitive, matching idx_doc_prefill_templates_name -- the property the
+    // name-clash check in `savePrefillTemplate` depends on.
+    return this.prefillTemplates.find(
+      (template) => template.name.toLowerCase() === name.trim().toLowerCase(),
+    );
+  }
+
+  savePrefillTemplate(input: DocumentPrefillTemplateWriteData): DocumentPrefillTemplate {
+    const fields = input.fields.map((entry) => ({ ...entry }));
+    if (input.id !== undefined) {
+      const existing = this.getPrefillTemplateById(input.id);
+      if (!existing) throw new Error(`Prefill template ${input.id} no longer exists.`);
+      const updated: DocumentPrefillTemplate = {
+        ...existing,
+        name: input.name,
+        description: input.description,
+        isEnabled: input.isEnabled,
+        fields,
+        updatedAt: STAMP,
+      };
+      this.prefillTemplates = this.prefillTemplates.map((template) =>
+        template.id === updated.id ? updated : template,
+      );
+      return updated;
+    }
+
+    const created: DocumentPrefillTemplate = {
+      id: this.nextPrefillId++,
+      name: input.name,
+      description: input.description,
+      isEnabled: input.isEnabled,
+      fields,
+      createdAt: STAMP,
+      updatedAt: STAMP,
+    };
+    this.prefillTemplates.push(created);
+    return created;
+  }
+
+  deletePrefillTemplate(id: number): void {
+    this.prefillTemplates = this.prefillTemplates.filter((template) => template.id !== id);
+  }
+
+  setPrefillTemplateEnabled(id: number, isEnabled: boolean): DocumentPrefillTemplate {
+    const existing = this.getPrefillTemplateById(id);
+    if (!existing) throw new Error(`Prefill template ${id} no longer exists.`);
+    const updated = { ...existing, isEnabled, updatedAt: STAMP };
+    this.prefillTemplates = this.prefillTemplates.map((template) =>
+      template.id === id ? updated : template,
+    );
+    return updated;
   }
 }
 

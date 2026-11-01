@@ -88,10 +88,14 @@ const PAGE_STEP = 50;
  */
 const DEFAULT_STRIPE_CLASS = "bg-[color-mix(in_srgb,var(--paper-raised)_94%,var(--ink))]";
 
-/** Lower-cased text of a cell's sortable value, for the search box. */
+/**
+ * Lower-cased text of a row's searchable cells, for the search box: each column's
+ * sortable `value` plus any extra `searchValue` text it offers, matching what the
+ * wide grid searches so a phone and a desktop find the same rows.
+ */
 function searchableText<T>(row: T, columns: DataGridColumn<T>[]): string {
   return columns
-    .map((column) => column.value?.(row))
+    .flatMap((column) => [column.value?.(row), column.searchValue?.(row)])
     .filter((value): value is CellValue => value != null)
     .join(" ")
     .toLowerCase();

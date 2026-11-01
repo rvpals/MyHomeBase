@@ -49,6 +49,16 @@ import {
 // Straight from the leaf modules, not the lib index: that index re-exports
 // `SqliteScheduledRunRepository`, and pulling it into a client component drags
 // better-sqlite3 into the browser bundle. `history.ts` is pure, so it is safe here.
+// Imported from the LEAF module, not from `@/lib/documents`. This is a client
+// component, and the module's barrel re-exports the repository and the file store --
+// which pull in `better-sqlite3` and `node:fs/promises`, neither of which can be
+// bundled for a browser. Turbopack fails the whole build on it ("the chunking context
+// does not support external modules"). `text-index-job.ts` is pure and safe to ship.
+// Same reason, and the same fix, as the note at the top of documents-main-view.tsx.
+import {
+  describeTextIndexInterval,
+  type TextIndexJobSettings,
+} from "@/lib/documents/text-index-job";
 import { describeDuration } from "@/lib/scheduled-jobs/history";
 import { formatUtcStamp } from "@/lib/shared/utc-display";
 import {
@@ -72,10 +82,12 @@ import {
   runAutoRefreshNowAction,
   runDataBackupNowAction,
   runHelloWorldNowAction,
+  runTextIndexNowAction,
   saveAutoImportScheduleAction,
   saveAutoRefreshSettingsAction,
   saveBackupScheduleAction,
   saveHelloWorldSettingsAction,
+  saveTextIndexSettingsAction,
 } from "./actions";
 import { PAGE_CONTAINER } from "../../page-container";
 
@@ -95,6 +107,8 @@ export interface BackgroundTasksViewProps {
   expense: ExpenseSettings;
   backup: BackupSettings;
   helloWorld: HelloWorldSettings;
+  /** The Document Library's text-indexing job (migration 0166). */
+  textIndex: TextIndexJobSettings;
 }
 
 /**
@@ -464,6 +478,7 @@ export function BackgroundTasksView({
   expense,
   backup,
   helloWorld,
+  textIndex,
 }: BackgroundTasksViewProps) {
   const router = useRouter();
 
@@ -473,6 +488,7 @@ export function BackgroundTasksView({
   const pruneJob = byKey.get(JOB_KEYS.authEventPrune);
   const backupJob = byKey.get(JOB_KEYS.dataBackup);
   const helloJob = byKey.get(JOB_KEYS.helloWorld);
+  const textIndexJob = byKey.get(JOB_KEYS.documentTextIndex);
 
   // Both folders set is what makes the job runnable at all; the switch only decides
   // whether it runs *on its own*. Saying which is missing is the whole point of
@@ -490,6 +506,14 @@ export function BackgroundTasksView({
   const [importIntervalText, setImportIntervalText] = useState(
     String(expense.autoImportIntervalMinutes),
   );
+
+  // Document text indexing form state. The two numbers are held as text for the same
+  // reason as every other interval on this screen: a half-typed value must not snap
+  // to a number mid-keystroke.
+  const [indexEnabled, setIndexEnabled] = useState(textIndex.enabled);
+  const [indexOcr, setIndexOcr] = useState(textIndex.ocrEnabled);
+  const [indexHoursText, setIndexHoursText] = useState(String(textIndex.intervalHours));
+  const [indexBatchText, setIndexBatchText] = useState(String(textIndex.batchSize));
 
   // Hello, world! form state. The count is held as text for the same reason as the
   // import interval above: a half-typed value must not snap to a number mid-keystroke.
@@ -530,6 +554,18 @@ export function BackgroundTasksView({
   const importDirty =
     importEnabled !== expense.autoImportEnabled ||
     importIntervalMinutes !== expense.autoImportIntervalMinutes;
+
+  // Document indexing validity and dirty state. The bounds match the action's, which
+  // re-checks them — the view's job is to disable the button, not to be the guard.
+  const indexHours = Number(indexHoursText);
+  const indexBatch = Number(indexBatchText);
+  const indexHoursValid = Number.isInteger(indexHours) && indexHours >= 1 && indexHours <= 24 * 7;
+  const indexBatchValid = Number.isInteger(indexBatch) && indexBatch >= 1 && indexBatch <= 500;
+  const indexDirty =
+    indexEnabled !== textIndex.enabled ||
+    indexOcr !== textIndex.ocrEnabled ||
+    indexHours !== textIndex.intervalHours ||
+    indexBatch !== textIndex.batchSize;
 
   const helloCount = Number(helloCountText);
   // Mirrors `intervalCountSchema` so the button disables before the action refuses.
@@ -1190,6 +1226,145 @@ export function BackgroundTasksView({
                   disabled={busy !== undefined}
                 >
                   {busy === "run-hello" ? "Running…" : "Run now"}
+                </Button>
+              </div>
+            </CollapsibleCard>
+          </div>
+        )}
+
+        {textIndexJob && (
+          <div className="mt-4">
+            <CollapsibleCard title={textIndexJob.descriptor.label}>
+              <p className="text-sm text-muted">{textIndexJob.descriptor.description}</p>
+
+              <label className="mt-4 flex items-start gap-3 rounded-md border border-line bg-paper p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={indexEnabled}
+                  onChange={(event) => setIndexEnabled(event.target.checked)}
+                  className={CHECKBOX_CLASS}
+                />
+                <span>
+                  <span className="block font-medium text-ink">Run on a schedule</span>
+                  <span className="mt-1 block text-xs text-muted">
+                    Off means the server never indexes on its own.{" "}
+                    <strong className="text-ink">Run now</strong> still works, and the OCR
+                    button on each document is unaffected either way.
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-4 flex items-start gap-3 rounded-md border border-line bg-paper p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={indexOcr}
+                  onChange={(event) => setIndexOcr(event.target.checked)}
+                  className={CHECKBOX_CLASS}
+                />
+                <span>
+                  <span className="block font-medium text-ink">Read scans with OCR</span>
+                  <span className="mt-1 block text-xs text-muted">
+                    Off reads only embedded text layers — about a sixth of a second a file,
+                    and enough for anything printed to PDF. On also recognises scans, which
+                    costs <strong className="text-ink">seconds a page</strong> and a few
+                    hundred MB of memory while it works.
+                  </span>
+                </span>
+              </label>
+
+              <div className="mt-4 flex flex-wrap gap-4">
+                <label className="block text-sm sm:max-w-[12rem]">
+                  <span className="mb-1 block font-medium text-ink">Run every</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={24 * 7}
+                      step={1}
+                      value={indexHoursText}
+                      onChange={(event) => setIndexHoursText(event.target.value)}
+                      disabled={!indexEnabled}
+                      aria-label="Interval in hours"
+                      className={`${INPUT_CLASS} w-24 disabled:opacity-50`}
+                    />
+                    <span className="text-sm text-muted">hours</span>
+                  </div>
+                </label>
+
+                <label className="block text-sm sm:max-w-[12rem]">
+                  <span className="mb-1 block font-medium text-ink">Files per pass</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    step={1}
+                    value={indexBatchText}
+                    onChange={(event) => setIndexBatchText(event.target.value)}
+                    aria-label="Files per pass"
+                    className={`${INPUT_CLASS} w-24`}
+                  />
+                </label>
+              </div>
+
+              {/* Said plainly rather than hidden, because this is the one job here that
+                  can hold the server for minutes, and the number above is the only brake. */}
+              {indexOcr && (
+                <p className="mt-2 text-xs text-amber-300">
+                  A pass reads every file in the batch before stopping, so a backlog of
+                  scans can keep the server busy for several minutes. Lower{" "}
+                  <strong className="text-ink">files per pass</strong> if that is
+                  noticeable.
+                </p>
+              )}
+
+              {/* The reassurance that makes leaving it armed reasonable. */}
+              <p className="mt-2 text-xs text-muted">
+                Each file is read once. It is looked at again only if it is re-uploaded,
+                and a scan OCR cannot read is never retried — so once the library is
+                indexed, later passes find nothing and cost one query.
+              </p>
+
+              <p className="mt-3 text-sm">
+                Status:{" "}
+                {textIndex.enabled ? (
+                  <span className="text-emerald-300">
+                    armed — {describeTextIndexInterval(textIndex)}, checked once a minute
+                  </span>
+                ) : (
+                  <span className="text-muted">off</span>
+                )}
+                .
+              </p>
+
+              <div className="mt-3">
+                <LastRun run={textIndexJob.lastRun} />
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  onClick={() =>
+                    run(
+                      "save-index",
+                      () =>
+                        saveTextIndexSettingsAction({
+                          enabled: indexEnabled,
+                          intervalHours: indexHours,
+                          ocrEnabled: indexOcr,
+                          batchSize: indexBatch,
+                        }),
+                      "Indexing schedule saved.",
+                    )
+                  }
+                  disabled={busy !== undefined || !indexDirty || !indexHoursValid || !indexBatchValid}
+                >
+                  {busy === "save-index" ? "Saving…" : "Save settings"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => run("run-index", runTextIndexNowAction, "Indexing pass finished.")}
+                  disabled={busy !== undefined}
+                >
+                  {busy === "run-index" ? "Indexing…" : "Run now"}
                 </Button>
               </div>
             </CollapsibleCard>

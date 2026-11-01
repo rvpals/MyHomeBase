@@ -345,6 +345,129 @@ step(`Swapping in the ${TARGET} sharp`);
   }
 }
 
+// ---------------------------------------------------------------------------
+// The Document Library's text extraction and OCR (migration 0165)
+// ---------------------------------------------------------------------------
+//
+// Two things the NAS cannot get for itself:
+//
+//   1. `@napi-rs/canvas` — the THIRD native module in the tree. PDF.js draws a page
+//      to a canvas, and Node has none, so rasterising a scanned PDF for OCR is
+//      impossible without it. Like better-sqlite3 and sharp it publishes an arm64
+//      prebuild, so it is downloaded rather than compiled.
+//   2. `eng.traineddata` — tesseract.js otherwise fetches this ~5MB model from a CDN
+//      the FIRST TIME someone presses the OCR button, and caches it in the process's
+//      working directory. On the NAS that is a silent network dependency behind DSM's
+//      reverse proxy, and a failure that only shows up in front of a user. Vendored
+//      here and pointed at with MYHOMEBASE_TESSDATA.
+//
+// Neither is fatal to the app: a missing canvas means scanned PDFs cannot be OCR'd,
+// a missing model means OCR falls back to downloading one. So these steps WARN rather
+// than abort — unlike better-sqlite3, without which nothing boots at all.
+step(`Swapping in the ${TARGET} @napi-rs/canvas (for scanned-PDF OCR)`);
+{
+  const canvasDir = path.join(ROOT, "node_modules", "@napi-rs", "canvas");
+  if (!existsSync(canvasDir)) {
+    console.warn("  ! @napi-rs/canvas is not installed — skipping. Scanned PDFs will not OCR.");
+  } else {
+    const version = JSON.parse(readFileSync(path.join(canvasDir, "package.json"), "utf8")).version;
+    // `-gnu`, not `-musl`: DSM is a glibc system.
+    const pkg = `@napi-rs/canvas-linux-arm64-gnu`;
+    const url = `https://registry.npmjs.org/${pkg}/-/canvas-linux-arm64-gnu-${version}.tgz`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`  ! No ${TARGET} prebuild for ${pkg}@${version} (HTTP ${res.status}).`);
+      console.warn("  ! Scanned-PDF OCR will not work on the NAS. Text-layer reads still will.");
+    } else {
+      const scratchDir = mkdtempSync(path.join(tmpdir(), "mhb-canvas-"));
+      const tgz = path.join(scratchDir, "canvas.tgz");
+      writeFileSync(tgz, Buffer.from(await res.arrayBuffer()));
+      // A RELATIVE path with `cwd`, never the absolute one: GNU tar reads a leading
+      // `C:` as `host:path` and tries to resolve "C" as a remote machine, which fails
+      // with "Cannot connect to C: resolve failed". The two tar calls above dodge it
+      // the same way — this one did not, and would have broken the first time anyone
+      // published from Windows.
+      execFileSync("tar", ["-xzf", path.relative(scratchDir, tgz)], { cwd: scratchDir });
+      const dest = path.join(OUT, "node_modules", "@napi-rs", "canvas-linux-arm64-gnu");
+      mkdirSync(path.dirname(dest), { recursive: true });
+      cpSync(path.join(scratchDir, "package"), dest, { recursive: true });
+      rmSync(scratchDir, { recursive: true, force: true });
+      console.log(`  Shipped ${pkg}@${version}`);
+
+      // Drop every OTHER platform's binary that file-tracing swept in.
+      //
+      // The build runs on Windows, so Next traces `@napi-rs/canvas-win32-x64-msvc`
+      // into the standalone output — a ~10MB Skia binary that cannot load on the NAS
+      // and that `js-binding.js` would try first if it is present. Removing it is not
+      // just housekeeping: the loader picks by platform, and a tree holding two
+      // bindings is a tree where the wrong one can win.
+      const napiDir = path.join(OUT, "node_modules", "@napi-rs");
+      if (existsSync(napiDir)) {
+        for (const entry of readdirSync(napiDir)) {
+          const keep = entry === "canvas" || entry === "canvas-linux-arm64-gnu";
+          if (!keep && entry.startsWith("canvas-")) {
+            rmSync(path.join(napiDir, entry), { recursive: true, force: true });
+            console.log(`  Removed ${entry} (wrong platform)`);
+          }
+        }
+      }
+    }
+  }
+}
+
+step("Copying tesseract.js-core (the OCR engine the bundler cannot trace)");
+{
+  // `tesseract.js` picks ONE of six WASM builds at runtime, by probing for SIMD
+  // support — see `tesseract.js/src/worker-script/node/getCore.js`, which calls
+  // `require('tesseract.js-core/tesseract-core-<variant>')` only after the probe.
+  //
+  // No bundler can follow that: the specifier does not exist until the process is
+  // already running, so Next's file tracing leaves `tesseract.js-core` out of
+  // `.next/standalone` entirely. Verified on this build — `serverExternalPackages`
+  // gets `tesseract.js` itself traced, and its core still goes missing.
+  //
+  // So the whole package is copied by hand. It is ~44MB, which is most of what OCR
+  // costs on disk, and shipping it is the difference between the OCR button working
+  // on the NAS and throwing MODULE_NOT_FOUND the first time anyone presses it.
+  const coreSource = path.join(ROOT, "node_modules", "tesseract.js-core");
+  if (!existsSync(coreSource)) {
+    console.warn("  ! tesseract.js-core is not installed — OCR will not work on the NAS.");
+  } else {
+    const coreDest = path.join(OUT, "node_modules", "tesseract.js-core");
+    mkdirSync(path.dirname(coreDest), { recursive: true });
+    cpSync(coreSource, coreDest, { recursive: true });
+    const wasmCount = readdirSync(coreDest).filter((f) => f.endsWith(".wasm")).length;
+    if (wasmCount === 0) {
+      throw new Error(
+        "Copied tesseract.js-core but found no .wasm inside it — OCR would fail on the NAS.",
+      );
+    }
+    console.log(`  Shipped tesseract.js-core (${wasmCount} wasm builds)`);
+  }
+}
+
+step("Vendoring the OCR language model (so the NAS never downloads one)");
+{
+  // Looked for where tesseract.js caches it after a local run, then beside the repo.
+  // Not fetched from the CDN here on purpose: if it is not already on this machine,
+  // the build should say so rather than quietly adding a network dependency of its own.
+  const candidates = [
+    path.join(ROOT, "eng.traineddata"),
+    path.join(ROOT, "tessdata", "eng.traineddata"),
+  ];
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) {
+    console.warn("  ! No eng.traineddata found in the repo root or ./tessdata.");
+    console.warn("  ! The NAS will download it on first OCR. To vendor it, run the OCR");
+    console.warn("  ! button once locally and copy the cached eng.traineddata here.");
+  } else {
+    const dest = path.join(OUT, "tessdata");
+    mkdirSync(dest, { recursive: true });
+    cpSync(found, path.join(dest, "eng.traineddata"));
+    console.log(`  Shipped ${path.basename(found)} — set MYHOMEBASE_TESSDATA=<app>/tessdata`);
+  }
+}
+
 step("Bundling the migration runner (so the NAS needs no tsx)");
 await build({
   entryPoints: [path.join(ROOT, "scripts", "migrate.ts")],

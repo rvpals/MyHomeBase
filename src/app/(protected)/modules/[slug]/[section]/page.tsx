@@ -89,6 +89,7 @@ function renderSection(
   requestedTopic: string | undefined,
   requestedCloneId: number | undefined,
   requestedTreeDocumentId: number | undefined,
+  documentsContents: boolean,
 ) {
   if (slug === CLASSROOM_MODULE_SLUG && isClassroomSection(section)) {
     return (
@@ -194,6 +195,7 @@ function renderSection(
         view={section}
         // The same three filter params Household and Clips read.
         search={recipeSearch}
+        searchContents={documentsContents}
         category={recipeCategory}
         tag={recipeTag}
         // The same ?edit= the Journal report and Classroom exam editors use — one
@@ -303,6 +305,7 @@ export default async function ModuleSectionPage({
     // travels; the section re-reads the record, so the pane always shows what the
     // document says now.
     doc?: string | string[];
+    contents?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -331,6 +334,7 @@ export default async function ModuleSectionPage({
     topic,
     clone,
     doc,
+    contents,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -381,6 +385,9 @@ export default async function ModuleSectionPage({
   const recipeSearch = Array.isArray(search) ? search[0] : search;
   const recipeCategory = Array.isArray(category) ? category[0] : category;
   const recipeTag = Array.isArray(tag) ? tag[0] : tag;
+  // The Document Library's "search inside files" toggle (migration 0165). Present in
+  // the URL only when on, so every other module's links are unchanged.
+  const documentsContents = (Array.isArray(contents) ? contents[0] : contents) === "1";
   // Same first-element rule. Raw again: an unknown tab key is ignored by the
   // strip rather than 404ing a link that was valid before a tab was renamed.
   const requestedTab = Array.isArray(tab) ? tab[0] : tab;
@@ -458,6 +465,7 @@ export default async function ModuleSectionPage({
     requestedTopic,
     requestedCloneId,
     requestedTreeDocumentId,
+    documentsContents,
   );
   if (!body) notFound();
 

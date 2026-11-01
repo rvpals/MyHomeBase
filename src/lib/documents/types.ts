@@ -33,6 +33,9 @@ export interface Document {
  * documents should not pull 600 file records with it. Anything editing a document
  * fetches the full record and its attachments instead.
  */
+/** What a list row can say about a document's recovered text. See `textState`. */
+export type DocumentTextState = "none" | "text-layer" | "ocr";
+
 export interface DocumentSummary {
   id: number;
   title: string;
@@ -43,6 +46,21 @@ export interface DocumentSummary {
   attachmentCount: number;
   /** The sum of their `byteSize`, for a "how big is this" column. */
   totalBytes: number;
+  /**
+   * What the list can say about this document's text, in one word (migration 0166).
+   *
+   * A projection of its attachments' extraction rows, not a stored column:
+   *
+   *   `none`       — nothing readable has been recovered yet
+   *   `text-layer` — every file that yielded text did so exactly
+   *   `ocr`        — at least one file was read by recognition
+   *
+   * `ocr` wins over `text-layer` when a document holds both, because it is the
+   * weaker claim: a reader deciding whether to trust a search hit needs to know that
+   * *some* of this document's text was guessed at, and a badge saying "exact" over a
+   * document that is half OCR would be the wrong reassurance.
+   */
+  textState: DocumentTextState;
   createdBy: number | null;
   createdAt: string;
   updatedAt: string;
@@ -170,3 +188,135 @@ export interface RecycledDocument {
    */
   deletedFolder: string;
 }
+
+// ---------------------------------------------------------------------------
+// Extracted text and search (migration 0165)
+// ---------------------------------------------------------------------------
+
+/** How the text was recovered: exactly, or by reading a picture of the words. */
+export type AttachmentTextSource = "text-layer" | "ocr";
+
+/** What happened when the file was read. Mirrors `TextExtractionStatus`. */
+export type AttachmentTextStatus = "extracted" | "needs-ocr" | "unsupported" | "failed";
+
+/**
+ * One attachment's recovered text, as stored.
+ *
+ * The full record, carrying `body`. A list screen that only needs to know *whether* a
+ * file has been read takes `AttachmentTextSummary` instead — the same deliberate
+ * projection `DocumentSummary` is to `Document`, and for the same reason: a library of
+ * 200 documents should not drag every extracted page into a render.
+ */
+export interface AttachmentText {
+  attachmentId: number;
+  documentId: number;
+  /** The recovered text, already normalised. `""` for every status but `extracted`. */
+  body: string;
+  status: AttachmentTextStatus;
+  source: AttachmentTextSource;
+  pageCount: number;
+  charCount: number;
+  /** OCR's 0-100 self-report, or `undefined` for a text-layer read. Advisory only. */
+  confidence?: number;
+  elapsedMs: number;
+  /** The attachment's hash when this was extracted — what makes the cache trustworthy. */
+  contentHash: string;
+  /**
+   * Whether OCR has been run against these exact bytes, whatever it found
+   * (migration 0166).
+   *
+   * What lets a scheduled job skip a scan it has already failed to read, instead of
+   * re-recognising it on every pass forever. NOT derivable from `source`, which only
+   * survives on a row where OCR *succeeded* — a failed attempt looks like a
+   * text-layer row, and that is exactly the one the job must skip.
+   */
+  ocrAttempted: boolean;
+  indexedAt: string;
+  /** Empty unless `status` is `failed`. */
+  error: string;
+}
+
+/** What a row needs to show its reading state, without the body. */
+export interface AttachmentTextSummary {
+  attachmentId: number;
+  status: AttachmentTextStatus;
+  source: AttachmentTextSource;
+  charCount: number;
+  confidence?: number;
+  indexedAt: string;
+}
+
+/**
+ * One full-text hit: which document, and the passage that matched.
+ *
+ * `snippet` arrives from FTS5 with the matched terms wrapped in `[` and `]` — the
+ * view turns those into marks. Built in SQL rather than by slicing the body in JS
+ * because FTS5 knows where the match actually was, and a JS `indexOf` would miss a
+ * stemmed or diacritic-folded hit entirely.
+ */
+export interface AttachmentTextSearchHit {
+  attachmentId: number;
+  documentId: number;
+  originalName: string;
+  snippet: string;
+}
+
+// ---------------------------------------------------------------------------
+// Prefill templates (migration 0169)
+// ---------------------------------------------------------------------------
+//
+// A named set of field values a new document can be filed from. Stored as JSON in
+// doc_prefill_templates.fields_json; see migration 0169 for why that isn't a child
+// table, and why `mode` is here when only one value is legal.
+
+/**
+ * The editor fields a template can prefill — which is every field the New Document
+ * form has that isn't a file.
+ *
+ * Attachments are deliberately absent: a template fills *form fields*, and the
+ * bytes of a document are the one part that is genuinely new each time. There is
+ * nothing a stored template could say about them that the file picker doesn't.
+ */
+export type DocumentPrefillField = "title" | "description" | "categories" | "tags";
+
+/**
+ * How a field's value is produced when the template is applied.
+ *
+ * `literal` uses `value` as typed, and is currently the **only** legal mode — a
+ * document has no date or time field, so there is nothing to resolve at apply-time.
+ * The type is kept as a union of one so the stored shape matches the Journal's, and
+ * so a future dated field costs a schema change rather than a data migration. See
+ * migration 0169.
+ */
+export type DocumentPrefillMode = "literal";
+
+/** One field of a template. */
+export interface DocumentPrefillFieldValue {
+  field: DocumentPrefillField;
+  mode: DocumentPrefillMode;
+  value: string;
+}
+
+/** A named template as stored. */
+export interface DocumentPrefillTemplate {
+  id: number;
+  name: string;
+  description: string;
+  /** Disabled templates stay on the Prefill Templates screen but leave the editor
+   *  form's picker. See 0169. */
+  isEnabled: boolean;
+  fields: DocumentPrefillFieldValue[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * The subset of the New Document form a template can fill.
+ *
+ * Plain strings throughout, including `categories` and `tags` — which the form
+ * holds as `string[]`. The template stores the delimited text and
+ * `applyPrefillTemplate` returns it; splitting into the arrays the chip control
+ * wants happens in `prefillValuesToFormState`, one function over, so the view never
+ * parses anything. See migration 0169 on why `value` is one type for every field.
+ */
+export type DocumentPrefillFormValues = Record<DocumentPrefillField, string>;

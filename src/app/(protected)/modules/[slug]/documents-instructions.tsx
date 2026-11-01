@@ -73,6 +73,35 @@ export function DocumentsInstructions({ section }: { section: DocumentsSection }
     );
   }
 
+  if (section === "templates") {
+    return (
+      <div className="flex flex-col gap-2 text-sm text-muted">
+        <p>
+          A <strong className="text-ink">prefill template</strong> is a named set of field
+          values a new document can start from. Most documents of a kind are filed the same
+          way — every utility bill carries the same category and tags, and only the file is
+          new — so a template saves retyping them.
+        </p>
+        <p>
+          Build one by picking a field and the value it should start with. Anything you
+          leave out is simply not filled. Then, on the{" "}
+          <strong className="text-ink">New Document</strong> screen, choose the template
+          from the picker at the top of the form.
+        </p>
+        <p>
+          Applying a template <strong className="text-ink">only fills what is blank</strong>.
+          A title you have already typed, or categories you have already chosen, are left
+          exactly as they are — so picking the wrong template can never lose work.
+        </p>
+        <p>
+          <strong className="text-ink">Disable</strong> a template you are done with for now
+          — a closed claim, last year's taxes. It drops out of the New Document picker but
+          stays here, with its values, ready to enable again.
+        </p>
+      </div>
+    );
+  }
+
   if (section === "recycled") {
     return (
       <div className="flex flex-col gap-2 text-sm text-muted">

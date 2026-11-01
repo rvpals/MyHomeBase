@@ -5,11 +5,19 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { BusyOverlay } from "@/components/busy-overlay";
 import { FileUploaderZone, type AttachedFile } from "@/components/file-uploader-zone";
-// From the leaf module, not the barrel: see the note in documents-main-view.tsx — the
-// barrel re-exports the file store, which imports `node:fs/promises`.
+import { TokenPicker } from "@/components/token-picker";
+// From the leaf modules, not the barrel: see the note in documents-main-view.tsx —
+// the barrel re-exports the file store, which imports `node:fs/promises`. `prefill.ts`
+// itself imports only types and the schema, so reaching it directly is safe.
+import {
+  applyPrefillTemplate,
+  formStateToPrefillValues,
+  prefillValuesToFormState,
+} from "@/lib/documents/prefill";
 import type {
   Document,
   DocumentAttachment,
+  DocumentPrefillTemplate,
   DocumentTaxonomyItem,
 } from "@/lib/documents/types";
 import { PAGE_CONTAINER } from "../../page-container";
@@ -37,6 +45,7 @@ export function DocumentsEditorView({
   maxFileBytes,
   maxFilesPerDocument,
   isFolderConfigured,
+  prefillTemplates = [],
 }: {
   /** Absent when filing a new document. */
   document?: Document;
@@ -47,6 +56,14 @@ export function DocumentsEditorView({
   maxFilesPerDocument: number;
   /** False until an admin sets the folder — attaching is refused until then. */
   isFolderConfigured: boolean;
+  /**
+   * Enabled prefill templates, for the form's picker (migration 0169).
+   *
+   * Empty when editing: the route hands them down only for `new`. Prefilling a
+   * document that already exists is a different gesture, and offering it here would
+   * invite a filer to half-overwrite something they filed months ago.
+   */
+  prefillTemplates?: DocumentPrefillTemplate[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -55,6 +72,11 @@ export function DocumentsEditorView({
   const [description, setDescription] = useState(document?.description ?? "");
   const [chosenCategories, setChosenCategories] = useState<string[]>(document?.categories ?? []);
   const [chosenTags, setChosenTags] = useState<string[]>(document?.tags ?? []);
+
+  // `TokenPicker` takes plain names; the taxonomy rows carry counts and ids the
+  // form has no use for.
+  const categoryNames = categories.map((item) => item.name);
+  const tagNames = tags.map((item) => item.name);
 
   // The files already on the server, kept in state so a removal disappears from the
   // list at once rather than only after a round trip.
@@ -72,6 +94,41 @@ export function DocumentsEditorView({
   const [busyMessage, setBusyMessage] = useState<string>();
 
   const isEditing = document !== undefined;
+
+  // Which template the picker is showing. Local to the control: applying copies values
+  // into the four field states and nothing afterwards depends on which template they
+  // came from — the same "copied, not linked" rule migration 0169 records.
+  const [prefillId, setPrefillId] = useState("");
+
+  /**
+   * Fills the blank fields from the chosen template.
+   *
+   * The merge itself is `applyPrefillTemplate` in lib — this only maps between the
+   * form's four pieces of state and the flat string shape the merge works on, through
+   * the two converters that own the comma-splitting rule.
+   */
+  function applyPrefill(rawId: string) {
+    setPrefillId(rawId);
+    const template = prefillTemplates.find((candidate) => String(candidate.id) === rawId);
+    if (!template) return;
+
+    const filled = prefillValuesToFormState(
+      applyPrefillTemplate(
+        template,
+        formStateToPrefillValues({
+          title,
+          description,
+          categories: chosenCategories,
+          tags: chosenTags,
+        }),
+      ),
+    );
+
+    setTitle(filled.title);
+    setDescription(filled.description);
+    setChosenCategories(filled.categories);
+    setChosenTags(filled.tags);
+  }
 
   const attachedFiles: AttachedFile[] = attached.map((file) => ({
     id: file.id,
@@ -220,6 +277,33 @@ export function DocumentsEditorView({
     <div className={PAGE_CONTAINER}>
       <div className="grid grid-cols-2 gap-6 max-lg:grid-cols-1">
         <div className="flex flex-col gap-4">
+          {/* Only when there is something to pick. An empty dropdown on the New
+              Document form would be a control that explains nothing about why it is
+              empty — the Templates screen is where templates are made. */}
+          {prefillTemplates.length > 0 && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted">
+                Prefill template
+              </span>
+              <select
+                className={INPUT_CLASS}
+                value={prefillId}
+                onChange={(event) => applyPrefill(event.target.value)}
+              >
+                <option value="">Start from blank</option>
+                {prefillTemplates.map((template) => (
+                  <option key={template.id} value={String(template.id)}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-muted">
+                Fills only the fields you have left blank — nothing you have already typed or
+                chosen is replaced.
+              </span>
+            </label>
+          )}
+
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted">Title</span>
             <input
@@ -242,20 +326,29 @@ export function DocumentsEditorView({
             />
           </label>
 
-          <TaxonomyPicker
+          {/* The shared combobox, the same control the journal's Categories and Tags
+              use (components.md → TokenPicker). It replaced this screen's local
+              picker — a create `<input>` beside a "Pick existing…" `<select>` — which
+              was two controls to squeeze into one column and gave a typo its own
+              silent new category. */}
+          <TokenPicker
             label="Categories"
             hint="What kind of document this is."
-            available={categories}
-            chosen={chosenCategories}
+            value={chosenCategories}
             onChange={setChosenCategories}
+            options={categoryNames}
+            allowCreate
+            createPlaceholder="Filter or add a category…"
           />
 
-          <TaxonomyPicker
+          <TokenPicker
             label="Tags"
             hint="What it is about."
-            available={tags}
-            chosen={chosenTags}
+            value={chosenTags}
             onChange={setChosenTags}
+            options={tagNames}
+            allowCreate
+            createPlaceholder="Filter or add a tag…"
           />
         </div>
 
@@ -339,103 +432,6 @@ export function DocumentsEditorView({
         message={busyMessage ?? ""}
         progress="indeterminate"
       />
-    </div>
-  );
-}
-
-/**
- * Pick from the existing list, or type a new name.
- *
- * Local to this screen rather than shared: it is two inputs and a chip row, and
- * nothing else needs it yet. Promote it on the second caller, per ARCHITECTURE.md.
- */
-function TaxonomyPicker({
-  label,
-  hint,
-  available,
-  chosen,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  available: DocumentTaxonomyItem[];
-  chosen: string[];
-  onChange: (names: string[]) => void;
-}) {
-  const [typed, setTyped] = useState("");
-
-  function add(name: string) {
-    const trimmed = name.trim();
-    if (trimmed === "") return;
-    // Case-insensitive, matching the taxonomy tables: "Tax" and "tax" are one name,
-    // and two chips that look identical would be a bug the reader cannot fix.
-    if (chosen.some((existing) => existing.toLowerCase() === trimmed.toLowerCase())) return;
-    onChange([...chosen, trimmed]);
-    setTyped("");
-  }
-
-  const unchosen = available.filter(
-    (item) => !chosen.some((name) => name.toLowerCase() === item.name.toLowerCase()),
-  );
-
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs font-medium uppercase tracking-wide text-muted">{label}</span>
-      <span className="text-xs text-muted">{hint}</span>
-
-      {chosen.length > 0 && (
-        <ul className="mt-1 flex flex-wrap gap-1">
-          {chosen.map((name) => (
-            <li
-              key={name}
-              className="flex items-center gap-1 rounded-full border border-line bg-paper px-2 py-0.5 text-xs text-ink"
-            >
-              {name}
-              <button
-                type="button"
-                aria-label={`Remove ${name}`}
-                title={`Remove ${name}`}
-                className="text-muted hover:text-red-400"
-                onClick={() => onChange(chosen.filter((entry) => entry !== name))}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="mt-1 flex gap-2 max-lg:flex-col">
-        <input
-          className={`${INPUT_CLASS} flex-1`}
-          value={typed}
-          placeholder={`Add a ${label.toLowerCase().replace(/s$/, "")}`}
-          onChange={(event) => setTyped(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              add(typed);
-            }
-          }}
-        />
-        {unchosen.length > 0 && (
-          <select
-            className={INPUT_CLASS}
-            value=""
-            onChange={(event) => add(event.target.value)}
-          >
-            {/* Blank first, and the value stays "" so this reads as an action rather
-                than a current selection — a <select> whose value matches no option
-                silently shows the first one. */}
-            <option value="">Pick existing…</option>
-            {unchosen.map((item) => (
-              <option key={item.name} value={item.name}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
     </div>
   );
 }

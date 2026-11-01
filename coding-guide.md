@@ -354,6 +354,78 @@ sanitised on save (`sanitizeReportHtml` strips `<script>`, `on*=` handlers and
 data and must print as text, the template is author-written markup that must keep
 working. Don't collapse them into one pass.
 
+## Three channels, and which one you want
+
+The app has three places to put something after the fact. Picking the wrong one is
+the mistake worth preventing, so start here:
+
+| Channel | Question it answers | Volume | Reaches a reader? |
+|---|---|---|---|
+| `sys_messages` | What does somebody still have to act on? | Low | Yes — the header bell |
+| `sys_scheduled_run_history` | Did the job run, and how did the pass go? | One row per pass | No |
+| `sys_system_log` | What was the code doing while it ran? | High, when switched on | No |
+
+**A line in the system log never reaches the bell**, and nothing prunes the message
+queue on a timer. Those two facts are why diagnostics do not go in `sys_messages`:
+one debugging session would bury the monitor alerts the bell exists to deliver, and
+the rows would stay there until somebody pressed Purge.
+
+### The system log: DEBUG and OPERATIONAL
+
+`sys_system_log` (migrations/0167) has **two independent switches**, both off by
+default, edited under Administration → Configuration → Application Configuration:
+
+- **OPERATIONAL** — routine "the system did a thing". Every scheduled job as it is
+  triggered and as it finishes.
+- **DEBUG** — detail planted at a specific place while something is being diagnosed.
+
+Independent, not a severity ladder: DEBUG does not imply OPERATIONAL. You want
+OPERATIONAL alone to watch the scheduler on the NAS, and DEBUG alone to chase one bug.
+
+Take a `SystemLogger` and call it:
+
+```ts
+log.operational("scheduled-jobs", `Job "${label}" triggered.`);
+
+if (log.enabled("debug")) {
+  log.debug("documents/text-index", `Indexed "${name}" — ${words} words in ${elapsed}.`);
+}
+```
+
+Three rules the implementation enforces, worth knowing before you plant a line:
+
+1. **A line costs nothing when its switch is off.** The settings are cached (~5s), and
+   `message` may be a **thunk** — `() => \`page ${i}: ${summarise(doc)}\`` is never
+   called while the switch is off. Use a thunk wherever building the string costs more
+   than reading two fields. The `enabled()` guard is only needed to skip work done
+   *before* the call.
+2. **A logging call never throws.** Every path swallows its own errors. These calls
+   sit inside the code being diagnosed, often inside a `catch`, and a logger that can
+   fail turns a small bug into a crash at the worst possible moment.
+3. **The switch takes effect without a restart**, within about five seconds.
+
+**`source` is free text** (`"documents/text-index"`), deliberately unlike
+`sys_messages.module`, which is a fixed enum. A new file must be able to log a line
+without a schema edit, or lines do not get planted when they are needed.
+
+### Background jobs are already instrumented — do not add it per runner
+
+Every job's trigger and finish is logged OPERATIONAL **by one decorator**,
+`withSystemLog` in `src/lib/scheduled-jobs/logged-repository.ts`, wrapped around
+`scheduledRunRepo` once in `wiring.ts`. Every runner already calls `start`/`finish`,
+so all seven jobs — and the eighth, when it arrives — are covered with no runner
+changes. Same trick, and the same reason, as the SQLite repository deriving run
+history from that pair (migrations/0135).
+
+So: **do not add `log.operational("...", "my job started")` to a runner.** It is
+already there, and you would get two lines per pass.
+
+### Retention is not optional here
+
+Unlike the message queue, this table prunes itself: the repository drops the oldest
+rows past `system_log_max_rows` (default 5,000). It has to. With OPERATIONAL on, the
+Hello, world! job alone writes about 2,880 lines a day at its default cadence.
+
 ## The message queue: telling the reader something after the fact
 
 `sys_messages` (migration 0109) is the app-wide place for a notice nobody was

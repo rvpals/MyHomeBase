@@ -478,9 +478,11 @@ export function PictionaryRules() {
         The one game here played by the whole room rather than by one person. Everyone
         sits round a single device: each round it names a{" "}
         <strong className="text-ink">drawer</strong>, shows them a word nobody else can
-        see, and starts a clock. They draw it; everyone else shouts guesses out loud.
-        When someone gets it, the drawer taps{" "}
-        <strong className="text-ink">Someone got it</strong> and then taps who.
+        see, and starts a clock. The drawer reads the word, taps{" "}
+        <strong className="text-ink">Start guessing</strong> to hide it, and turns the
+        screen round. They draw; everyone else shouts guesses out loud. When someone gets
+        it, the drawer taps <strong className="text-ink">Someone got it</strong> and then
+        taps who.
       </p>
       <p>
         Type everyone&rsquo;s name &mdash; anyone can play, not just people with an
@@ -495,6 +497,13 @@ export function PictionaryRules() {
           drawer draws and nothing else &mdash; the only rule the game really has.
         </li>
         <li>
+          <strong className="text-ink">Hide the word before anyone else sees it.</strong>{" "}
+          The prompt sits on the same screen as the canvas, so{" "}
+          <strong className="text-ink">Start guessing</strong> blanks it. If the drawer
+          forgets what they are drawing, <strong className="text-ink">Peek</strong> brings
+          it back &mdash; turn the screen away first.
+        </li>
+        <li>
           <strong className="text-ink">Both sides score.</strong> A correct guess pays
           the guesser and the drawer, since a drawing nobody can read is worth as little
           as a table that never guesses. The guesser takes the larger share.
@@ -505,9 +514,15 @@ export function PictionaryRules() {
           the buzzer.
         </li>
         <li>
-          <strong className="text-ink">A word you can&rsquo;t draw can be skipped</strong>{" "}
-          before the clock starts. It costs nothing and you keep your turn &mdash; but
-          that word is gone for the rest of the session.
+          <strong className="text-ink">Can&rsquo;t picture the word? Tap New word.</strong>{" "}
+          It sits beside the prompt, gives you a different one and{" "}
+          <em>keeps your turn</em> &mdash; the clock carries on from where it is, so
+          swapping is not free time. The rejected word is gone for the session.
+        </li>
+        <li>
+          <strong className="text-ink">Skip the turn</strong>, on the hand-over screen, is
+          the other thing: it gives the go up entirely and passes the device to the next
+          player. Nobody scores, and it still counts as one of the session&rsquo;s rounds.
         </li>
         <li>
           <strong className="text-ink">Nothing is saved at all.</strong> The drawing is

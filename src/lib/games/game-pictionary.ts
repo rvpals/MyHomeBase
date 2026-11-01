@@ -337,12 +337,43 @@ export function missRound(state: PictionaryState, random: Random): PictionarySta
 }
 
 /**
- * The drawer rejects the prompt before drawing it.
+ * The drawer swaps the prompt for another one, keeping their turn.
+ *
+ * This is what "skip" means once the word has been *seen*: a drawer who cannot picture
+ * "gravity" wants a different word, not to lose their go. So the round continues — same
+ * drawer, same round number, same clock position — and only `current` changes.
+ *
+ * The clock is deliberately **not** reset. Reading a word, rejecting it and drawing a
+ * replacement all happen inside one turn's budget; refilling the clock on every swap
+ * would let a drawer stall indefinitely and then start fresh, which is a different game.
+ * The discarded word still joins `used`, so a swap cannot hand back the word just
+ * rejected, and it is gone for the rest of the session.
+ *
+ * Allowed from `handoff` as well as `drawing`: the word is on screen in both, and a
+ * drawer who glances at it on the reveal and immediately wants another should not have
+ * to start the clock first. A no-op anywhere else, so a stray tap during judging cannot
+ * silently change the word a round is about to be scored on.
+ */
+export function swapWord(state: PictionaryState, random: Random): PictionaryState {
+  if (state.phase !== "handoff" && state.phase !== "drawing") return state;
+  if (!state.current) return state;
+
+  const next = drawFrom(state.pool, state.tier, state.used, random);
+
+  return { ...state, current: next, used: [...state.used, next.word] };
+}
+
+/**
+ * The drawer rejects the prompt before drawing it, ending the round.
  *
  * Only from `handoff` — once the clock has run, the round is played out and ends as a
  * guess or a miss. A skip costs nobody points and does **not** count as a turn taken,
  * so the drawer still gets a real turn; it does consume the word, which is already in
  * `used` and so will not come back this session.
+ *
+ * Distinct from `swapWord` above, which keeps the turn and only changes the prompt.
+ * That is what the drawer's own "new word" button calls; this ends the round and passes
+ * the device on, and is kept for a caller that wants to abandon a turn outright.
  */
 export function skipRound(state: PictionaryState, random: Random): PictionaryState {
   if (state.phase !== "handoff" || !state.current) return state;

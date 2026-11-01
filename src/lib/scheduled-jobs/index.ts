@@ -28,6 +28,11 @@ export {
 export { scheduledRunSchema, scheduledRunStatusSchema } from "./schema";
 export type { ScheduledRunRepository } from "./ports";
 export { SqliteScheduledRunRepository } from "./repository";
+export {
+  SCHEDULED_JOBS_LOG_SOURCE,
+  describeJobKey,
+  withSystemLog,
+} from "./logged-repository";
 export { describeLastRun, listScheduledJobs } from "./jobs";
 export type { ActiveTaskInputs, JobSettings } from "./active-tasks";
 export { isJobArmed, listActiveTasks, listInactiveTasks } from "./active-tasks";

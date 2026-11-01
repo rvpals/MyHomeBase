@@ -317,6 +317,17 @@ folder is supported (each upload then reports "upload it again" rather than erro
 Worth knowing for **backups** — these are uploaded copies, not household data, so the
 folder can be excluded.
 
+**OCR for the Document Library needs one more line in `.env` on an existing install:**
+`MYHOMEBASE_TESSDATA=/volume1/app/myhomebase/tessdata`. The publish ships
+`tessdata/eng.traineddata` (~5 MB) there, along with the arm64 `@napi-rs/canvas` and
+`tesseract.js-core` (~44 MB); without the variable, `tesseract.js` downloads the language
+model from a CDN the first time someone presses OCR. Like the music root it is read at
+startup, so **restart the app** after adding it. Read the publish output for `!` lines — the
+canvas, core and model steps warn rather than abort, and a missing one means scanned PDFs
+cannot be OCR'd on the NAS (text-layer reads still work). OCR holds ~320 MB while it runs,
+so leave **Document text indexing → Read scans with OCR** off in Admin → Background Tasks
+unless the NAS has the headroom.
+
 **The journal's photo archive is NOT set here.** It lives in the app, at **My Journal →
 Configuration → Photo folder**, with a **Check Access** button that reports exactly what
 the app can see at that path — the year folders it found, and whether it could read files
@@ -617,7 +628,7 @@ hand-copied deployment won't have it.
 | Start script | `/volume1/app/myhomebase/start.sh` |
 | Port | 3000 (localhost only; DSM's reverse proxy publishes 443) |
 | Node | `/usr/local/bin/node` — Package Center v20, **ABI 115** |
-| Env vars | `MYHOMEBASE_DB`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ADMIN_SIGNUP_SECRET` |
+| Env vars | `MYHOMEBASE_DB`, `MYHOMEBASE_TESSDATA`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ADMIN_SIGNUP_SECRET` |
 | Build command | `npm run publish:nas` in `E:\Code\Claude_Project\MyHomeBase` → `dist-nas/` |
 | Build + deploy | `.\REBUILD_PUBLISH_NAS.bat` (SMB, preserves data/env/start.sh) |
 | Build + deploy + restart now | `.\REBUILD_PUBLISH_NAS_START.bat` (the above, then runs `start.sh` over SSH instead of waiting for the keepalive) |

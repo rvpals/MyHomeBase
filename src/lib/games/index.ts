@@ -614,6 +614,7 @@ export {
   standings as pictionaryStandings,
   startGame as startPictionary,
   stopDrawing,
+  swapWord,
   tick as tickPictionary,
   tickIntervalMs as pictionaryTickIntervalMs,
   type PictionaryEntrant,

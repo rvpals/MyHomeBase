@@ -45,6 +45,7 @@ function ModuleBody({
   clipsCategory,
   clipsTag,
   clipsTab,
+  documentsContents,
 }: {
   slug: string;
   isCurrentUserAdmin: boolean;
@@ -55,6 +56,8 @@ function ModuleBody({
   clipsCategory?: string;
   clipsTag?: string;
   clipsTab?: string;
+  /** The Document Library's "search inside files" toggle (migration 0165). */
+  documentsContents?: boolean;
 }) {
   // Investments, My Journal, and Expense all use a tree nav: the module root
   // is their home/dashboard, and every other section is its own route under
@@ -119,6 +122,7 @@ function ModuleBody({
       <DocumentsSection
         view="main"
         search={clipsSearch}
+        searchContents={documentsContents ?? false}
         category={clipsCategory}
         tag={clipsTag}
         isAdmin={isCurrentUserAdmin}
@@ -151,10 +155,11 @@ export default async function ModulePage({
     category?: string | string[];
     tag?: string | string[];
     tab?: string | string[];
+    contents?: string | string[];
   }>;
 }) {
   const { slug } = await params;
-  const { classId, search, category, tag, tab } = await searchParams;
+  const { classId, search, category, tag, tab, contents } = await searchParams;
   // A repeated ?classId= yields an array; take the first rather than joining.
   const rawClassId = Array.isArray(classId) ? classId[0] : classId;
   const requestedClassId = Number(rawClassId) || undefined;
@@ -165,6 +170,9 @@ export default async function ModulePage({
   const clipsCategory = Array.isArray(category) ? category[0] : category;
   const clipsTag = Array.isArray(tag) ? tag[0] : tag;
   const clipsTab = Array.isArray(tab) ? tab[0] : tab;
+  // The Document Library's "search inside files" toggle (migration 0165). Present
+  // only when on, so the common URL is unchanged from before it existed.
+  const documentsContents = (Array.isArray(contents) ? contents[0] : contents) === "1";
 
   // Before the lookup, because this slug no longer resolves to a module row.
   if (slug === RETIRED_ATTENDANCE_SLUG) {
@@ -191,6 +199,7 @@ export default async function ModulePage({
         clipsCategory={clipsCategory}
         clipsTag={clipsTag}
         clipsTab={clipsTab}
+        documentsContents={documentsContents}
       />
     </div>
   );

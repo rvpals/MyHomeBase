@@ -1,8 +1,11 @@
 import type { DecodedImage } from "@/lib/shared/image-upload";
-import type { DocumentFilterInput } from "./schema";
+import type { DocumentFilterInput, DocumentPrefillTemplateWriteData } from "./schema";
 import type {
+  AttachmentText,
+  AttachmentTextSearchHit,
   Document,
   DocumentAttachment,
+  DocumentPrefillTemplate,
   DocumentSummary,
   DocumentTaxonomyItem,
   DuplicateMatch,
@@ -16,6 +19,23 @@ export interface DocumentWriteData {
   categories: string[];
   tags: string[];
   createdBy: number | null;
+}
+
+/** What the repository is handed to store one attachment's recovered text. */
+export interface AttachmentTextWriteData {
+  attachmentId: number;
+  documentId: number;
+  body: string;
+  status: AttachmentText["status"];
+  source: AttachmentText["source"];
+  pageCount: number;
+  charCount: number;
+  confidence?: number;
+  elapsedMs: number;
+  contentHash: string;
+  error: string;
+  /** Whether OCR was run to produce this row, whatever it found (migration 0166). */
+  ocrAttempted: boolean;
 }
 
 /** What the repository is handed to index a newly stored file. */
@@ -146,6 +166,43 @@ export interface DocumentsRepository {
   /** How many documents the bin holds — the number the confirmations quote. */
   countRecycledDocuments(): number;
 
+  // Extracted text and full-text search (migration 0165)
+  /** One attachment's stored text, or undefined when it has never been read. */
+  getAttachmentText(attachmentId: number): AttachmentText | undefined;
+  /** Every extraction for one document, in attachment order. */
+  listAttachmentTextForDocument(documentId: number): AttachmentText[];
+  /**
+   * Stores one attachment's text, replacing any earlier extraction.
+   *
+   * An upsert keyed on `attachment_id`, which is the table's primary key: a second
+   * extraction of the same file must replace the first, not sit beside it, or the FTS
+   * index would hold both and count the document twice.
+   */
+  putAttachmentText(input: AttachmentTextWriteData): void;
+  /** Drops one attachment's cached text. Only a permanent removal calls this. */
+  deleteAttachmentText(attachmentId: number): void;
+  /**
+   * Full-text search over every extraction, best match first.
+   *
+   * Takes the reader's raw words, not an FTS5 expression — the implementation is
+   * responsible for quoting them, because a bare `AND` or a stray `"` typed into a
+   * search box must find documents rather than raise a syntax error.
+   */
+  searchAttachmentText(query: string): AttachmentTextSearchHit[];
+  /**
+   * Attachments with no current extraction — the work list.
+   *
+   * Always includes files never read, files read before hashes existed, and files
+   * whose bytes have changed since — a re-upload hashes differently, so it becomes
+   * work again, which is what "re-OCR only when a new file is uploaded" means.
+   *
+   * `skipAttemptedScans: true` (what a SCHEDULED pass sets) additionally leaves out a
+   * scan OCR has already been run against and could not read. Without it an
+   * unattended job re-recognises every unreadable page on every pass, forever, at
+   * ~10s a page on the DS223. See migration 0166.
+   */
+  listUnindexedAttachments(limit: number, skipAttemptedScans?: boolean): DocumentAttachment[];
+
   // Taxonomy
   listCategories(): DocumentTaxonomyItem[];
   listTags(): DocumentTaxonomyItem[];
@@ -159,4 +216,15 @@ export interface DocumentsRepository {
   getTagIcon(name: string): DecodedImage | undefined;
   setCategoryIcon(name: string, image: DecodedImage | null): void;
   setTagIcon(name: string, image: DecodedImage | null): void;
+
+  // Prefill templates (migration 0169). `savePrefillTemplate` covers both create
+  // and update — the input's optional id decides which, matching an editor that
+  // loads and saves a template whole.
+  listPrefillTemplates(): DocumentPrefillTemplate[];
+  getPrefillTemplateById(id: number): DocumentPrefillTemplate | undefined;
+  /** NOCASE, matching the unique index — what the name-clash check reads. */
+  getPrefillTemplateByName(name: string): DocumentPrefillTemplate | undefined;
+  savePrefillTemplate(input: DocumentPrefillTemplateWriteData): DocumentPrefillTemplate;
+  deletePrefillTemplate(id: number): void;
+  setPrefillTemplateEnabled(id: number, isEnabled: boolean): DocumentPrefillTemplate;
 }

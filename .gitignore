@@ -76,3 +76,10 @@ next-env.d.ts
 # commit.
 /data/tool-uploads/
 /tool-uploads/
+
+# tesseract.js caches its language model in the PROCESS'S WORKING DIRECTORY the first
+# time OCR runs without `langPath` set — which drops a 5MB binary in the repo root.
+# The deliberate copy lives in /tessdata/ and is vendored into the NAS package by
+# publish-nas.mjs; this rule is only here so a stray one can't be committed by accident.
+/eng.traineddata
+/*.traineddata

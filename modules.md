@@ -2445,10 +2445,18 @@ editor's one remaining two-column grid (Category/Rating/Source/Tags) collapses t
 bulk actions with it.
 
 **Document Library** (`documents`) — the household's filed paperwork: a lease, a
-warranty, an insurance policy, a manual. Three sections (Home screen, Categories &
-Tags, Configuration), one library module `src/lib/documents`, six `doc_` tables from
-migration 0159. Driveable as
-`npm run cli -- list-documents [--search X] [--category C] [--tag T] [--id N] [--zip path]`.
+warranty, an insurance policy, a manual. Six sections (Home screen, Document Tree,
+Categories & Tags, Prefill Templates, Recycled Documents, Configuration), one library
+module `src/lib/documents`, six `doc_` tables from migration 0159 plus two from 0165
+and one from 0169. Driveable as
+`npm run cli -- list-documents [--search X] [--category C] [--tag T] [--id N] [--zip path]`,
+`npm run cli -- documents-index-text [--limit N] [--search X] [--ocr] [--dry-run]`
+and `npm run cli -- documents-templates list|show|apply|set|enable|disable|delete`.
+
+Six is exactly where this document puts the nesting threshold, and the section list is
+deliberately still **flat**: group headings for a sixth row would cost a level of
+nesting to organise six items a reader can already see at once. Worth revisiting at
+seven.
 
 The home screen **is** the list, the same shape Clips settled on — filtering and the
 way in to the editor both live at `/modules/documents`, because a second route showing
@@ -2459,7 +2467,35 @@ a route means a half-filled form survives a refresh. Those two routes are delibe
 **not** sections — they carry no nav row and no icon slot, because a slot marks a place
 and "the form I am filling in" is not one.
 
-Five decisions worth knowing:
+**Prefill templates** (migration 0169) are the Journal's 0062 brought over: a named set
+of field values a new document can be filed from, because every utility bill carries the
+same category and tags and only the file is new. `doc_prefill_templates` holds one row
+per template with its fields as JSON, for the reason 0062 gives — a template is read and
+written whole, every time. Applying **fills only what is blank**, so picking the wrong
+template can never lose work and the control needs no confirm and no undo. Two
+differences from the Journal's, both recorded in 0169: there is no `now` mode, since a
+document has no date or time field; and the two list fields store comma-separated text
+and split on commas only, because "Car insurance" is one category and the Journal's
+whitespace split would quietly make it two.
+
+**It can search inside the files** (migration 0165). Every attachment's text is
+recovered once and cached in `doc_attachment_text`, indexed by an FTS5 table. Two
+paths, cheap one first: an embedded PDF text layer (~170ms, exact) and, only when that
+comes back empty, OCR (~3.7s/page on the dev box, measured). The **OCR button beside
+each row's title** runs the expensive path for one document and reports what it cost;
+the "Search inside files" toggle on the filter row consults the index but never
+triggers an extraction. Bulk indexing belongs on the CLI or the background job, both
+of which keep the ~320MB an OCR worker needs off the critical path.
+
+**A file is read once** (migration 0166). It returns to the work list only if its
+bytes change — a re-upload hashes differently — and a scan OCR has already failed to
+read is never retried. That is what makes **Document text indexing**, the scheduled
+job in Admin → Background Tasks, safe to leave armed: a fully-indexed library makes
+every later pass a no-op. It is **off by default**, runs every 6 hours, and drains up
+to 25 files a pass. The pass is deliberately unthrottled per page, so a backlog of
+scans can occupy the NAS for minutes; `batchSize` is the brake to lower first.
+
+Six decisions worth knowing:
 
 - **The file bytes are not in the database.** Files live on a configured folder on the
   NAS at `doc_<id>/<name>`; `doc_attachments` is the index to them. The same split the
@@ -2467,6 +2503,11 @@ Five decisions worth knowing:
   dropped `jrn_entry_images`. The trade is that the two can disagree — a file moved by
   hand leaves a row pointing at nothing — and that is treated as a **normal state**: the
   document still lists it and the serving route answers 404.
+- **The extracted text is a cache, not content.** `doc_attachment_text` can be dropped
+  and rebuilt from the files at any time — which is why migration 0165's rollback is
+  safe and why the row stores the attachment's `content_hash`: if the stored hash no
+  longer matches the file's, the cached text describes bytes that are gone and is
+  re-extracted rather than served. Pressing OCR twice therefore costs one extraction.
 - **One file per attachment, never a `.zip` on disk.** A multi-file document was
   originally specified as `doc_<id>.zip`; keeping each file separate instead is what
   lets any one of them be opened on its own, and makes an edit an add or a remove rather

@@ -146,6 +146,43 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-10-31 — Release (Document text search and OCR, prefill templates, System Log, Pictionary word controls)
+
+**Migrations 0165–0169 must be applied on the NAS first**, and **the app must be republished** (not
+just the docs) so OCR's canvas binary, `tesseract.js-core` and the language model ship. Items 1–7 are
+Documents search/OCR, 8–11 the indexing job, 12–17 Prefill Templates, 18–24 System Log and 25–28
+Pictionary and 29 the grid search. **Items 1–5 and 8–11 need the republish; item 27 is easiest on a phone.**
+
+- [ ] **1.** Documents: a document with a PDF that has a text layer shows an OCR (or "Re-read") button beside its title; pressing it opens a dialog with the extracted text and "Read from the text layer"
+- [ ] **2.** Documents: OCR on a scanned/photographed document returns text marked "Read by OCR" and the row chip changes to "OCR"
+- [ ] **3.** Documents: OCR works on the NAS without downloading a language model (no network needed)
+- [ ] **4.** Documents → filter row: turning on **Search inside files** and typing a word from inside a filed PDF finds that document; with it off, the same word finds nothing
+- [ ] **5.** Documents: searching a street name from inside a lease whose title doesn't contain it finds the lease
+- [ ] **6.** Documents: re-uploading a different file to a document makes it show as needing a re-read; the OCR button is disabled while another extraction runs
+- [ ] **7.** `npm run cli -- documents-index-text --search "<word>"` prints the matching document and passage and writes nothing
+- [ ] **8.** Admin → Background Tasks: a **Document text indexing** card exists, off by default, with Run on a schedule, Read scans with OCR, Run every and batch-size fields
+- [ ] **9.** Background Tasks → Document text indexing: **Run now** indexes pending files and reports a summary; a second Run now is a no-op
+- [ ] **10.** Background Tasks: saving the card's settings sticks after a reload, and the task list shows the job as armed only when enabled
+- [ ] **11.** Documents text indexing with OCR on does not re-attempt a scan it already failed to read
+- [ ] **12.** Documents → new **Prefill Templates** section appears in the section strip/tree and compact bar with its icon
+- [ ] **13.** Prefill Templates: create a template (name, title, description, categories, tags via the chip picker), save, reload, and it's listed; a duplicate name is refused
+- [ ] **14.** Documents → New document: a template picker lists enabled templates; choosing one fills only the blank fields and never overwrites what was typed
+- [ ] **15.** Prefill Templates: disabling a template removes it from the New document picker but keeps it listed and editable
+- [ ] **16.** Documents → Edit document: no template picker is offered, and the categories/tags controls are the chip picker
+- [ ] **17.** `npm run cli -- documents-templates list|set|apply|delete` works, and a tag value "Car insurance, Tax" is two names
+- [ ] **18.** Admin → **System Log** appears between Background Tasks and Message Queue and loads empty with both switches off
+- [ ] **19.** Admin → Configuration → Application Configuration: DEBUG and OPERATIONAL switches and the row-cap field save and persist
+- [ ] **20.** With OPERATIONAL on, Run now on any background job adds trigger and finish lines to the System Log within about five seconds, without a restart
+- [ ] **21.** System Log: filtering by kind and searching narrows the rows; the screen is readable on a phone
+- [ ] **22.** With both switches off, running a job writes nothing to the System Log
+- [ ] **23.** Row cap: with a small cap, the log never holds more than that many rows
+- [ ] **24.** `npm run cli -- system-log tail|find|status|clear` works and prints oldest-first
+- [ ] **25.** Games → Pictionary: during a turn, **Start guessing** hides the word and **Peek at the word** shows it again
+- [ ] **26.** Pictionary: **New word** gives a different word, keeps the same drawer and round, and the clock keeps running
+- [ ] **27.** Pictionary: the next drawer sees their word on the hand-over (the hidden state resets), on a phone as well as desktop
+- [ ] **28.** Pictionary hand-over screen: the button reads **Skip the turn** and passes the device to the next player; the instructions describe Start guessing, New word and Skip the turn
+- [ ] **29.** Any data grid with a title-plus-description cell (Documents home): searching a word that appears only in the description finds the row
+
 ## 2026-10-30 — Release (Pictionary, Document Library tree/bulk/recycle bin, student record, expense stats exclusions)
 
 **Migrations 0162, 0163 and 0164 must be applied on the NAS first.** Documents uploads and deletes

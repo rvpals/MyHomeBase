@@ -41,6 +41,7 @@ export const JOB_KEYS = {
   siteVisitPrune: "site_visit_prune",
   dataBackup: "data_backup",
   helloWorld: "hello_world",
+  documentTextIndex: "document_text_index",
 } as const;
 
 export type JobKey = (typeof JOB_KEYS)[keyof typeof JOB_KEYS];
@@ -112,6 +113,14 @@ export const JOB_DESCRIPTORS: readonly JobDescriptor[] = [
     label: "Hello, world!",
     description:
       "Files the configured message into the message queue each time it runs, so the unread badge in the header moves whenever the scheduler fires. It exists to prove the scheduler is alive on this install — every other job is silent when it has nothing to do, which makes a stopped scheduler look exactly like an idle one.",
+    runnable: true,
+    configurable: true,
+  },
+  {
+    key: JOB_KEYS.documentTextIndex,
+    label: "Document text indexing",
+    description:
+      "Reads the text inside filed documents so the Document Library can search their contents. Takes the cheap path first — an embedded PDF text layer costs about a sixth of a second — and runs OCR only on scans that have no text layer, which costs seconds a page. A file is read once: it is looked at again only if it is re-uploaded, and a scan OCR cannot read is never retried. Run it when the house is asleep.",
     runnable: true,
     configurable: true,
   },

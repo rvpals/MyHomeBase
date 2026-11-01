@@ -104,6 +104,8 @@ alongside its row here.
 | [`clips`](#clips) | read (writes with `add`/`pin`/`colour`/`items`/`tick`/`link`/`delete`/`restore`; destroys with `delete --forever`/`purge`/`empty-bin`) | no |
 | [`list-documents`](#list-documents) | read (writes a file with `--zip`) | no |
 | [`documents-backfill-hashes`](#documents-backfill-hashes) | writes (fills `doc_attachments.content_hash`) | no |
+| [`documents-templates`](#documents-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
+| [`documents-index-text`](#documents-index-text) | read with `--search`; writes (fills `doc_attachment_text`) otherwise | no |
 | [`menu-items`](#menu-items) | read (writes with `set`/`reset`) | no |
 | [`toolbars`](#toolbars) | read (writes with `add`/`set`/`delete`/the item flags) | no |
 
@@ -1290,6 +1292,43 @@ one question per line.
 **Exit code** — 1 for an unknown class, a non-numeric `--exam`, or an exam id that
 does not exist.
 
+## `documents-index-text`
+
+Fills the Document Library's text index, and searches it (migration 0165).
+
+```
+npm run cli -- documents-index-text
+npm run cli -- documents-index-text --limit 20
+npm run cli -- documents-index-text --search "zottoli"
+npm run cli -- documents-index-text --ocr
+npm run cli -- documents-index-text --dry-run
+```
+
+Without flags it reads every attachment that has no current text, using the **cheap
+path only**: an embedded PDF text layer, ~170ms a file. Most filed documents (anything
+"Print to PDF") have one. A scan comes back `needs-ocr` and is left for a later run,
+which is what keeps the default pass fast enough to run over a whole library.
+
+`--ocr` also recognises the scans. **This is the slow one** — ~3.7s per page on a dev
+box and several times that on the DS223, measured. Running it *here*, against the NAS
+database, is also how you keep the ~320MB an OCR worker needs off a 2GB NAS: the
+recognition happens locally and only the text crosses the wire.
+
+`--scheduled` restricts the list to what the **background job** would actually do:
+scans OCR has already been run against and could not read are left out (migration
+0166), so you can see what the next unattended pass will pick up. Only meaningful
+alongside `--ocr`.
+
+`--search` queries what has already been indexed and prints the matching passage per
+file, which is the question you ask straight after an indexing run. It writes nothing.
+
+Re-running is safe and resumable: a file whose stored hash still matches its bytes is
+skipped, so an interrupted run picks up where it stopped. A file that is missing from
+the share is **named and skipped**, not fatal.
+
+`--dry-run` and `--ocr` take no value, so they go **last** — `parseFlags` consumes the
+token after every `--flag`, and `--dry-run --limit 50` would eat `--limit`.
+
 ## `list-documents`
 
 Reads the Document Library from the terminal — the same use-cases the web app calls,
@@ -1338,6 +1377,81 @@ npm run cli -- documents-backfill-hashes --limit 50 --dry-run
 
 **Calls** — `hashContent`, `readAttachment`, `findDuplicates`, `getDocumentSettings` from `src/lib/documents`.
 Source: [src/cli/documents-backfill-hashes.ts](src/cli/documents-backfill-hashes.ts)
+
+---
+
+## `documents-templates`
+
+Document Library prefill templates — the same use-cases the Prefill Templates screen
+drives. A template is a named set of field values a new document can start from.
+
+```
+npm run cli -- documents-templates list
+npm run cli -- documents-templates show --name "Utility bill"
+npm run cli -- documents-templates apply --name "Utility bill"
+npm run cli -- documents-templates set --name "Utility bill" --field categories --value "Utilities"
+npm run cli -- documents-templates set --name "Utility bill" --field tags --value "Monthly, Electricity"
+npm run cli -- documents-templates enable --name "Utility bill"
+npm run cli -- documents-templates disable --name "Utility bill"
+npm run cli -- documents-templates delete --name "Utility bill"
+```
+
+**Input**
+
+| Subcommand | Flags | Notes |
+|---|---|---|
+| `list` | — | every template, enabled or not, with its fields |
+| `show` | `--name` | one template |
+| `apply` | `--name` | what a new document would be prefilled with, lists split into names |
+| `set` | `--name`, `--field`, `--value`, `--description` | upserts **one field**; creates the template if it doesn't exist |
+| `enable` / `disable` | `--name` | whether the New Document picker offers it |
+| `delete` | `--name` | |
+
+`--name` is matched case-insensitively, like the unique index. `--field` is one of
+`title`, `description`, `categories`, `tags`.
+
+There is **no `--now`**, which `journal-templates` has. A document has no date or time
+field, so there is nothing to resolve at apply-time — see migration 0169.
+
+`--value` for `categories` and `tags` is **comma-separated**, and a name may contain
+spaces: `--value "Car insurance, Tax"` is two names, not three. The journal splits its
+tags on whitespace; this one does not, because document tags are routinely two words.
+
+The delimiter is a **CLI-only concern**. The web editor fills these two fields with the
+shared `TokenPicker` — chips picked from the managed vocabulary, never typed delimited
+text — and converts at the control through the same `splitPrefillList` /
+`joinPrefillList` this command's values go through. Both ends write the same stored
+string.
+
+`set` takes one field per invocation rather than a JSON blob argument: a shell is a bad
+place to quote JSON, and the web editor is the right tool for building a whole template
+at once.
+
+**Calls** — `listPrefillTemplates` / `getPrefillTemplateByName` / `savePrefillTemplate` /
+`setPrefillTemplateEnabled` / `deletePrefillTemplate` / `applyPrefillTemplate` /
+`prefillValuesToFormState`, all from `@/lib/documents`. Validation is the same
+`saveDocumentPrefillTemplateSchema` the web action uses, so a duplicate name or an
+unknown field fails identically in both.
+
+**Output** — one template per block, field label and value:
+
+```
+Utility bill
+Monthly, from the energy supplier
+  Title        Utility bill —
+  Categories   Utilities
+  Tags         Monthly, Electricity
+```
+
+`apply` prints the merge against an empty form, with the two list fields split into the
+names the chip picker would show (`Monthly | Electricity`). That split is the thing
+worth running it for: it goes through the same `applyPrefillTemplate` and
+`prefillValuesToFormState` the browser calls, so if it couldn't be printed here the
+logic would have leaked into the editor form.
+
+**Exit** — 0; 1 on an unknown subcommand, a missing `--name`/`--field`, a template that
+doesn't exist, or a validation failure (duplicate name, unknown field, same field twice).
+Source: [src/cli/documents-templates.ts](src/cli/documents-templates.ts)
 
 ---
 
@@ -3286,6 +3400,62 @@ use-case rather than a screen.
 **Exit** — 0 normally. 1 for an unknown action, a non-integer id, an empty id list, a blank
 title, or a prune window outside 1–3650 days.
 Source: [src/cli/messages.ts](src/cli/messages.ts)
+
+---
+
+## `system-log`
+
+What the application has been doing — the terminal counterpart of Administration →
+System Log. The reason it exists: when a background job misbehaves on the NAS,
+reading its lines over SSH is faster than opening the admin screen, and it still
+works when the web app is the thing that is broken.
+
+```
+npm run cli -- system-log tail
+npm run cli -- system-log tail 50
+npm run cli -- system-log tail 50 debug
+npm run cli -- system-log find "text-index"
+npm run cli -- system-log status
+npm run cli -- system-log clear
+npm run cli -- system-log clear debug
+```
+
+**Input** — a positional action. `tail` takes an optional limit (default 200, max
+5000) and an optional kind (`debug` or `operational`), **in either order** — a number
+is read as the limit and anything else as the kind. `find` takes a search string,
+matched case-insensitively against the source and the message, plus an optional
+limit. `clear` takes an optional kind; with none it clears everything.
+
+**Calls** — `listSystemLog`, `countSystemLog`, `clearSystemLog`,
+`resolveSystemLogSettings`, `describeSystemLogState` and `describeSystemLogCounts`
+from `lib/system-log`, on `deps.systemLogRepo` and `deps.settingsRepo`.
+
+**Output** — `tail` and `find` print **oldest first**, unlike the admin grid and
+unlike `messages list`. That is deliberate: a terminal tail is read top to bottom
+with the newest line nearest the prompt, the same convention as `tail -f`. Each line
+is `<timestamp>  <KIND> <source>: <message>`, with any detail indented beneath.
+`status` prints which switches are on and how many lines of each kind are held.
+`clear` reports how many rows went.
+
+**There is no `write` command, deliberately.** A line is written by the code being
+diagnosed, through `deps.systemLogger`. A hand-typed line would be indistinguishable
+from one the app produced, which would make the log untrustworthy for the one job it
+has. `messages file` exists for the opposite reason: a notice *for a reader* is
+exactly the thing a shell script should be able to raise.
+
+**Nothing here turns the switches on.** Both live in `sys_app_settings` and are
+edited under Administration → Configuration → Application Configuration; `status`
+reports them. A log that could be switched on from a script is a log that gets left
+on, and on the NAS that is disk filling quietly.
+
+**`clear` is permanent and nothing is protected.** Unlike the message queue there is
+no lock, because a log line is not a record anybody curates — if it mattered after
+the fact it belonged in the message queue. The table also prunes itself: the oldest
+rows go once it grows past `system_log_max_rows` (default 5,000).
+
+**Exit** — 0 normally. 1 for an unknown action, an unknown kind, a blank `find`
+string, or a limit outside 1–5000.
+Source: [src/cli/system-log.ts](src/cli/system-log.ts)
 
 ---
 

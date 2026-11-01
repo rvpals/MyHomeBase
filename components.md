@@ -422,6 +422,7 @@ and an optional "Show SQL" re-run dialog. Do not build another table.
 | `header` | `string` | |
 | `render` | `(row: T) => ReactNode` | The cell UI. |
 | `value?` | `(row: T) => CellValue` | **The important one.** Raw primitive used for sort, search, filter, CSV export and the footer total. A column participates in those *only* when this is supplied. |
+| `searchValue?` | `(row: T) => string` | Extra text this column feeds to the **search box only** — never to sort, filter, CSV or totals. For a cell that renders more than `value` carries, such as a title with a description beneath it: without it the search can't find a word the user is looking straight at. Keep the subtitle out of `value`, or the column sorts and exports as `"title description"`. |
 | `sortable?` | `boolean` | Set `false` to keep `value` but disable sorting. |
 | `hint?` | `string` | What the column *means* — a unit, a sign convention, where the value comes from. Renders as a [`Comments`](#comments) mark beside the column name on the wide header and in both compact layouts; the record modal prints it inline instead, since `Comments` opens its own `Modal`. For meaning, not formatting: *"a charge is positive, a refund negative"* earns one; *"currency"* does not. |
 | `className?` | `string` | Applied to both header and body cells. |
@@ -3445,7 +3446,12 @@ value lives in the chips.
 **Used by:** the journal's Categories and Tags fields, in both the create form
 [journal-entry-form.tsx](src/app/(protected)/modules/[slug]/journal-entry-form.tsx)
 and the edit form
-[entry-edit-form.tsx](src/app/(protected)/modules/[slug]/entries/[id]/entry-edit-form.tsx).
+[entry-edit-form.tsx](src/app/(protected)/modules/[slug]/entries/[id]/entry-edit-form.tsx);
+and the Documents library's New / Edit document screen
+[documents-editor-view.tsx](src/app/(protected)/modules/[slug]/documents-editor-view.tsx),
+which had grown its own local `TaxonomyPicker` — a create `<input>` next to a
+"Pick existing…" `<select>`, the exact shape this component replaced — before it
+was swapped for this one.
 
 **Notes:** duplicate detection is case-insensitive, so adding "Museum" when
 "museum" is already chosen is a no-op and the stored casing is whatever went in

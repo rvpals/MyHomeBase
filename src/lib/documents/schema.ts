@@ -135,6 +135,19 @@ export const documentFilterSchema = z.object({
   search: z.string().trim().max(200).default(""),
   categories: taxonomyListSchema,
   tags: taxonomyListSchema,
+  /**
+   * Whether `search` also looks inside the filed files (migration 0165).
+   *
+   * Off by default, and deliberately a separate flag rather than always-on. Searching
+   * contents widens the result set — a word mentioned once inside a 40-page scan is a
+   * weaker hit than the same word in a title — so the reader opts in, and a reader
+   * who never presses the toggle sees exactly the behaviour they had before.
+   *
+   * Only ever matches files that have already been read: this flag never triggers an
+   * extraction, because a search box that could spend 3.7 seconds per unindexed file
+   * would be unusable.
+   */
+  searchContents: z.boolean().default(false),
 });
 
 export type DocumentFilterInput = z.infer<typeof documentFilterSchema>;
@@ -187,4 +200,124 @@ export function formatBytes(bytes: number): string {
   // One decimal, and no trailing ".0" — "25 MB", not "25.0 MB".
   const rounded = Math.round(value * 10) / 10;
   return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)} ${units[unit]}`;
+}
+
+// --- Prefill templates -------------------------------------------------------
+//
+// A named set of field values a new document can be filed from. See migration 0169
+// for why the fields are JSON rather than child rows, and why `mode` is stored at
+// all when only one value is currently legal.
+
+export const documentPrefillFieldSchema = z.enum([
+  "title",
+  "description",
+  "categories",
+  "tags",
+]);
+
+/**
+ * The only legal mode today.
+ *
+ * Journal's equivalent also accepts `now`, because an entry has a date and a stored
+ * literal date would pin every new entry to a fixed day. A document has no date or
+ * time field, so there is nothing to resolve at apply-time and nothing to offer.
+ *
+ * Kept as an enum of one rather than dropped, so the stored JSON matches the
+ * Journal's shape and a future dated field is a schema change rather than a rewrite
+ * of every stored row. See migration 0169.
+ */
+export const documentPrefillModeSchema = z.enum(["literal"]);
+
+/**
+ * One field of a template.
+ *
+ * Values are NOT run through `taxonomyNameSchema` even for the categories and tags
+ * fields, on purpose: a template holds the delimited *text* a filer typed, and the
+ * names inside it are validated when the document is actually saved, by
+ * `createDocumentSchema`. Validating here as well would mean a template could be
+ * rejected for a name the Categories & Tags screen is about to create.
+ */
+export const documentPrefillFieldValueSchema = z.object({
+  field: documentPrefillFieldSchema,
+  mode: documentPrefillModeSchema.default("literal"),
+  value: z.string().default(""),
+});
+
+export const saveDocumentPrefillTemplateSchema = z.object({
+  /** Omitted when creating; present when editing an existing template. */
+  id: z.number().int().positive().optional(),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Give the template a name.")
+    .max(100, "Keep the template name under 100 characters."),
+  description: z
+    .string()
+    .trim()
+    .max(500, "Keep the description under 500 characters.")
+    .default(""),
+  isEnabled: z.boolean().default(true),
+  fields: z
+    .array(documentPrefillFieldValueSchema)
+    .default([])
+    // One row per field. The editor's dropdown can be set to the same field twice,
+    // and two values for one field has no meaning — the second would silently win on
+    // apply. Caught here so the web form and the CLI report it the same way, rather
+    // than in the view.
+    .superRefine((fields, ctx) => {
+      const seen = new Set<string>();
+      for (const [index, entry] of fields.entries()) {
+        if (seen.has(entry.field)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, "field"],
+            message: `"${entry.field}" is set twice — a template can only fill each field once.`,
+          });
+        }
+        seen.add(entry.field);
+      }
+    }),
+});
+
+export type SaveDocumentPrefillTemplateInput = z.input<typeof saveDocumentPrefillTemplateSchema>;
+
+/** What the repository persists, after defaults are applied. */
+export type DocumentPrefillTemplateWriteData = z.output<
+  typeof saveDocumentPrefillTemplateSchema
+>;
+
+/**
+ * Reads a stored `fields_json` string back into a field list, tolerating whatever a
+ * previous version of the app (or a hand-edited row) left there.
+ *
+ * Forgiving on purpose, the same contract `parseStoredPrefillFields` has in the
+ * Journal: a template whose JSON has rotted should come back empty and re-editable,
+ * not 500 the Prefill Templates screen. Unknown field keys are dropped individually,
+ * so one bad entry doesn't discard the rest of a template someone spent time
+ * assembling.
+ */
+export function parseStoredDocumentPrefillFields(
+  json: string,
+): z.output<typeof documentPrefillFieldValueSchema>[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+
+  const parsed: z.output<typeof documentPrefillFieldValueSchema>[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const result = documentPrefillFieldValueSchema.safeParse(item);
+    if (!result.success) continue;
+    // De-duplicate on read as well as on write: a row written before the uniqueness
+    // rule existed would otherwise apply twice, and the last-wins behaviour that
+    // produces is not something a reader could predict.
+    if (seen.has(result.data.field)) continue;
+    seen.add(result.data.field);
+    parsed.push(result.data);
+  }
+  return parsed;
 }

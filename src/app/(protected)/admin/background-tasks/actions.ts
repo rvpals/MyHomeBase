@@ -21,6 +21,8 @@ import {
   runHelloWorldNow,
   type HelloWorldSettingsInput,
 } from "@/lib/hello-world";
+import { DOCUMENTS_MODULE_SLUG, TEXT_INDEX_SETTING_KEYS } from "@/lib/documents";
+import { runTextIndexNow } from "@/lib/documents/text-index-runner";
 import { saveModuleSettingsPartial } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import {
@@ -294,3 +296,81 @@ export async function runHelloWorldNowAction(): Promise<RunHelloWorldResult> {
 // Re-exported for the view's prop types, which need the settings shape without
 // importing the lib index into a client component.
 export type { ExpenseSettings };
+
+// ---------------------------------------------------------------------------
+// Document text indexing (migration 0166)
+// ---------------------------------------------------------------------------
+
+export interface TextIndexSettingsInput {
+  enabled: boolean;
+  intervalHours: number;
+  ocrEnabled: boolean;
+  batchSize: number;
+}
+
+/**
+ * Saves the Document Library's indexing schedule.
+ *
+ * Module settings, not app-wide, because this job belongs to a module — the same
+ * split the Expense auto-import uses. `saveModuleSettingsPartial` so writing these
+ * four keys leaves the module's folder and upload limits alone.
+ *
+ * The bounds here are the view's guard rails; `resolveTextIndexJobSettings` clamps
+ * again on the way out, because a settings row can also be edited by hand and the
+ * background tick must never throw.
+ */
+export async function saveTextIndexSettingsAction(
+  input: TextIndexSettingsInput,
+): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    const documentsModule = getModuleBySlug(deps.moduleRepo, DOCUMENTS_MODULE_SLUG);
+    if (!documentsModule) throw new Error("Document Library module not found.");
+
+    const hours = Number(input.intervalHours);
+    if (!Number.isInteger(hours) || hours < 1 || hours > 24 * 7) {
+      throw new Error("Interval must be a whole number of hours, from 1 to 168.");
+    }
+    const batch = Number(input.batchSize);
+    if (!Number.isInteger(batch) || batch < 1 || batch > 500) {
+      throw new Error("Files per pass must be a whole number, from 1 to 500.");
+    }
+
+    saveModuleSettingsPartial(deps.moduleSettingsRepo, documentsModule.id, [
+      { key: TEXT_INDEX_SETTING_KEYS.enabled, value: input.enabled ? "1" : "0" },
+      { key: TEXT_INDEX_SETTING_KEYS.intervalHours, value: String(hours) },
+      { key: TEXT_INDEX_SETTING_KEYS.ocrEnabled, value: input.ocrEnabled ? "1" : "0" },
+      { key: TEXT_INDEX_SETTING_KEYS.batchSize, value: String(batch) },
+    ]);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the indexing schedule.");
+  }
+  revalidatePath(BACKGROUND_TASKS_PATH);
+  revalidatePath("/modules/documents");
+  return { ok: true };
+}
+
+/**
+ * Runs one indexing pass on demand.
+ *
+ * **This can take minutes.** A pass drains up to the configured batch, and a scanned
+ * page costs seconds. `force: true` skips the switch and the cadence but still stamps
+ * the run, so pressing the button also postpones the next scheduled pass — the same
+ * contract the other runnable jobs have.
+ */
+export async function runTextIndexNowAction(): Promise<{
+  ok: boolean;
+  detail?: string;
+  error?: string;
+}> {
+  try {
+    await requireAdmin();
+    const summary = await runTextIndexNow({ force: true });
+    revalidatePath(BACKGROUND_TASKS_PATH);
+    return summary.ran
+      ? { ok: true, detail: summary.detail }
+      : { ok: false, error: summary.reason ?? summary.detail };
+  } catch (error) {
+    return toErrorResult(error, "Failed to run document text indexing.");
+  }
+}

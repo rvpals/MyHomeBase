@@ -12,8 +12,16 @@ import type { TreeIconConcept } from "@/lib/icons/tree-icon-names";
  * `configuration` is last on purpose — the usual "settings at the bottom" place,
  * matching every other module's shell.
  *
- * Five sections, so still no group headings: `modules.md` puts the nesting threshold
- * at about six.
+ * Six sections, which is exactly where `modules.md` puts the nesting threshold. Kept
+ * FLAT anyway: group headings for one extra row would cost a level of nesting to
+ * organise six items a reader can already see at once. Worth revisiting at seven.
+ *
+ * `templates` sits next to `metadata` because the two curate the same thing from
+ * opposite ends — Categories & Tags is the vocabulary, Prefill Templates is the
+ * shortcut that stops a filer inventing a new word for one that already exists. It is
+ * above `recycled` and `configuration` for the reason those two are last at all: a
+ * bin and a settings screen are where you go to undo or to configure, not where you
+ * go to file.
  *
  * `tree` sits next to `main` because they are the same documents seen two ways — the
  * flat grid with its bulk edits, and the category/tag tree with a reading pane. Not a
@@ -31,6 +39,7 @@ export const DOCUMENTS_SECTIONS = [
   "main",
   "tree",
   "metadata",
+  "templates",
   "recycled",
   "configuration",
 ] as const;
@@ -74,6 +83,10 @@ export const DOCUMENTS_SECTION_INFO: Record<
     label: "Categories & Tags",
     description: "The two lists a document is filed under, and their icons.",
   },
+  templates: {
+    label: "Prefill Templates",
+    description: "Named sets of field values a new document can start from.",
+  },
   recycled: {
     label: "Recycled Documents",
     description: "Deleted documents — restore one, or remove it for good.",
@@ -101,6 +114,11 @@ export const DOCUMENTS_SECTION_ICONS: Record<DocumentsSection, TreeIconConcept> 
   // mean a glyph nothing else asks for.
   tree: "network",
   metadata: "list",
+  // `copy` — a template is the thing you take a copy of to start from, and the
+  // registry's `copy` mark says exactly that. The position drew nothing before this
+  // slot existed, so any registry glyph is a free choice here; this is the one whose
+  // meaning matches.
+  templates: "copy",
   recycled: "trash",
   configuration: "gear",
 };

@@ -12,8 +12,10 @@ import {
   describeBulkResult,
   describeDocumentRootCheck,
   emptyDocumentsRecycleBin,
+  extractDocumentText,
   listCategories,
   listDocuments,
+  listDocumentText,
   listRecycledDocuments,
   listTags,
   recycleDocuments,
@@ -24,6 +26,7 @@ import {
   setCategoryIcon,
   setDocumentRoot,
   setTagIcon,
+  summariseExtraction,
   updateDocument,
   type BulkTaxonomyInput,
   type CreateDocumentInput,
@@ -39,7 +42,7 @@ import type { ImageUploadInput } from "@/lib/shared/image-upload";
 import { cookies } from "next/headers";
 import { deps } from "@/lib/wiring";
 import { requireAdmin, requireModuleAccess } from "../../require-access";
-import { documentFiles } from "./documents-root";
+import { documentFiles, documentTextDeps } from "./documents-root";
 
 /** The module these actions belong to, matched exactly by `requireModuleAccess`. */
 const ACCESS_MODULE_SLUG = "documents";
@@ -438,5 +441,126 @@ export async function browseFoldersAction(path: string): Promise<BrowseFoldersRe
     return { ok: true, listing: await deps.documentFileStore.listFolders(path) };
   } catch (error) {
     return toErrorResult(error, "Could not open that folder.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Extracted text and OCR (migration 0165)
+// ---------------------------------------------------------------------------
+
+/** What the OCR dialog draws: one line per file, plus the totals. */
+export interface ExtractTextActionResult extends ActionResult {
+  /** The summary line — "Read 2 files · 3,092 characters · in 3.9s." */
+  summary?: string;
+  /** Milliseconds the whole run took, so the dialog can state the cost plainly. */
+  elapsedMs?: number;
+  files?: {
+    attachmentId: number;
+    originalName: string;
+    status: string;
+    source: string;
+    charCount: number;
+    pageCount: number;
+    confidence?: number;
+    elapsed: string;
+    fromCache: boolean;
+    error: string;
+    /** The recovered text itself, for the dialog's optional "show full text" panel. */
+    text: string;
+  }[];
+}
+
+/**
+ * Reads every file on one document, running OCR when the cheap path finds nothing.
+ *
+ * **This is the slow action in the module.** A scanned page costs ~3.7s on the dev box
+ * and several times that on the NAS, which is why it is its own explicit action rather
+ * than something folded into an upload or a page render: the only way it runs is a
+ * reader pressing a button and waiting for it.
+ *
+ * `revalidatePath` is deliberately NOT called. The extraction changes no row the Home
+ * screen draws — it fills a cache the search box consults — so refreshing the route
+ * would discard the reader's filters to redraw an identical list.
+ */
+export async function extractDocumentTextAction(
+  documentId: number,
+  useOcr: boolean,
+): Promise<ExtractTextActionResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+
+    const started = Date.now();
+    const runs = await extractDocumentText(documentTextDeps(), { documentId, useOcr });
+    return {
+      ok: true,
+      summary: summariseExtraction(runs),
+      elapsedMs: Date.now() - started,
+      files: runs.map((run) => ({
+        attachmentId: run.attachmentId,
+        originalName: run.originalName,
+        status: run.result.status,
+        source: run.result.source,
+        charCount: run.result.charCount,
+        pageCount: run.result.pageCount,
+        confidence: run.result.confidence,
+        elapsed: run.elapsed,
+        fromCache: run.fromCache,
+        error: run.result.error,
+        text: run.result.text,
+      })),
+    };
+  } catch (error) {
+    return toErrorResult(error, "That document's text could not be read.");
+  }
+}
+
+/** One file's stored text, as the files dialog shows it. */
+export interface StoredAttachmentText {
+  attachmentId: number;
+  status: string;
+  source: string;
+  pageCount: number;
+  charCount: number;
+  confidence?: number;
+  /** When it was extracted, so a reader can tell fresh text from months-old text. */
+  indexedAt: string;
+  error: string;
+  body: string;
+}
+
+/**
+ * The stored text for every file on one document (migrations 0165/0166).
+ *
+ * **Reads only — it never extracts.** This is what lets a reader open a document the
+ * background job indexed overnight and see what it actually recovered; triggering
+ * work from a dialog that is only being opened to look would make an innocuous click
+ * cost seconds.
+ *
+ * Returns the bodies, which can be large. That is the point of the call, but it is
+ * also why this is its own action rather than part of `listDocumentsAction`: a list
+ * of 200 documents must never drag their text into a render.
+ */
+export async function listDocumentTextAction(
+  documentId: number,
+): Promise<{ ok: boolean; files?: StoredAttachmentText[]; error?: string }> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const rows = listDocumentText(deps.documentsRepo, documentId);
+    return {
+      ok: true,
+      files: rows.map((row) => ({
+        attachmentId: row.attachmentId,
+        status: row.status,
+        source: row.source,
+        pageCount: row.pageCount,
+        charCount: row.charCount,
+        confidence: row.confidence,
+        indexedAt: row.indexedAt,
+        error: row.error,
+        body: row.body,
+      })),
+    };
+  } catch (error) {
+    return toErrorResult(error, "That document's text could not be read.");
   }
 }

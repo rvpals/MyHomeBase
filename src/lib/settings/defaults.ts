@@ -18,6 +18,13 @@ import {
   HELLO_WORLD_SETTING_KEYS,
 } from "@/lib/hello-world/settings";
 import {
+  DEFAULT_SYSTEM_LOG_DEBUG,
+  DEFAULT_SYSTEM_LOG_MAX_ROWS,
+  DEFAULT_SYSTEM_LOG_OPERATIONAL,
+  SYSTEM_LOG_SETTING_KEYS,
+} from "@/lib/system-log/schema";
+import { systemLogBooleanValue } from "@/lib/system-log/settings";
+import {
   HOME_WIDGETS_SETTING_KEY,
   defaultHomeWidgets,
   homeWidgetsToValue,
@@ -204,6 +211,28 @@ export const DEFAULT_APP_SETTINGS: Setting[] = [
     value: DEFAULT_SCRIPT_FONT,
     description:
       "The script face the Journal entry form uses when Handwriting is switched on. One of the ids in src/lib/settings/script-fonts.ts.",
+  },
+  {
+    // The two system-log switches and the row cap — see migrations/0167 and 0168.
+    //
+    // BOTH OFF. "Reset to Default" must switch the log off rather than leave an
+    // install writing a line per document because somebody was debugging last week.
+    key: SYSTEM_LOG_SETTING_KEYS.debugEnabled,
+    value: systemLogBooleanValue(DEFAULT_SYSTEM_LOG_DEBUG),
+    description:
+      "Whether DEBUG lines are written to the system log (sys_system_log). Verbose: planted at specific places while something is being diagnosed.",
+  },
+  {
+    key: SYSTEM_LOG_SETTING_KEYS.operationalEnabled,
+    value: systemLogBooleanValue(DEFAULT_SYSTEM_LOG_OPERATIONAL),
+    description:
+      "Whether OPERATIONAL lines are written to the system log (sys_system_log). Routine activity, such as a scheduled job triggering and finishing.",
+  },
+  {
+    key: SYSTEM_LOG_SETTING_KEYS.maxRows,
+    value: String(DEFAULT_SYSTEM_LOG_MAX_ROWS),
+    description:
+      "How many lines the system log keeps. The oldest are deleted once it grows past this.",
   },
   {
     // Blank means "nothing to show" — see migrations/0041.

@@ -1226,6 +1226,19 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "documents_section_templates",
+    label: "Prefill Templates",
+    group: "Document Library sections",
+    where: "Documents → section panel → Prefill Templates.",
+    // `copy` is the registry's take-a-copy-of-this mark, which is what a prefill
+    // template is. The position drew nothing before this slot existed (the section is
+    // new in migration 0169), so there is no earlier glyph the default has to match —
+    // unlike `documents_section_tree`, where it did.
+    defaultConcept: "copy",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "documents_section_recycled",
     label: "Recycled Documents",
     group: "Document Library sections",
@@ -2125,6 +2138,21 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Admin navigation",
     where: "Admin → section panel → Background Tasks.",
     defaultConcept: "history",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // Sits between Background Tasks and Message Queue, where the nav puts it: the
+    // three diagnostic screens read as one group.
+    id: "admin_section_system_log",
+    label: "System Log",
+    group: "Admin navigation",
+    where: "Admin → section panel → System Log.",
+    // `list`, not `history`: the sibling above already wears `history` for the job
+    // run records, and this is a list of lines rather than a record of passes. There
+    // is no `terminal` or `console` concept in either icon table — a slot's default
+    // must be a glyph that already renders, or every set draws nothing.
+    defaultConcept: "list",
     wired: true,
     namespace: "tree",
   },

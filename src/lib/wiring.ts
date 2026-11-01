@@ -72,6 +72,8 @@ import {
 } from "./music-magic/repository";
 import { SqliteScheduledRunRepository } from "./scheduled-jobs/repository";
 import { SqliteSettingsRepository } from "./settings/repository";
+import { SqliteSystemLogRepository, createSystemLogger } from "./system-log";
+import { withSystemLog } from "./scheduled-jobs/logged-repository";
 import { SqliteSavedQueryRepository, SqliteSqlExplorerRepository } from "./sql-explorer/repository";
 import { BetterSqliteForeignDatabaseReader } from "./sqlite-browser/foreign-db";
 import { NodeSqliteFileStore } from "./sqlite-browser/file-store";
@@ -188,9 +190,40 @@ const adminSignupSecret: string | undefined = process.env.ADMIN_SIGNUP_SECRET ||
 // One instance means one crumb handshake rather than two.
 const marketDataClient = new YahooFinanceClient();
 
+// The system log (migrations/0167) and the logger every caller holds.
+//
+// Hoisted out of `deps` for the same reason `marketDataClient` is: two entries need
+// it. The logger is built from the repository AND from a settings reader, and
+// `scheduledRunRepo` below is then wrapped in it, so it has to exist first.
+//
+// `systemLogRepo` is separate from `systemLogger` on purpose. The repository can
+// read and clear the log and belongs only to the admin screen and the CLI; the
+// logger can only append. A caller that writes a line must not be able to wipe one.
+// Hoisted for the same reason: the logger reads the switch rows through it, and
+// `deps.settingsRepo` below is this same instance rather than a second one.
+const settingsRepoForLogger = new SqliteSettingsRepository(db);
+
+const systemLogRepo = new SqliteSystemLogRepository(db);
+
+// Reads the three switch rows on demand rather than once at startup: the logger
+// outlives any single read and has to see a switch ticked on the Application
+// Configuration screen an hour later. It caches internally, so this runs about once
+// every five seconds however many lines are written -- see lib/system-log/logger.ts.
+const systemLogger = createSystemLogger({
+  repo: systemLogRepo,
+  readSettings: () => settingsRepoForLogger.listSettings(),
+});
+
 export const deps = {
   moduleRepo: new SqliteModuleRepository(db),
-  settingsRepo: new SqliteSettingsRepository(db),
+  settingsRepo: settingsRepoForLogger,
+  // The system log's storage (migrations/0167) -- reading and clearing, for the admin
+  // screen and the CLI. Writing goes through `systemLogger` below instead.
+  systemLogRepo,
+  // What a caller holds to write a line: `log.debug(...)` / `log.operational(...)`.
+  // Both are no-ops while their switch is off, and a message built in a thunk is
+  // never built in that case. See lib/system-log.
+  systemLogger,
   // The color themes themselves (migrations/0076), built-ins included — read on every
   // page render so the root layout can emit the active theme's :root custom properties.
   // No BLOBs, so unlike the texture repos there is no heavy column to keep off that path.
@@ -358,7 +391,15 @@ export const deps = {
   stockPositionRepo: new SqliteStockPositionRepository(db),
   stockDailySnapshotRepo: new SqliteDailySnapshotRepository(db),
   // Last-run bookkeeping for background jobs, keyed by job name (migrations/0061).
-  scheduledRunRepo: new SqliteScheduledRunRepository(db),
+  //
+  // WRAPPED so every job's start and finish writes an OPERATIONAL line to the system
+  // log. Done here, once, rather than in each of the seven runners: they all already
+  // call `start`/`finish`, so wrapping the port instruments every job -- and any job
+  // added later -- with no runner changes. Same reasoning that made the SQLite
+  // repository derive run history from the same pair (migrations/0135).
+  //
+  // Writes nothing while the OPERATIONAL switch is off, which is the default.
+  scheduledRunRepo: withSystemLog(new SqliteScheduledRunRepository(db), systemLogger),
   stockWatchListRepo: new SqliteStockWatchListRepository(db),
   // Historical purchase lots for the Tax Lot Analyzer (migrations/0083). Storage
   // only — every split normalization and return figure is a pure function over
