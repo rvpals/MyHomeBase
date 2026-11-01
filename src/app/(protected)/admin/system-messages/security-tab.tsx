@@ -29,11 +29,10 @@ import {
   blockIpAddressesAction,
   deleteAuthEventsAction,
   markFailuresReviewedAction,
-} from "./actions";
+} from "./security-actions";
 import { VisitsTab } from "./visits-tab";
-import { PAGE_CONTAINER } from "../../page-container";
 
-export interface SecurityViewProps {
+export interface SecurityTabProps {
   events: AuthEvent[];
   summary: AuthEventSummary;
   fullNameByUserId: Record<number, string>;
@@ -47,6 +46,18 @@ export interface SecurityViewProps {
   todayIso: string;
   /** `YYYY-MM-DD` Monday of the current week, so this week opens expanded. */
   thisWeekStart: string;
+  /**
+   * Which of the two sub-tabs is showing, and how to change it.
+   *
+   * Controlled from the screen rather than owned here, because the sub-tab is half
+   * of a deep link: the suspicious-visit alert on the home screen points straight at
+   * `?tab=security&sub=visit`, and an uncontrolled strip would land on Login and
+   * leave the reader to find the Visit tab themselves. `SystemMessagesView` owns the
+   * URL, this just renders what it is told. Same controlled-`Tabs` pattern SQL
+   * Explorer uses for its "Open" jump.
+   */
+  activeSubTab: string;
+  onSubTabChange: (key: string) => void;
 }
 
 // Resolved once at module scope. `getIconSlot` reads the static registry — no I/O — and
@@ -96,13 +107,19 @@ function StatTile({ label, value, tone }: { label: string; value: number; tone?:
 }
 
 /**
- * The Security screen: sign-in activity and site arrivals, as two tabs.
+ * The Security tab of Administration → System Messages: sign-in activity and site
+ * arrivals, as two sub-tabs.
  *
- * The screen title and its intro sit above the strip, because they describe the
- * screen rather than either tab. Each tab then carries its own explanation, its own
- * stat tiles and its own grid.
+ * Was its own screen (`/admin/security`) until the three after-the-fact channels
+ * were folded into one. What moved is only the chrome: the page container, the
+ * `<h1>` and the intro now belong to `SystemMessagesView`, and this returns a bare
+ * body. Its own two tabs survived the merge intact — Login and Visit answer
+ * genuinely different questions, and flattening them to siblings of System Log
+ * would have buried that split in a four-wide strip.
+ *
+ * Each sub-tab still carries its own explanation, stat tiles and grid.
  */
-export function SecurityView({
+export function SecurityTab({
   events,
   summary,
   fullNameByUserId,
@@ -112,7 +129,9 @@ export function SecurityView({
   blacklist,
   todayIso,
   thisWeekStart,
-}: SecurityViewProps) {
+  activeSubTab,
+  onSubTabChange,
+}: SecurityTabProps) {
   const tabs: TabItem[] = [
     {
       key: "login",
@@ -148,16 +167,17 @@ export function SecurityView({
   ];
 
   return (
-    <div className={PAGE_CONTAINER}>
-      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">Security</h1>
-      <p className="mt-2 text-sm text-muted">
+    <div>
+      <p className="text-sm text-muted">
         Who has signed in, and who has come knocking. <strong className="text-ink">Login</strong>{" "}
         records every sign-in attempt; <strong className="text-ink">Visit</strong> records arrivals
         at the site by anyone who wasn&apos;t signed in.
       </p>
 
+      {/* Controlled, not `defaultActiveKey`: the screen owns which sub-tab is open so
+          `?sub=visit` can land on it directly. See `activeSubTab` in the props. */}
       <div className="mt-6">
-        <Tabs items={tabs} defaultActiveKey="login" />
+        <Tabs items={tabs} activeKey={activeSubTab} onActiveKeyChange={onSubTabChange} />
       </div>
     </div>
   );
@@ -168,7 +188,7 @@ function LoginTab({
   events,
   summary,
   fullNameByUserId,
-}: Pick<SecurityViewProps, "events" | "summary" | "fullNameByUserId">) {
+}: Pick<SecurityTabProps, "events" | "summary" | "fullNameByUserId">) {
   const router = useRouter();
   const [isReviewing, setIsReviewing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);

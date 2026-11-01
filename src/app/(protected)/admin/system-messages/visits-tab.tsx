@@ -29,7 +29,7 @@ import {
   disallowIpAddressAction,
   markVisitsReviewedAction,
   unblockIpAddressAction,
-} from "./actions";
+} from "./security-actions";
 
 export interface VisitsTabProps {
   weeks: VisitWeekGroup[];

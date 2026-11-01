@@ -6,8 +6,9 @@
 // Same split, and the same reasons, as src/lib/expense/auto-import-runner.ts.
 
 import { listModuleSettingsFor } from "@/lib/module-settings";
+import { describeMarketClosure, MARKET_TIME_ZONE } from "@/lib/market-calendar";
 import { getModuleBySlug } from "@/lib/modules";
-import { todayIsoLocal, toSqliteTimestampUtc } from "@/lib/shared/date";
+import { todayIsoInZone, todayIsoLocal, toSqliteTimestampUtc } from "@/lib/shared/date";
 import { deps } from "@/lib/wiring";
 import { runScheduledRefresh } from "./scheduled-refresh";
 import {
@@ -51,7 +52,8 @@ function lastRunAtMs(run: ScheduledRun | undefined): number | undefined {
  * Never throws -- a scheduled job must not take the server down.
  *
  * `force` is what the manual "Run now" button and the CLI pass: it skips the
- * switch and the interval check but still stamps the run, so pressing the button
+ * switch, the market-day check and the interval check but still stamps the run,
+ * so a press can pull prices on a Sunday if you want them. Pressing the button
  * also postpones the next scheduled pass rather than leaving one queued a minute
  * later. The switch not gating an explicit request matches how the expense
  * importer's "Run import now" works.
@@ -74,12 +76,20 @@ export async function runScheduledRefreshNow(
 
     if (!options.force) {
       if (!isAutoRefreshEnabled(settings)) return skipped("Auto refresh is switched off.");
+
+      // The market's own calendar day, not the server's -- the NAS is not on
+      // Eastern time, and around midnight the two disagree about which day it is.
+      const marketIsoDate = todayIsoInZone(MARKET_TIME_ZONE);
+
+      // Named before the interval check so the skip reason says *why* rather than
+      // "not due yet", which would be true but useless on a Thanksgiving tick.
+      if (settings.marketDaysOnly) {
+        const closure = describeMarketClosure(marketIsoDate);
+        if (closure) return skipped(`US markets are closed (${closure}).`);
+      }
+
       if (
-        !shouldRunNow(
-          lastRunAtMs(loadLastScheduledRun()),
-          settings.autoRefreshInterval,
-          Date.now(),
-        )
+        !shouldRunNow(lastRunAtMs(loadLastScheduledRun()), settings, Date.now(), marketIsoDate)
       ) {
         return skipped("Not due yet.");
       }

@@ -64,12 +64,17 @@ describe("flattenAdminNav", () => {
 
   it("keeps a top-level destination ungrouped", () => {
     const nodes: SectionNode[] = [
-      { id: "security", label: "Security", href: "/admin/security", icon: "shield" },
+      {
+        id: "system-messages",
+        label: "System Messages",
+        href: "/admin/system-messages",
+        icon: "shield",
+      },
     ];
 
     const [section] = flattenAdminNav(nodes);
     expect(section.group).toBeUndefined();
-    expect(section.href).toBe("/admin/security");
+    expect(section.href).toBe("/admin/system-messages");
   });
 
   it("drops a heading with neither an href nor children", () => {

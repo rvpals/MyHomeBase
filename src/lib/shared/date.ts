@@ -36,6 +36,30 @@ export function todayIsoLocal(now: Date = new Date()): string {
 }
 
 /**
+ * The calendar date of an instant in a *named* timezone, as "YYYY-MM-DD".
+ *
+ * The exception to this file's local-clock rule, and it exists for one reason:
+ * some calendars are not the server's. "Is the US market open today?" is a
+ * question about New York's date, and answering it from the NAS's local date
+ * would be silently wrong the moment the box is set to anything else — and
+ * wrong for several hours either side of midnight even when it isn't.
+ *
+ * `en-CA` is not a cosmetic choice: it is the locale whose short date format is
+ * already `YYYY-MM-DD`, so there is nothing to reassemble and no month/day order
+ * to get backwards. `timeZone` is an IANA name such as "America/New_York"; an
+ * unrecognised one throws from `Intl`, which is the right outcome for a typo in
+ * a constant.
+ */
+export function todayIsoInZone(timeZone: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+/**
  * An instant as a local-clock `HH:MM`, for labelling something already filed
  * under a local-calendar date.
  *

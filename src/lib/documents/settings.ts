@@ -22,6 +22,7 @@ import {
   type ModuleSettingsRepository,
 } from "@/lib/module-settings";
 import { getModuleBySlug, type ModuleRepository } from "@/lib/modules";
+import { normalizeWord, parseWordList, serializeWordList } from "@/lib/shared/word-tokens";
 import type { DocumentFileStore, DocumentRootCheck } from "./file-store";
 import {
   DEFAULT_DOCUMENT_MAX_FILES,
@@ -38,11 +39,33 @@ export const DOCUMENT_SETTING_KEYS = {
   /** The ceiling, set in Admin → Configuration → Application. */
   maxFileBytes: "document_max_file_bytes",
   maxFilesPerDocument: "document_max_files_per_document",
+  /**
+   * Words the Keywords section stops ranking, comma-joined in one row.
+   *
+   * One row rather than a row per word, for the reason the Journal's `excluded_words`
+   * gives: the list is read and written whole every time, and `parseWordList` already
+   * tolerates the blanks, casing and duplicates a hand-edited value could carry.
+   *
+   * A *module* setting, not a per-reader one: a household's filing cabinet has one
+   * letterhead and one surname on every form, so the noise is a property of the
+   * library rather than of whoever is looking at it. The Journal's is per-module for
+   * the same reason.
+   */
+  ignoredKeywords: "ignored_keywords",
 } as const;
 
 export interface DocumentSettings {
   /** `""` = not set, and attaching a file is refused until it is. */
   documentRoot: string;
+  /**
+   * Words the Keywords section leaves out of its ranking.
+   *
+   * Layered on top of the shared stopword list rather than replacing it: that list is
+   * a property of English and stays the floor, this is the household's own set of
+   * dismissals. Deliberately does **not** affect the search box — ignoring a word
+   * declutters a list, it does not make text unfindable.
+   */
+  ignoredKeywords: string[];
 }
 
 export interface DocumentLimits {
@@ -53,7 +76,14 @@ export interface DocumentLimits {
 /** Reads the module's settings out of its rows, defaulting anything absent. */
 export function resolveDocumentSettings(rows: { key: string; value: string }[]): DocumentSettings {
   const byKey = new Map(rows.map((row) => [row.key, row.value]));
-  return { documentRoot: (byKey.get(DOCUMENT_SETTING_KEYS.documentRoot) ?? "").trim() };
+  return {
+    documentRoot: (byKey.get(DOCUMENT_SETTING_KEYS.documentRoot) ?? "").trim(),
+    // Parsed rather than split: a missing row, a blank one and a hand-edited one with
+    // odd casing all have to come back as a usable list, which is what `parseWordList`
+    // guarantees. An unparseable entry is dropped, not thrown on — the same
+    // forgiveness `parseLimit` below applies to the ceiling.
+    ignoredKeywords: parseWordList(byKey.get(DOCUMENT_SETTING_KEYS.ignoredKeywords) ?? ""),
+  };
 }
 
 /** Reads the ceiling out of the same rows, forgivingly. Never throws. */
@@ -162,4 +192,70 @@ export async function setDocumentRoot(
     ]);
   }
   return getDocumentSettings(moduleRepo, settingsRepo);
+}
+
+/**
+ * Adds a word to the ignored list, or removes it — the Keywords screen's ✕ buttons.
+ *
+ * One function for both directions rather than two, because the read-modify-write
+ * around them is the whole of the work and duplicating it is how the two halves of a
+ * toggle drift apart. `ignore: false` on a word the list doesn't hold is **not** an
+ * error: the end state is what was asked for, and a double-click should not report a
+ * failure.
+ *
+ * The read-modify-write lives here rather than in the action for the reason the
+ * Journal's `updateExcludedWords` records: the stored value is one comma-joined row,
+ * so two tabs each sending their own idea of the whole list would have the last writer
+ * silently drop the other's word. The caller sends one word and a direction.
+ *
+ * An **empty** result removes the row instead of saving a blank — module-setting
+ * values must be non-empty, and `saveModuleSettingsPartial` deliberately cannot
+ * express a deletion. Every other key on the module is left untouched, which is why
+ * this is the partial save and not `saveModuleSettings`.
+ *
+ * Returns the stored list, so a caller renders what was actually written rather than
+ * an optimistic guess.
+ */
+export function setKeywordIgnored(
+  moduleRepo: ModuleRepository,
+  settingsRepo: ModuleSettingsRepository,
+  rawWord: string,
+  ignore: boolean,
+): string[] {
+  // Normalized before storing: the ranker compares against the lowercased, trimmed
+  // form, so a stored "Beach " would look right in the list and silently never match
+  // a token. That is the most confusing way for this feature to fail.
+  const word = normalizeWord(rawWord);
+  if (word === "") {
+    throw new Error(`"${rawWord}" isn't a word that can be ignored.`);
+  }
+
+  const appModule = getModuleBySlug(moduleRepo, DOCUMENTS_MODULE_SLUG);
+  if (!appModule) throw new Error("The Document Library module is not registered.");
+
+  const rows = listModuleSettingsFor(settingsRepo, appModule.id);
+  const stored = rows.find((row) => row.key === DOCUMENT_SETTING_KEYS.ignoredKeywords);
+  const current = parseWordList(stored?.value ?? "");
+
+  const next = ignore
+    ? current.includes(word)
+      ? current
+      : [...current, word]
+    : current.filter((candidate) => candidate !== word);
+
+  const value = serializeWordList(next);
+
+  if (value === "") {
+    removeModuleSetting(settingsRepo, appModule.id, DOCUMENT_SETTING_KEYS.ignoredKeywords);
+  } else {
+    saveModuleSettingsPartial(settingsRepo, appModule.id, [
+      {
+        key: DOCUMENT_SETTING_KEYS.ignoredKeywords,
+        value,
+        description: "Words the Document Library's Keywords section does not rank.",
+      },
+    ]);
+  }
+
+  return parseWordList(value);
 }

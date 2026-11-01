@@ -75,6 +75,62 @@ export function adminMenuItemId(nodeId: string): string {
 export const HOME_MENU_ITEM_ID = "home";
 
 /**
+ * Menu items that outlived the navigation node they were derived from.
+ *
+ * **The only hand-written entries in this file, and they are a debt, not a pattern.**
+ * Everything else here is derived precisely so there is no list to remember to
+ * update; these three exist because a menu item id is permanent once shipped
+ * (see `src/lib/menu-items/types.ts`) and three nav nodes were retired after shipping.
+ *
+ * Security, System Log and Message Queue were three Administration screens until they
+ * were folded into the three tabs of System Messages. `ADMIN_TREE_MODULE.sections`
+ * now yields one node where it yielded three, so the derived loop above no longer
+ * emits `admin_section_security`, `admin_section_system_log` or
+ * `admin_section_messages` — and a personal toolbar row saved against any of them
+ * would address an item that no longer exists, losing both the row and whatever icon
+ * was uploaded for its slot.
+ *
+ * So they are re-emitted here, pointing at the tab that replaced each screen. They
+ * are **not** in `adminNav`, so they draw no second entry in the tree or the section
+ * panel; they only exist for the picker and for rows that already reference them.
+ *
+ * `group` is deliberately omitted: these are not part of any heading in the nav, and
+ * giving them one would file them under a group the tree does not draw.
+ *
+ * Nothing should be added to this list for a *new* screen. An entry earns its place
+ * here only by having shipped as a nav node first.
+ */
+const RETIRED_ADMIN_MENU_ITEMS: {
+  nodeId: string;
+  title: string;
+  hint: string;
+  href: string;
+  icon: string;
+}[] = [
+  {
+    nodeId: "security",
+    title: "Security",
+    hint: "Sign-in history and failed login attempts",
+    href: "/admin/system-messages?tab=security",
+    icon: "shield",
+  },
+  {
+    nodeId: "system-log",
+    title: "System Log",
+    hint: "What the application has been doing — DEBUG and OPERATIONAL lines",
+    href: "/admin/system-messages?tab=system-log",
+    icon: "list",
+  },
+  {
+    nodeId: "messages",
+    title: "Message Queue",
+    hint: "Read the application-wide message queue, and delete messages from it",
+    href: "/admin/system-messages?tab=messages",
+    icon: "bell",
+  },
+];
+
+/**
  * Every menu item, in navigation order: Home, then each module's sections, then
  * Administration's screens.
  *
@@ -132,6 +188,19 @@ export function buildMenuItemSeeds(
       href: section.href,
       group: section.group,
       icon: section.icon,
+    });
+  }
+
+  for (const alias of RETIRED_ADMIN_MENU_ITEMS) {
+    seeds.push({
+      id: adminMenuItemId(alias.nodeId),
+      kind: "admin",
+      defaultTitle: alias.title,
+      defaultHint: alias.hint,
+      moduleSlug: "admin",
+      moduleName: ADMIN_TREE_MODULE.name,
+      href: alias.href,
+      icon: alias.icon,
     });
   }
 

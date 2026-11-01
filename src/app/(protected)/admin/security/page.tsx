@@ -1,50 +1,17 @@
-import { getAuthEventSummary, listAuthEvents } from "@/lib/auth-events";
-import { startOfWeekIso, todayIsoLocal } from "@/lib/shared/date";
-import {
-  getSiteVisitSummary,
-  listAllowedIps,
-  listBlockedIps,
-  listVisitsByWeek,
-} from "@/lib/site-visits";
-import { listUsers } from "@/lib/user";
-import { deps } from "@/lib/wiring";
-import { SecurityView } from "./view";
+import { redirect } from "next/navigation";
 
-export default async function SecurityPage() {
-  const events = listAuthEvents({}, deps.authEventRepo);
-  const summary = getAuthEventSummary(deps.authEventRepo);
-
-  // Resolved here rather than joined in SQL: the log deliberately outlives the
-  // accounts it references (migrations/0045), so a row can point at a deleted user.
-  // A missing name falls back to the username that was typed.
-  const fullNameByUserId: Record<number, string> = {};
-  for (const user of listUsers(deps.userRepo)) {
-    fullNameByUserId[user.id] = user.fullName;
-  }
-
-  // Grouped in the lib (`listVisitsByWeek`), so the view renders a tree it is handed
-  // rather than doing date arithmetic in a component.
-  const visitWeeks = listVisitsByWeek({}, deps.siteVisitRepo);
-  const visitSummary = getSiteVisitSummary(deps.siteVisitRepo);
-  const allowlist = listAllowedIps(deps.ipAllowlistRepo);
-  const blacklist = listBlockedIps(deps.ipBlacklistRepo);
-
-  // Which groups start expanded. Computed on the server so the first HTML already has
-  // the right sections open — a tree that rearranges one frame after hydration reads
-  // as a glitch, and this one can be many rows tall.
-  const todayIso = todayIsoLocal();
-
-  return (
-    <SecurityView
-      events={events}
-      summary={summary}
-      fullNameByUserId={fullNameByUserId}
-      visitWeeks={visitWeeks}
-      visitSummary={visitSummary}
-      allowlist={allowlist}
-      blacklist={blacklist}
-      todayIso={todayIso}
-      thisWeekStart={startOfWeekIso(todayIso)}
-    />
-  );
+/**
+ * `/admin/security` moved into Administration → System Messages as its Security tab.
+ *
+ * Kept as a redirect rather than deleted: this URL is in the wild. The home screen's
+ * bad-login alert linked here, Background Tasks links here, and — the reason that
+ * outlives both — a personal toolbar row saved against the `admin_section_security`
+ * menu item points at it. Deleting the route would break those rows silently, with
+ * nothing on screen to explain where the screen went.
+ *
+ * `redirect` is a 307 here. The in-app links were repointed at the tab URL directly,
+ * so in practice only an old bookmark or a saved toolbar row lands on this.
+ */
+export default async function SecurityRedirectPage() {
+  redirect("/admin/system-messages?tab=security");
 }

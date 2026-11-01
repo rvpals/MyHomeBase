@@ -1015,7 +1015,7 @@ no such floor, and runs whenever it is invoked.
 ⚠️ **Every run files a queue message, and nothing prunes that queue on a timer.** At
 "every 1 minute" that is ~1,440 messages a day. The messages carry
 `source = 'Hello, world!'`, so they are easy to pick out and purge by age on
-Administration &rarr; Message Queue.
+Administration &rarr; System Messages &rarr; Message Queue tab.
 Source: [src/cli/run-hello-world.ts](src/cli/run-hello-world.ts)
 
 ## `export-portfolio`
@@ -3376,7 +3376,7 @@ days.
 
 **Output** — `list` prints one line per message, newest first, with `*` marking unread, then
 the body and source indented beneath. `list-all` prints both halves together, the way
-Administration → Message Queue lists them. `read` and `read-all` report how many rows actually
+Administration → System Messages → Message Queue lists them. `read` and `read-all` report how many rows actually
 changed — an id already read counts 0 rather than erroring, since two readers on one queue is
 ordinary.
 

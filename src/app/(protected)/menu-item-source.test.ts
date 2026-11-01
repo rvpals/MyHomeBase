@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { getIconSlot } from "@/lib/icons";
 import { DEFAULT_MODULES } from "@/lib/modules/defaults";
+import { ADMIN_TREE_MODULE } from "./admin-tree-module";
 import { adminMenuItemId, buildMenuItemSeeds, moduleMenuItemId } from "./menu-item-source";
 
 /** The shipped module list, in the shape the source takes. */
@@ -45,6 +46,37 @@ describe("buildMenuItemSeeds", () => {
   it("files Home under no module, so it is offered on its own", () => {
     const home = SEEDS.find((seed) => seed.kind === "home");
     expect(home?.moduleSlug).toBeUndefined();
+  });
+
+  it("keeps the three retired Administration ids addressable", () => {
+    // Security, System Log and Message Queue stopped being nav nodes when they
+    // folded into System Messages' tabs, so the derived loop no longer emits them.
+    // They are re-emitted as aliases, because a menu item id is permanent once
+    // shipped: a personal toolbar row saved against one still points at it, and
+    // dropping the seed would lose the row and its uploaded icon with no error.
+    const byId = new Map(SEEDS.map((seed) => [seed.id, seed]));
+
+    for (const [id, tab] of [
+      ["admin_section_security", "security"],
+      ["admin_section_system_log", "system-log"],
+      ["admin_section_messages", "messages"],
+    ] as const) {
+      const seed = byId.get(id);
+      expect(seed, id).toBeDefined();
+      // Each must land on the tab that replaced it, not on the screen's default.
+      expect(seed?.href).toBe(`/admin/system-messages?tab=${tab}`);
+    }
+  });
+
+  it("does not draw the retired ids as a second navigation entry", () => {
+    // They are menu items only. `adminNav` has one node where it had three, so the
+    // tree and the section panel must show System Messages alone — an alias that
+    // leaked back into the nav would put four entries where the merge left one.
+    const adminHrefs = ADMIN_TREE_MODULE.sections.map((section) => section.href);
+    expect(adminHrefs).toContain("/admin/system-messages");
+    expect(adminHrefs).not.toContain("/admin/security");
+    expect(adminHrefs).not.toContain("/admin/system-log");
+    expect(adminHrefs).not.toContain("/admin/messages");
   });
 
   it("resolves every id to a registered icon slot", () => {

@@ -500,6 +500,7 @@ export function BackgroundTasksView({
   const [refreshInterval, setRefreshInterval] = useState<RefreshInterval>(
     autoRefresh.autoRefreshInterval,
   );
+  const [refreshMarketDaysOnly, setRefreshMarketDaysOnly] = useState(autoRefresh.marketDaysOnly);
   // Expense import form state. The interval is held as text, not a number, so a
   // half-typed value doesn't snap to 0 mid-keystroke.
   const [importEnabled, setImportEnabled] = useState(expense.autoImportEnabled);
@@ -550,7 +551,8 @@ export function BackgroundTasksView({
 
   const refreshDirty =
     refreshEnabled !== autoRefresh.autoRefreshEnabled ||
-    refreshInterval !== autoRefresh.autoRefreshInterval;
+    refreshInterval !== autoRefresh.autoRefreshInterval ||
+    refreshMarketDaysOnly !== autoRefresh.marketDaysOnly;
   const importDirty =
     importEnabled !== expense.autoImportEnabled ||
     importIntervalMinutes !== expense.autoImportIntervalMinutes;
@@ -734,12 +736,30 @@ export function BackgroundTasksView({
                 </select>
               </label>
 
+              <label className="mt-4 flex items-start gap-3 rounded-md border border-line bg-paper p-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={refreshMarketDaysOnly}
+                  onChange={(event) => setRefreshMarketDaysOnly(event.target.checked)}
+                  disabled={!refreshEnabled}
+                  className={`${CHECKBOX_CLASS} disabled:opacity-50`}
+                />
+                <span>
+                  <span className="block font-medium text-ink">Only run on US market days</span>
+                  <span className="mt-1 block text-xs text-muted">
+                    Skips weekends and exchange holidays, when prices cannot move.{" "}
+                    <strong className="text-ink">Run now</strong> ignores this, so you can still
+                    pull prices on a Sunday.
+                  </span>
+                </span>
+              </label>
+
               <p className="mt-4 text-xs text-muted">
                 Status:{" "}
                 {refreshEnabled ? (
                   <span className="text-emerald-300">
-                    armed — {REFRESH_INTERVAL_LABELS[refreshInterval].toLowerCase()}, checked once a
-                    minute
+                    armed — {REFRESH_INTERVAL_LABELS[refreshInterval].toLowerCase()}
+                    {refreshMarketDaysOnly ? " on market days" : ""}, checked once a minute
                   </span>
                 ) : (
                   <span className="text-muted">off</span>
@@ -760,6 +780,7 @@ export function BackgroundTasksView({
                         saveAutoRefreshSettingsAction({
                           autoRefreshEnabled: refreshEnabled,
                           autoRefreshInterval: refreshInterval,
+                          marketDaysOnly: refreshMarketDaysOnly,
                         }),
                       "Auto-refresh settings saved.",
                     )
@@ -1080,7 +1101,7 @@ export function BackgroundTasksView({
 
               <p className="mt-4 text-xs text-muted">
                 Events are visible until they age out —{" "}
-                <Link href="/admin/security" className="text-brass hover:underline">
+                <Link href="/admin/system-messages?tab=security" className="text-brass hover:underline">
                   Security
                 </Link>{" "}
                 shows the log.
@@ -1174,7 +1195,7 @@ export function BackgroundTasksView({
                       {helloRunsPerDay === 1 ? "" : "s"} a day
                     </strong>{" "}
                     to the queue. Nothing prunes it automatically —{" "}
-                    <Link href="/admin/messages" className="text-brass hover:underline">
+                    <Link href="/admin/system-messages?tab=messages" className="text-brass hover:underline">
                       purge it on Messages
                     </Link>
                     .

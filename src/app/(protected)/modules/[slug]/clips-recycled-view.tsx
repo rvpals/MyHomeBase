@@ -27,7 +27,7 @@ import {
 /**
  * A SQLite `datetime('now')` stamp, read as UTC and shown in the reader's zone.
  *
- * The same helper, for the same reason, as the one in `admin/messages/view.tsx`:
+ * The same helper, for the same reason, as the one in `admin/system-messages/messages-tab.tsx`:
  * the stored form is `YYYY-MM-DD HH:MM:SS` with no zone, and handing that to
  * `new Date()` directly gives "Invalid Date" in Safari. Kept local rather than
  * shared — it is a component-scoped detail of how one screen prints a column.

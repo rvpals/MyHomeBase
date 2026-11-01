@@ -38,9 +38,9 @@ async function requireAdmin(): Promise<void> {
   if (!isAdmin(currentUser)) throw new Error("Only an admin can review sign-in activity.");
 }
 
-/** Both halves of the Security screen, plus the home-screen alerts that read them. */
+/** Both halves of the Security tab, plus the home-screen alerts that read them. */
 function revalidateSecurity(): void {
-  revalidatePath("/admin/security");
+  revalidatePath("/admin/system-messages");
   revalidatePath("/");
 }
 

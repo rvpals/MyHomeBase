@@ -20,7 +20,16 @@ const DAY_MS = 24 * HOUR_MS;
 function refreshSettings(
   overrides: Partial<ScheduledRefreshSettings> = {},
 ): ScheduledRefreshSettings {
-  return { autoRefreshEnabled: true, autoRefreshInterval: "daily", ...overrides };
+  // The market-day gate is off in these fixtures: this suite asserts interval
+  // arithmetic against synthetic timestamps, and rolling a due date onto the next
+  // trading day would couple every expectation to the calendar. The gate has its
+  // own tests in `scheduled-refresh/settings.test.ts`.
+  return {
+    autoRefreshEnabled: true,
+    autoRefreshInterval: "daily",
+    marketDaysOnly: false,
+    ...overrides,
+  };
 }
 
 function expenseSettings(overrides: Partial<ExpenseSettings> = {}): ExpenseSettings {

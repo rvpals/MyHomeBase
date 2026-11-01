@@ -31,6 +31,14 @@ export function documentLimits() {
 }
 
 /**
+ * The words the Keywords section does not rank. Read per call, like the folder, so a
+ * dismissal applies to the very next render.
+ */
+export function ignoredKeywords(): string[] {
+  return getDocumentSettings(deps.moduleRepo, deps.moduleSettingsRepo).ignoredKeywords;
+}
+
+/**
  * The ports an extraction needs: the index, the share and the engines (migration 0165).
  *
  * `nodeTextExtractionEngines` is a plain object whose two methods resolve `unpdf`,

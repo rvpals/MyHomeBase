@@ -6,7 +6,7 @@
 // "the chunking context does not support external modules (request: node:fs)".
 // Client components import from the leaf modules instead -- `./types` for the
 // types, `./auth-events` for the pure helpers like `describeFailureReason`.
-// See `admin/security/view.tsx`, and the identical note in
+// See `admin/system-messages/security-tab.tsx`, and the identical note in
 // `@/lib/scheduled-refresh/index.ts`.
 
 export type {

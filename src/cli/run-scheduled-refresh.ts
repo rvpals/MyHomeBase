@@ -10,10 +10,10 @@ import {
  * scheduler runs on its heartbeat, and the same one the Configuration screen's
  * "Run refresh now" button triggers.
  *
- * Default behaviour respects the switch and the interval, so this is safe to
- * point an external scheduler (DSM Task Scheduler, cron) at if you would rather
- * the clock lived outside the app. `--force` ignores both, which is what the UI
- * button does.
+ * Default behaviour respects the switch, the market calendar and the interval, so
+ * this is safe to point an external scheduler (DSM Task Scheduler, cron) at if you
+ * would rather the clock lived outside the app. `--force` ignores all three, which
+ * is what the UI button does.
  *
  *   npm run cli -- run-scheduled-refresh
  *   npm run cli -- run-scheduled-refresh --force
@@ -26,6 +26,9 @@ export async function runScheduledRefreshCommand(args: string[]): Promise<void> 
     const lastRun = loadLastScheduledRun();
     console.log(`Auto refresh: ${settings.autoRefreshEnabled ? "on" : "off"}`);
     console.log(`Interval:     ${REFRESH_INTERVAL_LABELS[settings.autoRefreshInterval]}`);
+    console.log(
+      `Market days:  ${settings.marketDaysOnly ? "only (weekends and holidays skipped)" : "every day"}`,
+    );
     console.log(
       lastRun
         ? `Last run:     ${lastRun.lastRunAt} — ${lastRun.status ?? "interrupted"}${

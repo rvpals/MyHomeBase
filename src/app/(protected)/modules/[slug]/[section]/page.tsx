@@ -90,6 +90,7 @@ function renderSection(
   requestedCloneId: number | undefined,
   requestedTreeDocumentId: number | undefined,
   documentsContents: boolean,
+  documentsKeyword: string | undefined,
 ) {
   if (slug === CLASSROOM_MODULE_SLUG && isClassroomSection(section)) {
     return (
@@ -198,6 +199,7 @@ function renderSection(
         searchContents={documentsContents}
         category={recipeCategory}
         tag={recipeTag}
+        keyword={documentsKeyword}
         // The same ?edit= the Journal report and Classroom exam editors use — one
         // param meaning "open this record for editing".
         documentId={Number(requestedReportEdit) || undefined}
@@ -306,6 +308,10 @@ export default async function ModuleSectionPage({
     // document says now.
     doc?: string | string[];
     contents?: string | string[];
+    // The Document Library's Keywords screen: which ranked word's documents to list.
+    // Separate from ?search=, which is the reader's own typed text — see the prop's
+    // note in `documents-section.tsx`.
+    keyword?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -335,6 +341,7 @@ export default async function ModuleSectionPage({
     clone,
     doc,
     contents,
+    keyword,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -388,6 +395,11 @@ export default async function ModuleSectionPage({
   // The Document Library's "search inside files" toggle (migration 0165). Present in
   // the URL only when on, so every other module's links are unchanged.
   const documentsContents = (Array.isArray(contents) ? contents[0] : contents) === "1";
+  // Same first-element rule, so a repeated ?keyword= can't concatenate two words into
+  // one that could never have been ranked. Left raw: the section normalizes it with
+  // the module's own rule, and an unrankable value lists no documents rather than
+  // 404ing a link that was valid before the library changed.
+  const documentsKeyword = Array.isArray(keyword) ? keyword[0] : keyword;
   // Same first-element rule. Raw again: an unknown tab key is ignored by the
   // strip rather than 404ing a link that was valid before a tab was renamed.
   const requestedTab = Array.isArray(tab) ? tab[0] : tab;
@@ -466,6 +478,7 @@ export default async function ModuleSectionPage({
     requestedCloneId,
     requestedTreeDocumentId,
     documentsContents,
+    documentsKeyword,
   );
   if (!body) notFound();
 

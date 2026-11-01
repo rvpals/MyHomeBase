@@ -127,7 +127,7 @@ export function listAllMessages(repo: MessageRepository): SystemMessage[] {
  * **Locked messages are skipped**, so the returned count can be lower than the
  * number of ids passed — the caller must not read it as "all of them went". The
  * admin screen counts the locked rows in the selection before calling and says so;
- * see `MessagesView.handleDelete`.
+ * see `MessagesTab.handleDelete`.
  */
 export function deleteMessages(repo: MessageRepository, messageIds: number[]): number {
   return repo.deleteMessages(deleteMessagesSchema.parse(messageIds));

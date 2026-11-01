@@ -172,6 +172,23 @@ export interface DocumentsRepository {
   /** Every extraction for one document, in attachment order. */
   listAttachmentTextForDocument(documentId: number): AttachmentText[];
   /**
+   * Every successfully extracted text in the library, newest first, capped at `limit`.
+   *
+   * What the Keywords section ranks. Deliberately **not** a search: it takes no query,
+   * because the question it answers is "what words are in here at all", which cannot
+   * start from a word.
+   *
+   * `limit` is required rather than optional, and the caller passes
+   * `KEYWORD_SCAN_LIMIT`: an uncapped read of every OCR'd page in a large library is
+   * the one way this screen could get slow without saying so, and a port method that
+   * makes the cap easy to forget is a port method that will be called without one.
+   *
+   * Only `extracted` rows. A `needs-ocr` or `failed` row has an empty body by
+   * definition, so including them would be rows to tokenize that can contribute no
+   * words — and would make `scanLimited` fire on files that hold no text.
+   */
+  listAllAttachmentText(limit: number): AttachmentText[];
+  /**
    * Stores one attachment's text, replacing any earlier extraction.
    *
    * An upsert keyed on `attachment_id`, which is the table's primary key: a second

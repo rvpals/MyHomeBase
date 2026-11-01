@@ -60,6 +60,6 @@ export async function loadSystemLogAction(
 export async function clearSystemLogAction(kind?: SystemLogKind): Promise<SystemLogView> {
   await requireAdmin();
   clearSystemLog(deps.systemLogRepo, { kind });
-  revalidatePath("/admin/system-log");
+  revalidatePath("/admin/system-messages");
   return readView({});
 }

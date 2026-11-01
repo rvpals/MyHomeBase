@@ -18,7 +18,7 @@ import {
 import { deps } from "@/lib/wiring";
 import { requireAdmin } from "../../require-access";
 
-const MESSAGES_PATH = "/admin/messages";
+const MESSAGES_PATH = "/admin/system-messages";
 
 export interface MessageAdminResult {
   ok: boolean;

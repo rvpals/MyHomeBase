@@ -6,7 +6,7 @@
 // "the chunking context does not support external modules (request: node:fs)".
 // Client components import from the leaf modules instead -- `./types` for the
 // types, `./suspicion` and `./grouping` for the pure helpers. See
-// `admin/security/visits-tab.tsx`, and the identical note in
+// `admin/system-messages/visits-tab.tsx`, and the identical note in
 // `@/lib/auth-events/index.ts`.
 
 export type {

@@ -2445,18 +2445,20 @@ editor's one remaining two-column grid (Category/Rating/Source/Tags) collapses t
 bulk actions with it.
 
 **Document Library** (`documents`) — the household's filed paperwork: a lease, a
-warranty, an insurance policy, a manual. Six sections (Home screen, Document Tree,
-Categories & Tags, Prefill Templates, Recycled Documents, Configuration), one library
-module `src/lib/documents`, six `doc_` tables from migration 0159 plus two from 0165
-and one from 0169. Driveable as
+warranty, an insurance policy, a manual. Seven sections (Home screen, Document Tree,
+Keywords, Categories & Tags, Prefill Templates, Recycled Documents, Configuration), one
+library module `src/lib/documents`, six `doc_` tables from migration 0159 plus two from
+0165 and one from 0169. Driveable as
 `npm run cli -- list-documents [--search X] [--category C] [--tag T] [--id N] [--zip path]`,
 `npm run cli -- documents-index-text [--limit N] [--search X] [--ocr] [--dry-run]`
 and `npm run cli -- documents-templates list|show|apply|set|enable|disable|delete`.
 
-Six is exactly where this document puts the nesting threshold, and the section list is
-deliberately still **flat**: group headings for a sixth row would cost a level of
-nesting to organise six items a reader can already see at once. Worth revisiting at
-seven.
+Seven sections, past the threshold this document sets, and the list is **still flat**
+— that was the revisit, and the answer was no. Grouping them would mean "Browse" (main,
+tree, keywords) over "Curate" (metadata, templates) over "Manage" (recycled,
+configuration): three headings and a level of nesting to organise seven rows that
+already fit on screen without scrolling, costing a click to reach anything and buying
+nothing a reader cannot already see. Revisit again at nine.
 
 The home screen **is** the list, the same shape Clips settled on — filtering and the
 way in to the editor both live at `/modules/documents`, because a second route showing
@@ -2486,6 +2488,56 @@ each row's title** runs the expensive path for one document and reports what it 
 the "Search inside files" toggle on the filter row consults the index but never
 triggers an extraction. Bulk indexing belongs on the CLI or the background job, both
 of which keep the ~320MB an OCR worker needs off the critical path.
+
+**The Keywords section is the search box turned inside out.** The grid wants a title
+and the tree wants a category; this one starts from nothing and hands back the
+library's own vocabulary, ranked, so a reader can discover that forty documents mention
+`allstate` without having thought to type it. Clicking a keyword lists the documents it
+appears in. Four decisions, all in `src/lib/documents/keywords.ts`:
+
+- **It owns no table, and there is no migration.** A stored ranking would be a cache of
+  a cache: `doc_attachment_text` is already the disposable, rebuildable one, and a
+  keyword table on top of it would need invalidating on every re-OCR, re-upload and
+  delete. Three write paths that touch one table would have to remember to touch two,
+  and forgetting shows up as a keyword list quietly describing documents that no longer
+  say the word. Computing on read cannot go stale.
+- **It tokenizes in TypeScript rather than reading FTS5's `fts5vocab`.** That was the
+  first design and it loses twice. `doc_text_fts` indexes attachment bodies only, so a
+  vocabulary built from it cannot see `insurance` in a document *titled* "Car
+  Insurance" with no indexed files — exactly the document this screen exists to
+  surface. And its vocabulary is raw: the top of that list is `the`, `and`, `for`,
+  `was`, measured rather than assumed. Once the stopword filter is applied anyway, the
+  vocab table has saved nothing.
+- **The two counts answer different questions and both are shown.** "Appears in 7
+  documents" is the default sort, because the goal here is to *find* documents. Total
+  uses rides alongside: a word used 40 times across 2 documents is a letterhead, 40
+  across 38 is a subject.
+- **The scan is capped at `KEYWORD_SCAN_LIMIT` and says so when it binds.** Ranking
+  reads every cached extraction into memory, which is nothing for a household library
+  and would be the one way this screen could get slow without explaining itself in a
+  library of tens of thousands of OCR'd pages. A capped run reports `scanLimited` and
+  the view states the totals are a lower bound. Reaching that ceiling in practice is
+  the signal to revisit `fts5vocab` with a stopword filter, not to raise the number.
+
+- **A word can be dismissed, and the dismissal is a module setting.** The ✕ beside a
+  keyword adds it to `ignored_keywords` — one comma-joined `sys_module_settings` row,
+  no migration, exactly the shape the Journal's `excluded_words` uses and for the same
+  reason: the list is read and written whole every time. It is a *module* setting
+  rather than a per-reader one because a household's filing cabinet has one letterhead
+  and one surname on every form, so the noise belongs to the library. The list layers
+  on top of the shared stopword list rather than replacing it, and the ✕ on the
+  **Ignored words** strip above the keyword list is how a word comes back — both halves
+  on the one screen, because the module's Configuration screen is admin-gated for
+  editing and a reader who can hide a word must be able to unhide it. Dismissing
+  deliberately does **not** touch the search box: ignoring a word declutters a ranking,
+  it does not make text unfindable.
+
+The ranker shares its tokenizer with the Journal's Top Words through
+`src/lib/shared/word-tokens.ts`. The stopword list, the three-character floor and the
+comma-joined-list parsing are properties of **English and of word lists**, not of
+either module, and two copies would have drifted the first time either was tuned — so
+they moved to `shared/` and `journal/word-stats.ts` re-exports them under its own
+names, leaving every existing Journal caller unchanged.
 
 **A file is read once** (migration 0166). It returns to the work list only if its
 bytes change — a re-upload hashes differently — and a scan OCR has already failed to

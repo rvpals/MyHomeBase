@@ -13,6 +13,8 @@ import {
   listPrefillTemplates,
   listRecycledDocuments,
   listTags,
+  findDocumentsForKeyword,
+  rankDocumentKeywords,
   treeSelectionFilter,
   type DocumentAttachment,
   type DocumentPrefillField,
@@ -24,11 +26,12 @@ import { DocumentsEditorView } from "./documents-editor-view";
 import { DocumentsInstructions } from "./documents-instructions";
 import { DocumentsMainView } from "./documents-main-view";
 import { DocumentsMetadataView } from "./documents-metadata-view";
+import { DocumentsKeywordsView } from "./documents-keywords-view";
 import { DocumentsRecycleView } from "./documents-recycle-view";
 import { DocumentsShell } from "./documents-shell";
 import { DocumentsTemplatesView } from "./documents-templates-view";
 import { DocumentsTreeView } from "./documents-tree-view";
-import { configuredDocumentRoot, documentLimits } from "./documents-root";
+import { configuredDocumentRoot, documentLimits, ignoredKeywords } from "./documents-root";
 import {
   DOCUMENTS_SECTION_INFO,
   type DocumentsSection as DocumentsSectionName,
@@ -55,6 +58,7 @@ export async function DocumentsSection({
   searchContents = false,
   category,
   tag,
+  keyword,
   documentId,
   treeDocumentId,
   isAdmin = false,
@@ -67,6 +71,15 @@ export async function DocumentsSection({
   searchContents?: boolean;
   category?: string;
   tag?: string;
+  /**
+   * From `?keyword=` on the Keywords screen — which ranked word's documents to list.
+   *
+   * A separate param from `?search=`: that one is the reader's own typed text and is
+   * matched with LIKE, this one is a word that came out of the ranker and is matched
+   * on exactly the rule that ranked it. Collapsing them would make the keyword list
+   * and its own drill-down able to disagree about a count.
+   */
+  keyword?: string;
   /** From `?id=` on the edit route. */
   documentId?: number;
   /** From `?doc=` on the tree screen — the document shown in its detail pane. */
@@ -129,6 +142,27 @@ export async function DocumentsSection({
       ? listAttachmentsFor(deps.documentsRepo, [treeDocumentId])
       : new Map<number, DocumentAttachment[]>();
 
+  // The keyword ranking, read only on its own screen — it tokenizes every cached
+  // extraction, so no other view may pay for it. `rankDocumentKeywords` caps its own
+  // scan (see `KEYWORD_SCAN_LIMIT`) and reports through `scanLimited` when it bound,
+  // which the view says out loud rather than under-reporting quietly.
+  // The household's own dismissals, layered on top of the shared stopword list. Read
+  // only on this screen — no other view ranks words, so no other view pays for it.
+  const ignored = view === "keywords" ? ignoredKeywords() : [];
+
+  const keywordRanking =
+    view === "keywords"
+      ? rankDocumentKeywords(deps.documentsRepo, { excludedWords: ignored })
+      : { keywords: [], totalWords: 0, documentsScanned: 0, scanLimited: false };
+
+  // The documents behind the picked word, and only when one is picked: with no
+  // `?keyword=` the right pane shows its resting state rather than an empty grid, so
+  // there is nothing to look up.
+  const keywordDocuments =
+    view === "keywords" && keyword !== undefined && keyword !== ""
+      ? findDocumentsForKeyword(deps.documentsRepo, keyword)
+      : [];
+
   // The bin, read only on its own screen: it is a separate table, so nothing else
   // pays for it.
   const recycled = view === "recycled" ? listRecycledDocuments(deps.documentsRepo) : [];
@@ -163,6 +197,9 @@ export async function DocumentsSection({
   const needsTaxonomy =
     view === "main" ||
     view === "tree" ||
+    // The keyword drill-down draws the same category and tag chips the other lists
+    // do, so it needs the same vocabulary and the same uploaded icons.
+    view === "keywords" ||
     view === "metadata" ||
     view === "new" ||
     view === "edit";
@@ -228,6 +265,19 @@ export async function DocumentsSection({
               selectedCategory={category ?? ""}
               selectedTag={tag ?? ""}
               selectedDocument={treeDocumentId}
+            />
+          )}
+          {view === "keywords" && (
+            <DocumentsKeywordsView
+              keywords={keywordRanking.keywords}
+              totalWords={keywordRanking.totalWords}
+              documentsScanned={keywordRanking.documentsScanned}
+              scanLimited={keywordRanking.scanLimited}
+              selectedKeyword={keyword ?? ""}
+              matchingDocuments={keywordDocuments}
+              ignoredKeywords={ignored}
+              categories={categories}
+              tags={tags}
             />
           )}
           {view === "metadata" && (

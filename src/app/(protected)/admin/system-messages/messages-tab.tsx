@@ -7,15 +7,14 @@ import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 // Imported from the leaf module, not the `@/lib/messages` barrel: that barrel
 // re-exports `SqliteMessageRepository`, which would drag better-sqlite3 into this
 // client bundle and fail the build. Same rule, and the same reason, as
-// `admin/security/view.tsx` importing from `@/lib/auth-events/types`.
+// `admin/system-messages/security-tab.tsx` importing from `@/lib/auth-events/types`.
 import type { SystemMessage } from "@/lib/messages/types";
 import {
   deleteMessagesAction,
   markMessagesReadAction,
   pruneMessagesAction,
   setMessagesLockedAction,
-} from "./actions";
-import { PAGE_CONTAINER } from "../../page-container";
+} from "./messages-actions";
 
 /**
  * The purge windows the button offers.
@@ -68,7 +67,7 @@ function formatWhen(value: string): string {
   });
 }
 
-export interface MessagesViewProps {
+export interface MessagesTabProps {
   /** The whole queue, read and unread, newest first. */
   messages: SystemMessage[];
 }
@@ -80,6 +79,9 @@ export interface MessagesViewProps {
  * was the header bell's job and offering both verbs here would blur the one
  * distinction worth keeping — read keeps a message, delete does not.
  *
+ * Was its own screen (`/admin/messages`) until the three after-the-fact channels were
+ * folded into one; only the page chrome moved out to `SystemMessagesView`.
+ *
  * That held while the bell was the only place a selection could be made. It stopped
  * holding once this grid grew bulk actions: an admin looking at 200 rows filed by a
  * job overnight wants to clear them in one gesture, and sending them to the bell to
@@ -87,7 +89,7 @@ export interface MessagesViewProps {
  * instead — "Mark read" and "Delete" sit side by side and say plainly which keeps
  * the message.
  */
-export function MessagesView({ messages }: MessagesViewProps) {
+export function MessagesTab({ messages }: MessagesTabProps) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
@@ -286,9 +288,8 @@ ${plural(locked.length)} in the selection ${
   ];
 
   return (
-    <div className={PAGE_CONTAINER}>
-      <h1 className="font-display text-2xl font-semibold text-ink">Message Queue</h1>
-      <p className="mt-2 text-sm text-muted">
+    <div>
+      <p className="text-sm text-muted">
         Every notice the application has filed, newest first — the same queue the bell in the
         header opens. Marking a message read keeps it; deleting it here does not, and nothing
         purges the queue on a timer, so it grows until you clear it. Lock a message to keep

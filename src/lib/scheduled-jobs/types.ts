@@ -80,7 +80,7 @@ export const JOB_DESCRIPTORS: readonly JobDescriptor[] = [
     key: JOB_KEYS.stockAutoRefresh,
     label: "Investments auto refresh",
     description:
-      "Prices every position, looks up the sector of any new ticker, then files the day's totals — exactly what the Refresh All button does, so the value history has no gaps on days nobody pressed it.",
+      "Prices every position, looks up the sector of any new ticker, then files the day's totals — exactly what the Refresh All button does, so the value history has no gaps on days nobody pressed it. Skips days the US market is closed unless you turn that off.",
     runnable: true,
     configurable: true,
   },

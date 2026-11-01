@@ -1187,7 +1187,7 @@ export const ICON_SLOTS: IconSlot[] = [
   },
 
   /* ---------------------------------------------------------------------------------
-     Document Library — its five sections.
+     Document Library — its seven sections.
 
      The `new` and `edit` routes get no slot: they are not destinations in the nav,
      they are where the editor opens. A slot marks a PLACE, and "the form I am filling
@@ -1213,6 +1213,19 @@ export const ICON_SLOTS: IconSlot[] = [
     // nothing before this slot existed — so the default has to be the mark the tree
     // row already shows in the nav, not a new one. There is no `tree` concept.
     defaultConcept: "network",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "documents_section_keywords",
+    label: "Keywords",
+    group: "Document Library sections",
+    where: "Documents → section panel → Keywords.",
+    // `search` is the registry's find-something mark, and this screen is the search
+    // box turned inside out — it hands back the words instead of taking one. The
+    // position drew nothing before this slot existed, so there is no earlier glyph
+    // the default has to match, unlike `documents_section_tree` where there was.
+    defaultConcept: "search",
     wired: true,
     namespace: "tree",
   },
@@ -2084,11 +2097,66 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  // ## System Messages, and the three ids it replaced
+  //
+  // Security, System Log and Message Queue were three sibling screens until they
+  // were folded into one screen of three tabs. The new node and its three tabs take
+  // fresh slots below; the three old `admin_section_*` ids are **kept, not renamed**
+  // — they left the navigation tree but are still registered as menu items
+  // (`menu-item-source.ts` appends them as aliases), so a personal toolbar row saved
+  // against one keeps working and keeps whatever icon was uploaded for it. Renaming
+  // or deleting any of them would orphan that upload, which is the one thing a slot
+  // id may never do.
   {
-    id: "admin_section_security",
-    label: "Security",
+    id: "admin_section_system_messages",
+    label: "System Messages",
     group: "Admin navigation",
-    where: "Admin → section panel → Security.",
+    where: "Admin → section panel → System Messages.",
+    // `shield`, inherited from the Security screen it replaces: Security is the
+    // first of the three tabs and the one most often come here for.
+    defaultConcept: "shield",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_system_messages_tab_security",
+    label: "Security tab",
+    group: "Admin navigation",
+    where: "Admin → System Messages → the Security tab.",
+    defaultConcept: "shield",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_system_messages_tab_system_log",
+    label: "System Log tab",
+    group: "Admin navigation",
+    where: "Admin → System Messages → the System Log tab.",
+    // `list`, for the reason the retired `admin_section_system_log` gave: there is
+    // no terminal or console concept in either icon table, and a slot's default must
+    // be a glyph that already renders or every set draws nothing.
+    defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "admin_system_messages_tab_messages",
+    label: "Message Queue tab",
+    group: "Admin navigation",
+    where: "Admin → System Messages → the Message Queue tab.",
+    // `bell`, as `chrome_header_messages` uses -- the queue's tab and the header
+    // bell that opens it are the same subject.
+    defaultConcept: "bell",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    // Retired from the tree, kept for the toolbar rows saved against it. See the
+    // block comment above.
+    id: "admin_section_security",
+    label: "Security (retired)",
+    group: "Admin navigation",
+    where: "A personal toolbar row pointing at Admin → System Messages → Security.",
     defaultConcept: "shield",
     wired: true,
     namespace: "tree",
@@ -2096,11 +2164,14 @@ export const ICON_SLOTS: IconSlot[] = [
   // The two tabs inside Security, and the allowlist card on the Visit tab. Tabs are
   // places -- they name a view you navigate to -- so they take slots; the suspicion
   // badge on a row does not, being a state glyph rather than a destination.
+  //
+  // These four kept their ids through the merge: the Login/Visit split survived it
+  // intact as a nested strip, so the places they name are the same places.
   {
     id: "admin_security_tab_login",
     label: "Login tab",
     group: "Admin navigation",
-    where: "Admin → Security → the Login tab.",
+    where: "Admin → System Messages → Security → the Login tab.",
     defaultConcept: "users",
     wired: true,
     namespace: "tree",
@@ -2109,7 +2180,7 @@ export const ICON_SLOTS: IconSlot[] = [
     id: "admin_security_tab_visit",
     label: "Visit tab",
     group: "Admin navigation",
-    where: "Admin → Security → the Visit tab.",
+    where: "Admin → System Messages → Security → the Visit tab.",
     defaultConcept: "map",
     wired: true,
     namespace: "tree",
@@ -2118,7 +2189,7 @@ export const ICON_SLOTS: IconSlot[] = [
     id: "admin_security_allowlist",
     label: "Allowed addresses",
     group: "Admin navigation",
-    where: "Admin → Security → Visit → the Allowed addresses card.",
+    where: "Admin → System Messages → Security → Visit → the Allowed addresses card.",
     defaultConcept: "shield",
     wired: true,
     namespace: "tree",
@@ -2127,7 +2198,7 @@ export const ICON_SLOTS: IconSlot[] = [
     id: "admin_security_blocklist",
     label: "Blocked addresses",
     group: "Admin navigation",
-    where: "Admin → Security → Visit → the Blocked addresses card.",
+    where: "Admin → System Messages → Security → Visit → the Blocked addresses card.",
     defaultConcept: "shield",
     wired: true,
     namespace: "tree",
@@ -2142,27 +2213,23 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
-    // Sits between Background Tasks and Message Queue, where the nav puts it: the
-    // three diagnostic screens read as one group.
+    // Retired from the tree when System Log became a tab of System Messages, kept
+    // for the toolbar rows saved against it. See the block comment above
+    // `admin_section_system_messages`.
     id: "admin_section_system_log",
-    label: "System Log",
+    label: "System Log (retired)",
     group: "Admin navigation",
-    where: "Admin → section panel → System Log.",
-    // `list`, not `history`: the sibling above already wears `history` for the job
-    // run records, and this is a list of lines rather than a record of passes. There
-    // is no `terminal` or `console` concept in either icon table — a slot's default
-    // must be a glyph that already renders, or every set draws nothing.
+    where: "A personal toolbar row pointing at Admin → System Messages → System Log.",
     defaultConcept: "list",
     wired: true,
     namespace: "tree",
   },
   {
+    // Retired alongside `admin_section_system_log`, for the same reason.
     id: "admin_section_messages",
-    label: "Message Queue",
+    label: "Message Queue (retired)",
     group: "Admin navigation",
-    where: "Admin → section panel → Message Queue.",
-    // `bell`, as `chrome_header_messages` uses -- the queue's nav entry and the
-    // header bell that opens it are the same subject.
+    where: "A personal toolbar row pointing at Admin → System Messages → Message Queue.",
     defaultConcept: "bell",
     wired: true,
     namespace: "tree",

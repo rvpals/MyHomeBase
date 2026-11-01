@@ -489,7 +489,7 @@ export function AdminShell({
         // Administration isn't a module — it has no row in the module table and
         // no admin-editable name — so unlike every other caller these are
         // constants rather than a lookup. `shield` is the tree-icon concept
-        // `adminNav`'s own Security entry uses, and the closest match to
+        // `adminNav`'s own System Messages entry uses, and the closest match to
         // `AdminIcon` across the generated icon sets.
         module={{ name: "Administration", icon: "shield", href: "/admin" }}
         currentUser={currentUser}

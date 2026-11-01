@@ -12,9 +12,14 @@ import type { TreeIconConcept } from "@/lib/icons/tree-icon-names";
  * `configuration` is last on purpose — the usual "settings at the bottom" place,
  * matching every other module's shell.
  *
- * Six sections, which is exactly where `modules.md` puts the nesting threshold. Kept
- * FLAT anyway: group headings for one extra row would cost a level of nesting to
- * organise six items a reader can already see at once. Worth revisiting at seven.
+ * **Seven sections, and still flat** — which is past the point `modules.md` said was
+ * worth revisiting, so here is the revisit. Grouping these seven would mean headings
+ * like "Browse" (main, tree, keywords) over "Curate" (metadata, templates) over
+ * "Manage" (recycled, configuration): three headings and a level of nesting to
+ * organise seven rows that already fit on screen without scrolling. The nesting would
+ * cost a click to reach anything and buy nothing a reader cannot already see. Revisit
+ * again if this reaches nine, or if a group ever gains a row that genuinely belongs
+ * nowhere else.
  *
  * `templates` sits next to `metadata` because the two curate the same thing from
  * opposite ends — Categories & Tags is the vocabulary, Prefill Templates is the
@@ -28,6 +33,13 @@ import type { TreeIconConcept } from "@/lib/icons/tree-icon-names";
  * replacement for either: a reader who knows the title searches the grid, a reader
  * who is browsing opens the tree.
  *
+ * `keywords` completes that run as the third way in, and sits after `tree` because it
+ * is the one that needs no prior knowledge at all. The grid wants a title, the tree
+ * wants a category — this one starts from nothing and hands back the library's own
+ * vocabulary, ranked. It is a *reading* screen like the two above it, not a curating
+ * one, which is why it is here rather than beside `metadata`: the words on it are
+ * computed from what the documents say, not a list anybody maintains.
+ *
  * There is no separate "All Documents" row. The home screen *is* the list, filter box
  * and all — the shape Clips settled on when it absorbed its own `all` section. A second
  * route showing the same documents would have been the same screen twice.
@@ -38,6 +50,7 @@ import type { TreeIconConcept } from "@/lib/icons/tree-icon-names";
 export const DOCUMENTS_SECTIONS = [
   "main",
   "tree",
+  "keywords",
   "metadata",
   "templates",
   "recycled",
@@ -79,6 +92,10 @@ export const DOCUMENTS_SECTION_INFO: Record<
     label: "Document Tree",
     description: "Browse by category, narrow by tag, and read a document beside the list.",
   },
+  keywords: {
+    label: "Keywords",
+    description: "The words your documents actually contain, ranked — pick one to see them.",
+  },
   metadata: {
     label: "Categories & Tags",
     description: "The two lists a document is filed under, and their icons.",
@@ -113,6 +130,11 @@ export const DOCUMENTS_SECTION_ICONS: Record<DocumentsSection, TreeIconConcept> 
   // no "tree" concept in TREE_ICON_NAMES, and adding one for a single section would
   // mean a glyph nothing else asks for.
   tree: "network",
+  // `search` — the screen is the search box turned inside out: instead of taking a
+  // word and finding documents, it offers the words back. The position drew nothing
+  // before this slot existed, so any registry glyph is a free choice; this is the one
+  // whose meaning matches.
+  keywords: "search",
   metadata: "list",
   // `copy` — a template is the thing you take a copy of to start from, and the
   // registry's `copy` mark says exactly that. The position drew nothing before this

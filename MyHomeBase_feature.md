@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (207 commits, 2026-07-12 to 2026-10-30) and `CHANGE_HISTORY.md`.
+project's git history (209 commits, 2026-07-12 to 2026-11-01) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -364,6 +364,11 @@ on a folder on the NAS.
   Document form can start from; applying one fills only blank fields. A template can be
   disabled without deleting it, and a `documents-templates` CLI manages them.
 - **Document Tree** — browse by category, narrow by tag, and read a document beside the list.
+- **Keywords** — the words the library actually contains, ranked by how many documents use
+  them (with total uses beside it), counted across titles, descriptions and the text read out
+  of the files. A filter box narrows the list as you type; clicking a keyword lists the
+  documents that contain it. An **ignored words** list, like the Journal's, hides noise such
+  as a letterhead or a surname from the ranking — searching still finds those words.
 - **Attachments** — one or more files per document. Images and PDFs display inline;
   anything else downloads, and **Download all** streams a zip. A file moved by hand on the
   share leaves the attachment listed and the download answering 404.
@@ -394,12 +399,18 @@ on a folder on the NAS.
   **disabled** — kept, dimmed in the list, and never drawn for the home widget — and enabled again.
 - **Locations** — Location Manager with Venn and Graph views, bulk location edit, and
   location metadata.
-- **Security** — Login and Visit tabs, IP blacklist.
-- **Background Tasks**, **System Log** and **Message Queue** (readable, deletable, purgeable).
+- **System Messages** — the three after-the-fact channels on one screen, as tabs.
+  **Security** (itself split into Login and Visit sub-tabs, with the IP allowlist and
+  blacklist), **System Log**, and **Message Queue** (readable, deletable, purgeable).
   The System Log records what the code did — **DEBUG** and **OPERATIONAL** lines, each behind
   its own switch (both off by default) in Application Configuration, capped at a row limit,
   with every background job's trigger and finish logged automatically. A `system-log` CLI
-  tails and searches it.
+  tails and searches it. The open tab lives in the URL (`?tab=`), so each tab can be
+  linked directly.
+- **Background Tasks** — kept separate, because "did each job run" is a scheduler
+  question rather than a log one. The scheduled stock price refresh can be limited to
+  **US market days**, skipping weekends and exchange holidays (on by default); *Run now*
+  ignores it.
 - **SQL Explorer** — schema browser with prose for every table, tables grouped by
   module, BLOB cells fetched on demand, saved statements, table-name suggestions, a
   Table Usage tab, and a Truncate button behind a row-counting warning.

@@ -52,6 +52,42 @@ export function DocumentsInstructions({ section }: { section: DocumentsSection }
     );
   }
 
+  if (section === "keywords") {
+    return (
+      <div className="flex flex-col gap-2 text-sm text-muted">
+        <p>
+          The words your documents actually contain, ranked — the way in when you do
+          not know what you are looking for. Counted across every{" "}
+          <strong className="text-ink">title, description</strong> and any{" "}
+          <strong className="text-ink">text read out of the files</strong>.
+        </p>
+        <p>
+          <strong className="text-ink">Documents</strong> is how many documents use the
+          word at all, and is what the list is sorted by.{" "}
+          <strong className="text-ink">Uses</strong> counts every repeat, so a word with
+          many uses but few documents is usually a letterhead rather than a subject.
+          Clicking a keyword lists the documents it appears in.
+        </p>
+        <p>
+          Common words, anything under three letters and bare numbers are left out, so
+          the list stays words you might search for. A document only contributes its
+          file contents once that file has been read — use{" "}
+          <strong className="text-ink">OCR</strong> on the Home screen, or leave the
+          indexing job armed, and more words appear here.
+        </p>
+        <p>
+          The <strong className="text-ink">✕</strong> beside a keyword stops it being
+          ranked — for a letterhead, a surname or a scanner footer that appears on
+          everything. Ignored words are listed under{" "}
+          <strong className="text-ink">Ignored words</strong> above the list, where the
+          same ✕ brings one back. This only changes what is ranked here:{" "}
+          <strong className="text-ink">searching still finds the word</strong>, so
+          nothing becomes unfindable.
+        </p>
+      </div>
+    );
+  }
+
   if (section === "metadata") {
     return (
       <div className="flex flex-col gap-2 text-sm text-muted">

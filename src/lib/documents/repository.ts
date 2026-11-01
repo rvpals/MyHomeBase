@@ -1065,6 +1065,26 @@ export class SqliteDocumentsRepository implements DocumentsRepository {
     return rows.map(toAttachmentText);
   }
 
+  listAllAttachmentText(limit: number): AttachmentText[] {
+    // `status = 'extracted'` is the whole filter: every other status stores an empty
+    // body, so including them would hand the ranker rows with no words in them and
+    // make its scan cap fire on files that hold no text.
+    //
+    // Newest first, so a capped read in a very large library describes the most
+    // recently indexed files rather than an arbitrary slice. `indexed_at` is when the
+    // text was recovered, not when the document was filed — which is the right axis
+    // here, since this reads the index rather than the library.
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM doc_attachment_text
+          WHERE status = 'extracted'
+          ORDER BY indexed_at DESC, attachment_id DESC
+          LIMIT ?`,
+      )
+      .all(limit) as AttachmentTextRow[];
+    return rows.map(toAttachmentText);
+  }
+
   putAttachmentText(input: AttachmentTextWriteData): void {
     // INSERT OR REPLACE rather than an UPSERT clause: replacing the row fires the
     // delete and insert triggers in turn, which is exactly what keeps the external

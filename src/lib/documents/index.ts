@@ -179,6 +179,7 @@ export {
   resolveDocumentLimits,
   resolveDocumentSettings,
   setDocumentRoot,
+  setKeywordIgnored,
   type DocumentLimits,
   type DocumentSettings,
 } from "./settings";
@@ -221,6 +222,19 @@ export {
   type TextIndexDeps,
   type TextIndexPassResult,
 } from "./text-index";
+
+// The Keywords section: what words the library contains, ranked, and the documents
+// behind one of them. Reads the text index rather than owning a table — see the note
+// at the top of `keywords.ts` for why there is no `doc_keywords`.
+export {
+  DEFAULT_KEYWORD_LIMIT,
+  KEYWORD_SCAN_LIMIT,
+  findDocumentsForKeyword,
+  rankDocumentKeywords,
+  type DocumentKeyword,
+  type KeywordRanking,
+  type KeywordRankingOptions,
+} from "./keywords";
 
 // The background indexing job (migration 0166): its settings, cadence and runner.
 //

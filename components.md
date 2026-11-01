@@ -236,7 +236,7 @@ switch. **Every** clickable action uses this — do not hand-roll a `<button cla
 | Prop | Type | Notes |
 |------|------|-------|
 | `children` | `ReactNode` | Label/content. |
-| `variant?` | `"primary" \| "secondary" \| "danger"` | Default `"primary"`. |
+| `variant?` | `"primary" \| "secondary" \| "danger"` | Default `"primary"`. **A closed set of three** — there is no `ghost`, `outline`, `link` or `subtle`. A quiet button (a row action, a Cancel, a ✕) is `secondary`. |
 | `size?` | `"sm" \| "md"` | Default `"md"`. Use `sm` inside grids/toolbars. |
 | `href?` | `string` | When set, renders a `next/link` instead of a `<button>`. |
 | `type?` | `"button" \| "submit"` | Default `"button"`. Ignored when `href` is set. |
@@ -420,7 +420,7 @@ and an optional "Show SQL" re-run dialog. Do not build another table.
 |-------|------|-------|
 | `key` | `string` | Unique; React key + sort identity. |
 | `header` | `string` | |
-| `render` | `(row: T) => ReactNode` | The cell UI. |
+| `render` | `(row: T) => ReactNode` | **Required**, on every column without exception — including a plain number or an actions column with no data of its own. There is no "just show `value`" fallback: a column that omits it fails to compile. |
 | `value?` | `(row: T) => CellValue` | **The important one.** Raw primitive used for sort, search, filter, CSV export and the footer total. A column participates in those *only* when this is supplied. |
 | `searchValue?` | `(row: T) => string` | Extra text this column feeds to the **search box only** — never to sort, filter, CSV or totals. For a cell that renders more than `value` carries, such as a title with a description beneath it: without it the search can't find a word the user is looking straight at. Keep the subtitle out of `value`, or the column sorts and exports as `"title description"`. |
 | `sortable?` | `boolean` | Set `false` to keep `value` but disable sorting. |
@@ -1726,9 +1726,14 @@ Recently Edited card
 [journal-view.tsx](src/app/(protected)/modules/[slug]/journal-view.tsx) *(two entry
 shortlists in one card; both labels carry a `SlotIcon`, and the per-tab "View all"
 button sits in the tab body rather than the card header because each tab links
-somewhere different)*; the Security screen's Login / Visit split
-[admin/security/view.tsx](src/app/(protected)/admin/security/view.tsx) *(both labels
-carry a `SlotIcon`)*; Household → Recipes' category filter
+somewhere different)*; System Messages' three-tab strip
+[admin/system-messages/view.tsx](src/app/(protected)/admin/system-messages/view.tsx)
+*(controlled from `?tab=`, so the three retired routes can redirect onto a tab and the
+home-screen alerts can deep-link one)*, and the Security tab's own nested Login / Visit
+split inside it
+[admin/system-messages/security-tab.tsx](src/app/(protected)/admin/system-messages/security-tab.tsx)
+*(both labels carry a `SlotIcon`; the sub-tab is controlled too, via `?sub=`)*;
+Household → Recipes' category filter
 [household-recipes-view.tsx](src/app/(protected)/modules/[slug]/household-recipes-view.tsx)
 *(controlled — All / one tab per category / Uncategorised, each tab's `content` is
 `null` and the grid renders below the strip rather than inside a panel, because every
@@ -5643,8 +5648,8 @@ A timestamp stored in UTC, shown as itself *and* on the reader's own clock:
 **Used by:** [admin/background-tasks/view.tsx](src/app/(protected)/admin/background-tasks/view.tsx)
 (last run, next run, and the history dialog's Started/Finished),
 [admin/configuration/backup/view.tsx](src/app/(protected)/admin/configuration/backup/view.tsx),
-[admin/security/view.tsx](src/app/(protected)/admin/security/view.tsx),
-[admin/security/visits-tab.tsx](src/app/(protected)/admin/security/visits-tab.tsx), and
+[admin/system-messages/security-tab.tsx](src/app/(protected)/admin/system-messages/security-tab.tsx),
+[admin/system-messages/visits-tab.tsx](src/app/(protected)/admin/system-messages/visits-tab.tsx), and
 [admin/user-management/view.tsx](src/app/(protected)/admin/user-management/view.tsx).
 
 **Why the local half appears late.** This is a client component, so Next.js renders it on

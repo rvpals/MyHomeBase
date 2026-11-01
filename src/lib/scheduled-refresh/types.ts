@@ -31,6 +31,15 @@ export interface ScheduledRefreshSettings {
   autoRefreshEnabled: boolean;
   /** How often to run when the switch is on. */
   autoRefreshInterval: RefreshInterval;
+  /**
+   * Skip days the US market is shut — weekends and exchange holidays.
+   *
+   * **Defaults to on when the setting is absent**, which is the opposite of
+   * `autoRefreshEnabled` above and deliberate: see
+   * `resolveScheduledRefreshSettings`. Like the master switch it gates only the
+   * background pass, never the explicit Run now button.
+   */
+  marketDaysOnly: boolean;
 }
 
 // The run record and its status live in `@/lib/scheduled-jobs` now -- three jobs

@@ -9,6 +9,7 @@ import {
   startOfWeekIso,
   startOfYearIso,
   toIsoDateLocal,
+  todayIsoInZone,
   todayIsoLocal,
   toLocalTimeLabel,
 } from "./date";
@@ -26,6 +27,43 @@ describe("toIsoDateLocal / todayIsoLocal", () => {
     // 23:30 local on 4 Aug is already 5 Aug in UTC for any negative offset, which
     // is exactly the case toISOString() would get wrong.
     expect(todayIsoLocal(new Date(2026, 7, 4, 23, 30))).toBe("2026-08-04");
+  });
+});
+
+describe("todayIsoInZone", () => {
+  // Instants are built from an explicit UTC epoch so these assertions do not
+  // depend on the timezone the test runner happens to be in.
+  it("gives the calendar date in the named zone, not the server's", () => {
+    // 2026-11-19T02:30Z is still the evening of the 18th in New York.
+    const instant = new Date(Date.UTC(2026, 10, 19, 2, 30));
+
+    expect(todayIsoInZone("America/New_York", instant)).toBe("2026-11-18");
+    expect(todayIsoInZone("UTC", instant)).toBe("2026-11-19");
+  });
+
+  it("crosses forward as well as back", () => {
+    // Midday UTC is already the 19th in Tokyo's evening and still the 19th in
+    // New York's morning.
+    const instant = new Date(Date.UTC(2026, 10, 19, 12, 0));
+
+    expect(todayIsoInZone("Asia/Tokyo", instant)).toBe("2026-11-19");
+    expect(todayIsoInZone("America/New_York", instant)).toBe("2026-11-19");
+
+    // ...but late UTC evening is already tomorrow in Tokyo.
+    const evening = new Date(Date.UTC(2026, 10, 19, 23, 0));
+    expect(todayIsoInZone("Asia/Tokyo", evening)).toBe("2026-11-20");
+  });
+
+  it("always returns a zero-padded YYYY-MM-DD", () => {
+    const instant = new Date(Date.UTC(2026, 0, 9, 12, 0));
+
+    expect(todayIsoInZone("America/New_York", instant)).toBe("2026-01-09");
+  });
+
+  it("throws on an unrecognised timezone", () => {
+    // The right outcome for a typo in a constant: better than silently falling
+    // back to UTC and skipping the wrong days.
+    expect(() => todayIsoInZone("America/Nowhere", new Date())).toThrow();
   });
 });
 

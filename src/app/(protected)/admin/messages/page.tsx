@@ -1,19 +1,13 @@
-import { listAllMessages } from "@/lib/messages";
-import { deps } from "@/lib/wiring";
-import { MessagesView } from "./view";
+import { redirect } from "next/navigation";
 
 /**
- * Administration → Message Queue: the whole queue in one grid, and the two ways
- * to remove from it — delete the ticked rows, or purge everything past an age.
+ * `/admin/messages` moved into Administration → System Messages as its Message Queue
+ * tab. Kept as a redirect for the same reason as its two siblings — see
+ * `admin/security/page.tsx` for the full note.
  *
- * The header bell shows the same table but does a different job: it is the
- * reader's inbox, where the only verb is "mark read". This screen is the admin's,
- * where the verb is "delete". Nothing here marks anything read.
+ * Not to be confused with the header bell (`message-queue.tsx`), which is the
+ * reader's inbox and never pointed here.
  */
-export default async function AdminMessagesPage() {
-  // Both halves together, newest first. The grid shows a state column and filters
-  // in the view, so it wants one list rather than the header's split pair.
-  const messages = listAllMessages(deps.messageRepo);
-
-  return <MessagesView messages={messages} />;
+export default async function MessagesRedirectPage() {
+  redirect("/admin/system-messages?tab=messages");
 }

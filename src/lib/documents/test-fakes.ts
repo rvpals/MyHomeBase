@@ -178,6 +178,21 @@ export class FakeRepository implements DocumentsRepository {
       .map((row) => ({ ...row }));
   }
 
+  /**
+   * Insertion order rather than the real one's `indexed_at DESC`.
+   *
+   * Every fake row shares one `STAMP`, so there is no meaningful date to sort on here
+   * and imposing one would be inventing an ordering the tests would then encode. What
+   * the keyword ranker needs from this method is the `extracted` filter and the cap,
+   * and both are reproduced exactly.
+   */
+  listAllAttachmentText(limit: number): AttachmentText[] {
+    return [...this.texts.values()]
+      .filter((row) => row.status === "extracted")
+      .slice(0, limit)
+      .map((row) => ({ ...row }));
+  }
+
   putAttachmentText(input: AttachmentTextWriteData): void {
     this.texts.set(input.attachmentId, {
       attachmentId: input.attachmentId,

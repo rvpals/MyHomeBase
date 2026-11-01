@@ -8,18 +8,21 @@ import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 // Imported from the leaf modules, not the `@/lib/system-log` barrel: that barrel
 // re-exports `SqliteSystemLogRepository`, which would drag better-sqlite3 into this
 // client bundle and fail the build. Same rule, and the same reason, as
-// `admin/messages/view.tsx` importing from `@/lib/messages/types`.
+// `admin/system-messages/messages-tab.tsx` importing from `@/lib/messages/types`.
 import type {
   SystemLogCounts,
   SystemLogEntry,
   SystemLogKind,
   SystemLogSettings,
 } from "@/lib/system-log/types";
-import { clearSystemLogAction } from "./actions";
-import { PAGE_CONTAINER } from "../../page-container";
+import { clearSystemLogAction } from "./system-log-actions";
 
 /**
- * Administration → System Log.
+ * The System Log tab of Administration → System Messages.
+ *
+ * Was its own screen (`/admin/system-log`) until the three after-the-fact channels
+ * were folded into one. Only the chrome moved — the page container, the eyebrow and
+ * the `<h1>` belong to `SystemMessagesView` now, and this returns a bare body.
  *
  * One grid over both kinds, interleaved by time. The kind is a column rather than
  * two tabs on purpose: an OPERATIONAL line saying a job started and the DEBUG lines
@@ -55,7 +58,7 @@ function KindBadge({ kind }: { kind: SystemLogKind }) {
   );
 }
 
-export function SystemLogView({
+export function SystemLogTab({
   entries,
   counts,
   settings,
@@ -129,16 +132,12 @@ export function SystemLogView({
   ];
 
   return (
-    <div className={PAGE_CONTAINER}>
-      <p className="font-mono text-xs font-medium uppercase tracking-widest text-brass-dark">
-        Administration
-      </p>
-      <h1 className="mt-2 font-display text-3xl font-semibold text-ink">System Log</h1>
-      <p className="mt-2 text-sm text-muted">
+    <div>
+      <p className="text-sm text-muted">
         What the application has been doing. Separate from the{" "}
-        <span className="text-ink">Message Queue</span>, which is what a reader still has
-        to act on, and from <span className="text-ink">Background Tasks</span>, which
-        records how each job&rsquo;s pass went.
+        <span className="text-ink">Message Queue</span> beside it, which is what a reader
+        still has to act on, and from <span className="text-ink">Background Tasks</span>,
+        which records how each job&rsquo;s pass went.
       </p>
 
       {settings.debugEnabled || settings.operationalEnabled ? null : (

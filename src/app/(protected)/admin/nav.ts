@@ -282,10 +282,28 @@ export const adminNav: SectionNode[] = [
     ],
   },
   {
-    id: "security",
-    label: "Security",
-    href: "/admin/security",
-    hint: "Sign-in history and failed login attempts",
+    // Fresh and permanent -- `SectionPanel` derives this section's icon slot from
+    // the id (`admin_section_system_messages`), so renaming it later orphans any
+    // uploaded override.
+    //
+    // **One node where there were three.** Security, System Log and Message Queue
+    // were three sibling screens; they are now three tabs behind this one entry.
+    // Reading them as a group is the point -- a failed sign-in, the lines the code
+    // wrote around it and the notice it filed are three views of one event, and
+    // three nav entries made that a three-click comparison.
+    //
+    // Background Tasks below deliberately did NOT fold in: it answers "did each job
+    // run", a scheduler question rather than a log one.
+    //
+    // The three old ids (`security`, `system-log`, `messages`) are gone from this
+    // list but still registered as menu items -- see `menu-item-source.ts`, which
+    // appends them as aliases so toolbar rows saved against them keep working.
+    id: "system-messages",
+    label: "System Messages",
+    href: "/admin/system-messages",
+    hint: "Sign-ins, what the application logged, and the message queue",
+    // `shield`, inherited from the Security entry this replaces: it is the first of
+    // the three tabs and the one a reader comes here for most often.
     icon: "shield",
   },
   {
@@ -296,38 +314,6 @@ export const adminNav: SectionNode[] = [
     // `history`, not `clock` -- there is no clock glyph in the baked icon sets, and
     // this screen is a run log as much as a scheduler. Present in every set.
     icon: "history",
-  },
-  {
-    // Fresh and permanent -- `SectionPanel` derives this section's icon slot from
-    // the id (`admin_section_system_log`), so renaming it later orphans any
-    // uploaded override.
-    //
-    // Between Background Tasks and Message Queue on purpose: those two plus this
-    // one are the app's three after-the-fact channels -- what the jobs did, what
-    // the code said, and what a reader still has to act on -- and reading them as
-    // a group is the point.
-    id: "system-log",
-    label: "System Log",
-    href: "/admin/system-log",
-    hint: "What the application has been doing — DEBUG and OPERATIONAL lines",
-    // `list`, not `history`: Background Tasks above already wears `history`, and
-    // there is no terminal or console glyph in the baked icon sets.
-    icon: "list",
-  },
-  {
-    // Fresh and permanent -- `SectionPanel` derives this section's icon slot from
-    // the id, so renaming it later orphans any uploaded override.
-    //
-    // Sits after Background Tasks and before SQL Explorer: it belongs with the
-    // other "what has the server been doing" screens rather than with the
-    // configuration ones, and like Security it is a log an admin reads and prunes.
-    id: "messages",
-    label: "Message Queue",
-    href: "/admin/messages",
-    hint: "Read the application-wide message queue, and delete messages from it",
-    // `bell`, matching the header's own message slot -- the same subject in both
-    // places should read as the same thing.
-    icon: "bell",
   },
   {
     id: "sql-explorer",

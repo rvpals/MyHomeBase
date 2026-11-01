@@ -9,6 +9,11 @@ export const refreshIntervalSchema = z.enum(REFRESH_INTERVALS);
 export const scheduledRefreshSettingsSchema = z.object({
   autoRefreshEnabled: z.boolean(),
   autoRefreshInterval: refreshIntervalSchema,
+  // Required, not optional-with-a-default: both front-ends render a control for
+  // it, so a caller omitting it is a bug rather than a shorthand. The
+  // absent-means-on rule belongs to the stored settings row, not to this
+  // boundary -- see `resolveScheduledRefreshSettings`.
+  marketDaysOnly: z.boolean(),
 });
 
 export type ScheduledRefreshSettingsInput = z.infer<typeof scheduledRefreshSettingsSchema>;

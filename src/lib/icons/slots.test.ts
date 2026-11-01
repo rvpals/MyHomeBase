@@ -181,7 +181,13 @@ describe("sectionSlotId", () => {
         "user-management",
         "daily-quote", "daily-quote-list", "daily-quote-add", "daily-quote-import",
         "todo-lists",
-        "security", "background-tasks", "system-log", "sql-explorer", "about",
+        // `security`, `system-log` and `messages` no longer appear in `adminNav` —
+        // they folded into `system-messages` as tabs — but their slots are kept
+        // registered on purpose, because a personal toolbar row saved against one
+        // still addresses it. Asserted here so a later cleanup that deletes them
+        // fails loudly instead of silently orphaning those rows.
+        "system-messages", "security", "system-log", "messages",
+        "background-tasks", "sql-explorer", "about",
       ],
     };
 

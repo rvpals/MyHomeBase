@@ -19,7 +19,13 @@ const ADMIN_ROUTES = [
   "/admin",
   "/admin/about",
   "/admin/user-management",
-  "/admin/security",
+  // The screen that replaced Security, System Log and Message Queue. Each tab is
+  // swept separately: they render different grids off different tables, so one of
+  // them throwing would be invisible in a sweep that only ever opened the default.
+  "/admin/system-messages?tab=security",
+  "/admin/system-messages?tab=security&sub=visit",
+  "/admin/system-messages?tab=system-log",
+  "/admin/system-messages?tab=messages",
   "/admin/background-tasks",
   "/admin/sql-explorer",
   "/admin/daily-quote",

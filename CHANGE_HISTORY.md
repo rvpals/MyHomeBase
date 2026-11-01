@@ -1,5 +1,66 @@
 # Change History
 
+## 2026-11-01 — Document Library Keywords, System Messages tabs, market-day refresh
+
+**No migrations.** Nothing in this release adds or alters a table; every new setting is a
+`sys_module_settings` row. A **republish is required** for the code, but there is nothing to apply
+on the NAS and no new native package.
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not
+invoked by the assistant, and nothing was loaded in a browser. The Keywords section (A) was written
+this session and Min reported it tested after each of its two builds. **B and C were written in earlier
+sessions and were read from their diffs for this entry — they are unverified on screen.**
+`Testing_List.md` carries items for all three.
+
+### A. Documents: Keywords section
+
+- **A new Keywords section** (`/modules/documents/keywords`) ranks the words the library contains — across every
+  document's **title, description and extracted file text** — and clicking a word lists the documents that
+  contain it. The default sort is **how many documents** use the word ("appears in 7 documents"), with total
+  **uses** beside it, because 40 uses across 2 documents is a letterhead and 40 across 38 is a subject.
+- **A filter box** narrows the ranked list as you type (client-side, no round trip). The selected word rides in the
+  URL as `?keyword=`, so it survives a refresh and can be linked.
+- **An ignored-words list**, like the Journal's: the ✕ beside a keyword stops it being ranked, and an **Ignored
+  words (n)** strip above the list brings it back. Stored as one `ignored_keywords` module-setting row. It affects
+  the ranking **only** — searching still finds an ignored word.
+- **Computed on read, no table.** The ranking tokenizes every cached extraction (`doc_attachment_text`) rather than
+  reading FTS5's vocabulary table: titles are not in the FTS index, and its raw vocabulary is `the`/`and`/`for`.
+  The scan is capped at 5,000 files and the screen says so when the cap bites.
+- **Shared tokenizer.** The stopword list, the three-letter floor and the comma-list parsing moved out of
+  `journal/word-stats.ts` into `src/lib/shared/word-tokens.ts`; the Journal re-exports them, so its callers are unchanged.
+- New icon slot `documents_section_keywords` (permanent once an icon is uploaded for it). The Documents section list
+  is now seven, kept flat.
+
+### B. Administration: System Messages (written earlier, read from the diff)
+
+- **Security, System Log and Message Queue are now three tabs of one screen**, Administration → System Messages
+  (`/admin/system-messages?tab=security|system-log|messages`), replacing three sibling nav entries.
+- **The old routes redirect** into the matching tab, and the three old menu-item ids (`admin_section_security`,
+  `_system_log`, `_messages`) are kept as aliases in `menu-item-source.ts`, so a personal toolbar row saved against one
+  still resolves. In-app links (the bad-login alert, Background Tasks) were repointed at the tab URLs.
+- New slots `admin_section_system_messages` and one per tab; `slots.ts`, `admin-tree-module.test.ts`,
+  `menu-item-source.test.ts` and `e2e/smoke.spec.ts` were updated to match.
+
+### C. Stock auto-refresh: market days only (written earlier, read from the diff)
+
+- **A "Only run on US market days" checkbox** in Administration → Background Tasks makes the scheduled price refresh
+  skip weekends and exchange holidays. **On by default** — only an explicit `false` turns it off — so an existing install
+  needs no backfill. **Run now ignores it**, and the CLI's `run-scheduled-refresh` honours it unless `--force`.
+- **Holidays are computed, not listed** (`src/lib/market-calendar`): each NYSE closure follows a rule (an nth weekday,
+  a fixed date rolled off the weekend, Good Friday), so the calendar stays correct in future years without an edit.
+  Early-close days are deliberately not modelled.
+- **"Is today a market day" is answered in New York's calendar**, not the server's (`todayIsoInZone` in
+  `shared/date.ts`), so a NAS on another timezone cannot disagree around midnight. The Active Tasks card rolls its
+  next-run time forward past a closed day.
+
+### Housekeeping
+
+- `menu_items.md` **rebuilt from the live registries**: it had drifted to 10 modules / 53 section nodes while the code
+  carried 12 / 80, missing Clips and the whole Document Library. It now also records each section's default icon.
+- `components.md` states that `DataGridColumn.render` is **required** on every column and that `Button`'s `variant` is
+  a closed set of three (no `ghost`).
+- `modules.md` documents the Keywords decisions and the revisited nesting threshold.
+
 ## 2026-10-31 — Document Library text search and OCR, prefill templates, System Log, Pictionary word controls
 
 **Five migrations: 0165, 0166, 0167, 0168, 0169.** All additive. Apply them on the NAS before

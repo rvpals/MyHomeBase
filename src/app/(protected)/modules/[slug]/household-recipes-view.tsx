@@ -9,7 +9,7 @@ import { Tabs } from "@/components/tabs";
 // Imported from the leaf modules, not the `@/lib/household` barrel: that barrel
 // re-exports `SqliteHouseholdRepository`, which would drag better-sqlite3 into this
 // client bundle and fail the build. Same rule, and the same reason, as
-// `admin/messages/view.tsx` importing from `@/lib/messages/types`.
+// `admin/system-messages/messages-tab.tsx` importing from `@/lib/messages/types`.
 import {
   RECIPE_RATING_MAX,
   RECIPE_RATING_MIN,

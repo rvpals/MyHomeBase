@@ -53,7 +53,7 @@ export async function setSystemLogSwitchAction(
   deps.settingsRepo.setValue(key, systemLogBooleanValue(enabled));
 
   // The log screen reads these to say whether anything is being written.
-  revalidatePath("/admin/system-log");
+  revalidatePath("/admin/system-messages");
   return resolveSystemLogSettings(deps.settingsRepo.listSettings());
 }
 
@@ -64,6 +64,6 @@ export async function setSystemLogMaxRowsAction(value: number): Promise<SystemLo
   const maxRows = systemLogMaxRowsSchema.parse(value);
   deps.settingsRepo.setValue(SYSTEM_LOG_SETTING_KEYS.maxRows, String(maxRows));
 
-  revalidatePath("/admin/system-log");
+  revalidatePath("/admin/system-messages");
   return resolveSystemLogSettings(deps.settingsRepo.listSettings());
 }

@@ -5,8 +5,31 @@
 // Pure functions over entries that are already in memory: no repository, no I/O,
 // no cache. The caller reads the entries and hands them in, which is what lets
 // the whole thing be unit-tested without a database.
+//
+// ## What lives here and what moved
+//
+// `tokenizeWords`, `STOPWORDS` and the length floor moved to
+// `src/lib/shared/word-tokens.ts` when the Document Library's Keywords section
+// started ranking words too. They are properties of **English**, not of either
+// module, and two copies would have drifted the first time either was tuned.
+// They are re-exported below so every existing Journal caller is unchanged.
+//
+// What stays here is everything specific to the Journal: the reader's own
+// excluded-words setting and its parsing, and `topWords` over `JournalEntry`.
 
 import type { JournalEntry } from "./types";
+import {
+  normalizeWord,
+  parseWordList,
+  serializeWordList,
+  tokenizeWords,
+} from "@/lib/shared/word-tokens";
+
+// Re-exported rather than moved out of the Journal's surface: `journal/index.ts`
+// exports `tokenizeWords`, and several callers import it from there. Pointing them
+// at the shared module instead would be a rename across files that this extraction
+// has no reason to touch.
+export { tokenizeWords };
 
 /** One ranked word and how many times it was used. */
 export interface JournalWordCount {
@@ -19,87 +42,6 @@ export interface JournalWordCount {
 }
 
 /**
- * The shortest word the ranking will consider.
- *
- * Three rather than one, so the single letters and two-letter function words
- * (`a`, `I`, `it`, `is`, `of`, `to`, `on`, `at`, `in`, `my`, `we`, `so`) drop out
- * on length alone instead of each needing a line in `STOPWORDS`. The cost is
- * that a genuinely meaningful short word is lost too — `dad`, `cat` and `job`
- * survive at three, but a two-letter name would not. Judged the better trade:
- * the alternative is a stopword list several times this size that still misses
- * one.
- */
-const MIN_WORD_LENGTH = 3;
-
-/**
- * Words carrying no signal about what a journal is *about*.
- *
- * Deliberately a fixed constant and not a setting: it is a property of English,
- * not a preference, and a per-journal editable list would mean a settings row, a
- * screen and a migration for something nobody tunes twice. If that turns out to
- * be wrong, this becomes the default for that setting rather than being replaced.
- *
- * Only words of `MIN_WORD_LENGTH` or more are listed — anything shorter can
- * never reach the filter, so listing `the` matters but listing `an` would be
- * dead weight. Grouped by why each group is here, because a flat alphabetical
- * list invites duplicates.
- */
-const STOPWORDS = new Set<string>([
-  // Articles, demonstratives, quantifiers.
-  "the", "this", "that", "these", "those", "there", "here",
-  "all", "any", "both", "each", "few", "more", "most", "other", "some", "such",
-  "than", "too", "very", "much", "many", "lot", "lots",
-  // Pronouns and possessives.
-  "you", "your", "yours", "she", "her", "hers", "him", "his", "its",
-  "our", "ours", "they", "them", "their", "theirs", "myself", "yourself",
-  "himself", "herself", "itself", "ourselves", "themselves", "who", "whom", "whose",
-  // Auxiliaries and the highest-frequency verbs. `had`/`has`/`have` and
-  // `was`/`were` dominate any narrative text and say nothing about its subject.
-  "was", "were", "been", "being", "are", "and", "but", "not",
-  "has", "had", "have", "having", "did", "does", "doing", "done",
-  "will", "would", "shall", "should", "can", "could", "may", "might", "must",
-  "get", "got", "getting", "went", "goes", "going", "come", "came", "coming",
-  // Prepositions and conjunctions at or above the length floor.
-  "for", "with", "from", "into", "onto", "out", "off", "over", "under",
-  "about", "after", "before", "between", "during", "through", "above", "below",
-  "again", "then", "once", "because", "while", "until", "since", "also",
-  // Time words a dated journal repeats structurally — every entry already
-  // carries its date, so "today" in the text is noise.
-  "today", "tomorrow", "yesterday", "day", "days", "week", "weeks",
-  "month", "months", "year", "years", "time", "times", "morning", "afternoon",
-  "evening", "night", "when", "where", "what", "how", "why",
-  // Clock and calendar fragments the calendar importer writes into content.
-  "am", "pm",
-  // Vague filler that ranks high and means nothing on its own.
-  "just", "like", "really", "well", "back", "even", "still", "way",
-  "thing", "things", "something", "anything", "nothing", "everything",
-  "good", "nice", "great", "bit", "one", "two", "first", "last", "next",
-]);
-
-/**
- * Splits text into comparable words.
- *
- * Lowercased so `Beach` and `beach` are one word. Apostrophes are kept *inside* a
- * word (`don't`, `mum's`) rather than splitting it into `don` + `t`, then the
- * possessive tail is dropped so `mum's` and `mum` rank together — but a leading
- * or trailing quote is not part of the word. Digits are excluded entirely: a bare
- * `2024` or `30` is never an interesting "most used word", and mixed tokens like
- * `5km` are dropped with them rather than being given a special rule.
- */
-export function tokenizeWords(text: string, extraStopwords?: ReadonlySet<string>): string[] {
-  const words: string[] = [];
-  for (const raw of text.toLowerCase().split(/[^a-z'’]+/)) {
-    // Strip surrounding apostrophes, then a possessive ending.
-    const word = raw.replace(/^['’]+|['’]+$/g, "").replace(/['’]s$/, "");
-    if (word.length < MIN_WORD_LENGTH) continue;
-    if (STOPWORDS.has(word)) continue;
-    if (extraStopwords?.has(word)) continue;
-    words.push(word);
-  }
-  return words;
-}
-
-/**
  * Puts a word into the form the tokenizer compares against: lowercased, trimmed,
  * surrounding apostrophes and a possessive tail removed.
  *
@@ -108,17 +50,14 @@ export function tokenizeWords(text: string, extraStopwords?: ReadonlySet<string>
  * token, which is the most confusing way for this feature to fail. Returns `""`
  * for anything that can't be a ranked word (blank, too short, digits), and the
  * caller rejects on that rather than storing an unusable row.
+ *
+ * A thin alias over the shared `normalizeWord` rather than its own copy of the
+ * rules: it must agree with `tokenizeWords` exactly, and the surest way to keep
+ * two functions in agreement is for one of them to be the other. The name stays
+ * because it is what the Journal's preference screen and its actions call.
  */
 export function normalizeExcludedWord(raw: string): string {
-  const word = raw
-    .trim()
-    .toLowerCase()
-    .replace(/^['’]+|['’]+$/g, "")
-    .replace(/['’]s$/, "");
-  if (word.length < MIN_WORD_LENGTH) return "";
-  // The tokenizer only ever emits [a-z'’], so anything else could never match.
-  if (!/^[a-z'’]+$/.test(word)) return "";
-  return word;
+  return normalizeWord(raw);
 }
 
 /**
@@ -130,15 +69,7 @@ export function normalizeExcludedWord(raw: string): string {
  * wins) so the Preferences list doesn't reshuffle on every save.
  */
 export function parseExcludedWords(stored: string): string[] {
-  const seen = new Set<string>();
-  const words: string[] = [];
-  for (const part of stored.split(",")) {
-    const word = normalizeExcludedWord(part);
-    if (!word || seen.has(word)) continue;
-    seen.add(word);
-    words.push(word);
-  }
-  return words;
+  return parseWordList(stored);
 }
 
 /**
@@ -149,7 +80,7 @@ export function parseExcludedWords(stored: string): string[] {
  * empty value.
  */
 export function serializeExcludedWords(words: readonly string[]): string {
-  return parseExcludedWords(words.join(",")).join(",");
+  return serializeWordList(words);
 }
 
 /**

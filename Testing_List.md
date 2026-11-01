@@ -146,6 +146,40 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-01 — Release (Document Library Keywords, System Messages tabs, market-day refresh)
+
+**No migrations.** The app must be **republished** for the code. Items 1–11 are the Documents Keywords
+screen, 12–18 System Messages and 19–24 the market-day refresh. **Items 1–11 are only meaningful once some
+files have been read** (OCR or the indexing job); **item 9 is easiest on a phone.** Items 12–24 are earlier-session
+work that was read from its diff for this release and has not been seen on screen.
+
+- [ ] **1.** Documents → section list: a **Keywords** row (search glyph) appears between Document Tree and Categories & Tags, in the tree and in the phone's bottom bar
+- [ ] **2.** Documents → Keywords: a ranked list of words with **Documents** and **Uses** columns, sorted by Documents; common words ("the", "and"), short words and bare numbers do not appear
+- [ ] **3.** Documents → Keywords: a document with a title but no indexed files still contributes its title words (e.g. a document titled "Car Insurance" makes `insurance` appear)
+- [ ] **4.** Documents → Keywords: clicking a keyword shows "N documents containing “word”" on the right, and N matches the **Documents** figure on the row you clicked
+- [ ] **5.** Documents → Keywords: the **Filter keywords** box narrows the list as you type, and matches the middle of a word ("surance" finds "insurance")
+- [ ] **6.** Documents → Keywords: refreshing the page after picking a keyword keeps it selected (`?keyword=` in the address)
+- [ ] **7.** Documents → Keywords: the ✕ beside a keyword removes it from the list, and the next word moves up; an **Ignored words (1)** strip appears above the list
+- [ ] **8.** Documents → Keywords: open **Ignored words**, press ✕ on a word, and it ranks again; with none ignored the strip is gone
+- [ ] **9.** Documents → Keywords on a phone: the keyword list and the matching documents stack, and the ✕ is tappable
+- [ ] **10.** Documents → Home screen: searching an ignored word with **Search inside files** on still finds its documents (ignoring only affects the ranking)
+- [ ] **11.** Documents → Keywords: ignoring the keyword you currently have selected clears the right-hand pane instead of leaving it showing a word that is no longer listed
+- [ ] **12.** Administration: **System Messages** is one entry where Security, System Log and Message Queue used to be three
+- [ ] **13.** Administration → System Messages: three tabs (Security, System Log, Message Queue), and the open tab is in the address (`?tab=`) so a tab can be linked
+- [ ] **14.** Visiting the old `/admin/security`, `/admin/system-log` and `/admin/messages` addresses lands on the matching tab
+- [ ] **15.** A personal toolbar row saved against Security, System Log or Message Queue before this release still opens the right tab
+- [ ] **16.** Home: a bad-login or suspicious-visit notice links to System Messages → Security
+- [ ] **17.** Administration → Background Tasks: the link to sign-in activity opens System Messages → Security
+- [ ] **18.** Administration → Display Settings → Icons: **System Messages** and its three tabs appear as icon slots
+- [ ] **19.** Administration → Background Tasks → Investments auto refresh: an **Only run on US market days** checkbox, ticked by default on an install that never set it
+- [ ] **20.** Unticking it and saving survives a reload; the status line drops "on market days"
+- [ ] **21.** With it ticked, a scheduled pass does not run on a Saturday, Sunday or exchange holiday (check the log or run history the next day)
+- [ ] **22.** **Run now** still pulls prices on a weekend with the box ticked
+- [ ] **23.** Active Tasks card: the next-run time for Investments auto refresh lands on a trading day, not a weekend
+- [ ] **24.** `npm run cli -- run-scheduled-refresh` prints a **Market days** line; `--force` ignores it
+
+---
+
 ## 2026-10-31 — Release (Document text search and OCR, prefill templates, System Log, Pictionary word controls)
 
 **Migrations 0165–0169 must be applied on the NAS first**, and **the app must be republished** (not

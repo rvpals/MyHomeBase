@@ -26,7 +26,7 @@ export function SuspiciousVisitAlert({ count }: { count: number }) {
         </span>
       </p>
       <Link
-        href="/admin/security"
+        href="/admin/system-messages?tab=security&sub=visit"
         className="whitespace-nowrap rounded-md border border-red-800 px-3 py-1.5 text-sm font-medium text-red-100 transition-colors hover:bg-red-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
       >
         Review site visits
