@@ -165,8 +165,35 @@ export function DocumentsKeywordsView({
       header: "Keyword",
       value: (row) => row.word,
       render: (row) => (
-        <span className={row.word === selectedKeyword ? "font-semibold text-ink" : "text-ink"}>
-          {row.word}
+        <span className="flex items-center gap-1.5">
+          {/*
+            The quick-ignore mark sits beside the word it acts on, so there is no
+            separate action column to scan across to. A bare button rather than
+            `Button`: that is a pill with a fill, and this is meant to be a small
+            glyph that stays out of the way until wanted.
+
+            `stopPropagation` is load-bearing: the row itself is clickable (it opens
+            this word's documents), so without it ignoring a word would also select
+            it, and the right pane would flash a word that is about to vanish.
+          */}
+          <button
+            type="button"
+            disabled={pendingWord !== undefined}
+            // The glyph alone gives a screen reader nothing to read, so the accessible
+            // name carries the word as well as the verb.
+            aria-label={`Stop ranking "${row.word}"`}
+            title={`Stop ranking "${row.word}"`}
+            onClick={(event) => {
+              event.stopPropagation();
+              void changeIgnored(row.word, true);
+            }}
+            className="shrink-0 rounded px-1 text-xs font-bold leading-none text-red-400 hover:bg-red-400/15 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:pointer-events-none disabled:opacity-40"
+          >
+            {pendingWord === row.word ? "…" : "✕"}
+          </button>
+          <span className={row.word === selectedKeyword ? "font-semibold text-ink" : "text-ink"}>
+            {row.word}
+          </span>
         </span>
       ),
     },
@@ -189,27 +216,6 @@ export function DocumentsKeywordsView({
       hint: "Total times the word is used, counting repeats within one document.",
       render: (row) => row.occurrences.toLocaleString(),
       className: "text-right tabular-nums",
-    },
-    {
-      key: "ignore",
-      header: "",
-      // An action column is not part of the record, so it stays out of the modal.
-      excludeFromRecordView: true,
-      render: (row) => (
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={pendingWord !== undefined}
-          // The glyph alone gives a screen reader nothing to read, so the accessible
-          // name carries the word as well as the verb.
-          ariaLabel={`Stop ranking "${row.word}"`}
-          title={`Stop ranking "${row.word}"`}
-          onClick={() => void changeIgnored(row.word, true)}
-        >
-          {pendingWord === row.word ? "…" : "✕"}
-        </Button>
-      ),
-      className: "text-right",
     },
   ];
 

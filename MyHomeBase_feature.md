@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (209 commits, 2026-07-12 to 2026-11-01) and `CHANGE_HISTORY.md`.
+project's git history (210 commits, 2026-07-12 to 2026-11-01) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -272,6 +272,8 @@ Stream ~20,000 songs off the NAS.
   (lyrics read from the file's own tags before going online), the song on **YouTube**,
   a real fullscreen visualizer, a **sleep timer**, background artwork, and playlist
   reordering from the track list.
+- **Columns 1 / 2 / 3** — a track list can be dealt into one, two or three columns; the
+  choice is kept in the address, and three become two on a phone.
 - **Scan Music** with a progress bar and a scan that finishes.
 
 ## Games
@@ -281,6 +283,7 @@ puzzle that cannot generate an unsolvable board, with difficulty tiers), **Tetri
 **Sudoku**, **Blackjack**, **Minesweeper**, **Mahjong Match**, **Mahjong** (four-player,
 against three bots), **Pac-Man**, **Bridge** and **Pictionary**.
 
+- The arcade shows each game as a **square tile** — three across on a desktop, two on a phone.
 - **Arrow Clearing** boards can hold arrows up to 36 cells long: short pieces are laid first and
   the long ones hug them, so tails curl around the shorter arrows.
 - **Pictionary** is pass-and-play on one device under typed names — no accounts — with a
@@ -355,6 +358,10 @@ on a folder on the NAS.
 - **Home screen** — every document with its attachment count and size, a filter box (text,
   category, tag), the links into filing and editing a document, and **bulk edit**: tick
   several documents and add or remove categories and tags, or recycle them, in one step.
+  A row's actions — **Show files**, **Download all**, **Edit**, **Delete** — are icon buttons
+  in a bar that appears over the hovered row, docked at the right of its title (always visible
+  on touch, and on its own line under the title on a phone). Each has a hint naming the
+  document; the two file actions grey out on a document with no files.
 - **Search inside files** — each attachment's text is read once (an embedded PDF text layer,
   or OCR for scans) and indexed; a **Search inside files** toggle makes the filter box look
   there too. An **OCR / Re-read** button beside a title reads one document on demand and shows
@@ -415,7 +422,9 @@ on a folder on the NAS.
   module, BLOB cells fetched on demand, saved statements, table-name suggestions, a
   Table Usage tab, and a Truncate button behind a row-counting warning.
 - **About** — application and system info, memory meters, database files, environment
-  variables, deployment history with build logs, Change History, and this feature list.
+  variables, deployment history with build logs, Change History, this feature list, and a
+  **Code** tab listing the app's registered reusable components — each with what it is for,
+  whether it runs in the browser, and where its source lives.
 
 ## Operations
 

@@ -10,6 +10,7 @@
 // a scan started from the CLI shows here too.
 
 import { useCallback, useEffect, useState, useTransition } from "react";
+import { BusyOverlay } from "@/components/busy-overlay";
 import { Button } from "@/components/button";
 import { Progress3D } from "@/components/progress-3d";
 import {
@@ -117,6 +118,26 @@ export function MusicScanView() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      {/*
+        Covers the handoff ONLY -- `isStarting`, the one server action that writes the
+        run row and returns -- not the scan.
+        A scan runs for minutes to tens of minutes on the NAS, and the Progress panel in
+        the next column is the whole point of `mus_scan_runs` existing: percent, current
+        file, live. Holding a `fixed inset-0` scrim up for the duration would hide the
+        one thing worth watching and block the app while the work happens on the server
+        regardless. So the overlay hands over the moment the run is live.
+
+        No `onCancel`: nothing here can stop a scan once the action has returned, and
+        BusyOverlay's own rule is that a cancel button must actually stop something.
+      */}
+      <BusyOverlay
+        isBusy={isStarting}
+        message="Starting scan..."
+        detail="Waking the NAS and opening the folder. Progress appears here once it starts."
+        progress="indeterminate"
+        tone="subtle"
+      />
+
       <section>
         <h2 className="font-display text-lg text-ink">Choose a folder</h2>
         <p className="mt-1 text-sm text-muted">

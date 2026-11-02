@@ -18,6 +18,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/button";
 import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
+import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";
 import { getIconSlot, tabSlotId } from "@/lib/icons";
 import {
   LIBRARY_VIEWS,
@@ -25,6 +26,8 @@ import {
   LIBRARY_VIEW_INFO,
   isLibraryView,
   movePlaylistEntry,
+  parseLibraryColumns,
+  type LibraryColumnCount,
   type LibraryFolder,
   type LibraryFolderNode,
   type LibraryGroup,
@@ -68,6 +71,32 @@ function LibraryTabIcon({ view, className }: { view: LibraryView; className?: st
 
 const PAGE_SIZE = 50;
 
+/**
+ * The column switcher's options.
+ *
+ * Bare numerals: the label beside the control already says "Columns", so spelling out
+ * "2 columns" on each segment would repeat it three times. Short enough to keep the
+ * segmented row on a phone rather than falling back to a full-width picker, which is
+ * what `compact="segments"` is for.
+ */
+const COLUMN_OPTIONS: readonly ViewModeOption<string>[] = [
+  { key: "1", label: "1", hint: "One track per row" },
+  { key: "2", label: "2", hint: "Two tracks per row" },
+  { key: "3", label: "3", hint: "Three tracks per row (two on a narrow screen)" },
+];
+
+/** The views whose body is a track list, and so the only ones the switcher applies to. */
+const COLUMN_AWARE_VIEWS: readonly LibraryView[] = [
+  "all-songs",
+  "most-played",
+  "artists",
+  "genres",
+  "years",
+  "folders",
+  "albums",
+  "playlists",
+];
+
 export function MusicLibraryView() {
   const router = useRouter();
   const params = useSearchParams();
@@ -77,17 +106,31 @@ export function MusicLibraryView() {
   // `null` means "no group chosen yet"; '' is a real group (the untagged one), so the two
   // cannot be collapsed.
   const groupKey = params.get("group");
+  // Parsed in src/lib/music rather than here, so a hand-edited `?cols=12` lands on the
+  // default instead of reaching a Tailwind class that doesn't exist.
+  const columns = parseLibraryColumns(params.get("cols"));
 
   const setParams = useCallback(
-    (next: { view?: LibraryView; group?: string | null }) => {
+    (next: { view?: LibraryView; group?: string | null; columns?: LibraryColumnCount }) => {
       const updated = new URLSearchParams(params.toString());
       if (next.view !== undefined) updated.set("view", next.view);
       if (next.group === null) updated.delete("group");
       else if (next.group !== undefined) updated.set("group", next.group);
+      // One is the default, so it stays out of the URL rather than pinning `cols=1` to
+      // every link the reader copies.
+      if (next.columns === 1) updated.delete("cols");
+      else if (next.columns !== undefined) updated.set("cols", String(next.columns));
       router.replace(`?${updated.toString()}`, { scroll: false });
     },
     [params, router],
   );
+
+  // The two tree/grid views never show a track list, and a grouping view shows one only
+  // once a group is picked -- offering a column choice that changes nothing on screen
+  // would be a dead control, so the switcher appears exactly when it bites.
+  const showsTrackList =
+    COLUMN_AWARE_VIEWS.includes(view) &&
+    (groupKey !== null || view === "all-songs" || view === "most-played" || view === "playlists");
 
   return (
     <div>
@@ -120,19 +163,46 @@ export function MusicLibraryView() {
         })}
       </nav>
 
-      <p className="mb-3 text-xs text-muted">{LIBRARY_VIEW_INFO[view].description}</p>
+      {/* The description and the switcher share a line on a wide screen and stack when
+          narrow, so the control never squeezes the sentence into a column of words. */}
+      <div className="mb-3 flex items-center justify-between gap-3 max-lg:flex-col max-lg:items-start">
+        <p className="text-xs text-muted">{LIBRARY_VIEW_INFO[view].description}</p>
+        {showsTrackList && (
+          <ViewModeSwitch
+            options={COLUMN_OPTIONS}
+            value={String(columns)}
+            onChange={(key) => setParams({ columns: parseLibraryColumns(key) })}
+            label="Columns"
+            compact="segments"
+            className="shrink-0"
+          />
+        )}
+      </div>
 
-      {view === "all-songs" && <AllSongs />}
+      {view === "all-songs" && <AllSongs columns={columns} />}
       {view === "albums" && (
-        <Albums groupKey={groupKey} onPick={(key) => setParams({ group: key })} />
+        <Albums
+          groupKey={groupKey}
+          onPick={(key) => setParams({ group: key })}
+          columns={columns}
+        />
       )}
-      {view === "most-played" && <MostPlayed />}
-      {view === "playlists" && <Playlists />}
+      {view === "most-played" && <MostPlayed columns={columns} />}
+      {view === "playlists" && <Playlists columns={columns} />}
       {(view === "artists" || view === "genres" || view === "years") && (
-        <GroupedView view={view} groupKey={groupKey} onPick={(key) => setParams({ group: key })} />
+        <GroupedView
+          view={view}
+          groupKey={groupKey}
+          onPick={(key) => setParams({ group: key })}
+          columns={columns}
+        />
       )}
       {view === "folders" && (
-        <FoldersFlat groupKey={groupKey} onPick={(key) => setParams({ group: key })} />
+        <FoldersFlat
+          groupKey={groupKey}
+          onPick={(key) => setParams({ group: key })}
+          columns={columns}
+        />
       )}
       {view === "folder-tree" && <FolderTree />}
     </div>
@@ -141,7 +211,7 @@ export function MusicLibraryView() {
 
 // --- All Songs -----------------------------------------------------------------
 
-function AllSongs() {
+function AllSongs({ columns }: { columns: LibraryColumnCount }) {
   const [search, setSearch] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [offset, setOffset] = useState(0);
@@ -209,6 +279,7 @@ function AllSongs() {
       <PlaylistSelectionBar selection={selection} pageTrackIds={page.rows.map((row) => row.id)} />
 
       <TrackList
+        columns={columns}
         rows={page.rows}
         selectable
         selected={selection.selected}
@@ -248,9 +319,11 @@ function AllSongs() {
 function Albums({
   groupKey,
   onPick,
+  columns,
 }: {
   groupKey: string | null;
   onPick: (key: string) => void;
+  columns: LibraryColumnCount;
 }) {
   const [albums, setAlbums] = useState<Album[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -280,7 +353,7 @@ function Albums({
   if (groupKey !== null) {
     const picked = albums.find((album) => String(album.id) === groupKey);
     const label = picked === undefined ? "Album" : picked.name;
-    return <GroupTracks view="albums" groupKey={groupKey} label={label} />;
+    return <GroupTracks view="albums" groupKey={groupKey} label={label} columns={columns} />;
   }
 
   return (
@@ -360,7 +433,7 @@ function Albums({
 
 // --- Most Played ---------------------------------------------------------------
 
-function MostPlayed() {
+function MostPlayed({ columns }: { columns: LibraryColumnCount }) {
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<{ rows: TrackListRow[]; totalCount: number }>({
     rows: [],
@@ -384,6 +457,7 @@ function MostPlayed() {
     <div>
       <PlaylistSelectionBar selection={selection} pageTrackIds={page.rows.map((row) => row.id)} />
       <TrackList
+        columns={columns}
         rows={page.rows}
         showPlayCount
         selectable
@@ -416,10 +490,12 @@ function GroupedView({
   view,
   groupKey,
   onPick,
+  columns,
 }: {
   view: "artists" | "genres" | "years";
   groupKey: string | null;
   onPick: (key: string) => void;
+  columns: LibraryColumnCount;
 }) {
   const [groups, setGroups] = useState<LibraryGroup[]>([]);
   const [totalGroups, setTotalGroups] = useState(0);
@@ -456,7 +532,7 @@ function GroupedView({
 
   if (groupKey !== null) {
     const label = groups.find((group) => group.key === groupKey)?.label ?? groupKey;
-    return <GroupTracks view={view} groupKey={groupKey} label={label} />;
+    return <GroupTracks view={view} groupKey={groupKey} label={label} columns={columns} />;
   }
 
   return (
@@ -519,10 +595,12 @@ function GroupTracks({
   view,
   groupKey,
   label,
+  columns,
 }: {
   view: LibraryView;
   groupKey: string;
   label: string;
+  columns: LibraryColumnCount;
 }) {
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<{ rows: TrackListRow[]; totalCount: number }>({
@@ -552,6 +630,7 @@ function GroupTracks({
       <h3 className="mb-2 font-display text-lg text-ink">{label}</h3>
       <PlaylistSelectionBar selection={selection} pageTrackIds={page.rows.map((row) => row.id)} />
       <TrackList
+        columns={columns}
         rows={page.rows}
         selectable
         selected={selection.selected}
@@ -575,9 +654,11 @@ function GroupTracks({
 function FoldersFlat({
   groupKey,
   onPick,
+  columns,
 }: {
   groupKey: string | null;
   onPick: (key: string) => void;
+  columns: LibraryColumnCount;
 }) {
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -602,7 +683,14 @@ function FoldersFlat({
   }, [search, offset]);
 
   if (groupKey !== null) {
-    return <GroupTracks view="folders" groupKey={groupKey} label={groupKey || "(library root)"} />;
+    return (
+      <GroupTracks
+        view="folders"
+        groupKey={groupKey}
+        label={groupKey || "(library root)"}
+        columns={columns}
+      />
+    );
   }
 
   return (
@@ -725,7 +813,11 @@ function FolderTree() {
       )}
 
       {/* Tracks sitting directly in the folder we are standing in. */}
-      {current !== "" && <GroupTracks view="folder-tree" groupKey={current} label={current} />}
+      {/* The tree view keeps one column: its body is a folder tree beside the tracks,
+          so there is no switcher here to honour. */}
+      {current !== "" && (
+        <GroupTracks view="folder-tree" groupKey={current} label={current} columns={1} />
+      )}
       {current === "" && children.length === 0 && (
         <div className="rounded-xl border border-line p-6">
           <p className="text-sm text-muted">Nothing catalogued yet.</p>
@@ -737,7 +829,7 @@ function FolderTree() {
 
 // --- Playlists -----------------------------------------------------------------
 
-function Playlists() {
+function Playlists({ columns }: { columns: LibraryColumnCount }) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [openId, setOpenId] = useState<number | undefined>(undefined);
   const [name, setName] = useState("");
@@ -768,6 +860,7 @@ function Playlists() {
   if (openId !== undefined) {
     return (
       <PlaylistDetail
+        columns={columns}
         playlistId={openId}
         onBack={() => {
           setOpenId(undefined);
@@ -924,9 +1017,11 @@ function Playlists() {
 function PlaylistDetail({
   playlistId,
   onBack,
+  columns,
 }: {
   playlistId: number;
   onBack: () => void;
+  columns: LibraryColumnCount;
 }) {
   const [state, setState] = useState<{
     playlist?: Playlist;
@@ -972,6 +1067,7 @@ function PlaylistDetail({
       </div>
 
       <TrackList
+        columns={columns}
         rows={state.rows}
         emptyMessage="This playlist is empty. Add tracks to it from All Songs or any other view."
         onRemove={(row) => {

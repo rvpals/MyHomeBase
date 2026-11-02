@@ -846,6 +846,22 @@ html[data-viewport="compact"] {
   }
 }
 
+/* `RowActionBar`, on exactly the same rule and for exactly the same reason: a bar
+   revealed only by `group-hover` is unreachable on a device that cannot hover, so a
+   coarse pointer gets it permanently. `pointer-events` has to come back with it —
+   the resting state sets `none` so an invisible bar can't swallow clicks meant for
+   the row underneath, and leaving that in place would make the visible bar dead.
+
+   The caller is expected to drop the bar out of its floating position on compact
+   (the Document Library puts it on its own line under the title with `max-lg:`), so
+   this is about *reachability*, not placement. */
+@media (hover: none) {
+  .row-action-bar {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 /* A spacer is flexible empty space, which is the whole of its job: it takes all
    the slack going, so everything after it is pushed to the far end of the bar. */
 .personal-toolbar-spacer {

@@ -293,7 +293,12 @@ Don't blur this line by giving a card a hard shadow or a button a soft one.
   `DataGrid` row) stay as plain underlined text links, not `Button` — a pill button
   inside every table row is visually loud and out of place. Use `text-brass-dark
   hover:underline` for a neutral row action, `text-red-400 hover:underline` for a
-  destructive one.
+  destructive one. When the actions are a set of icon-only buttons rather than text, and
+  an actions column would be dead weight on every row the pointer isn't on, use
+  `RowActionBar` (`components.md`) docked into the content cell instead — the Document
+  Library's Home screen is the worked example. It is hover-revealed on a pointer,
+  always visible on a device that can't hover, and drops onto its own line under the
+  title below 1024px.
 - **Cards** (`CollapsibleCard` and any future card) use `border border-line` plus a subtle
   accent treatment on hover (a soft ring/lift). Keep any hover shadow soft and low-opacity
   so it reads on both light and dark surfaces — a gentle `rgba(0,0,0,0.35)` lift, never

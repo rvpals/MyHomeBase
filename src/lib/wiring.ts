@@ -27,6 +27,7 @@ import { SqliteDeploymentRepository } from "./deployments/repository";
 import { SqliteModuleTextureRepository } from "./module-texture/repository";
 import { SqliteDailyQuoteRepository } from "./daily-quote/repository";
 import { FileFeatureListRepository } from "./feature-list/repository";
+import { FileComponentListRepository } from "./component-list/repository";
 import { NodeCsvFolder } from "./expense/csv-folder";
 import { SqliteExpenseRepository } from "./expense/repository";
 import { SqliteCalculatorHistoryRepository } from "@/lib/calculator";
@@ -434,6 +435,9 @@ export const deps = {
   // The feature catalogue (MyHomeBase_feature.md) the About screen's Features tab
   // renders. A file in the repo root, read the same way as the change log.
   featureListRepo: new FileFeatureListRepository(),
+  // The component registry (components.md) the About screen's Code tab renders.
+  // Another file in the repo root, read exactly like the two above.
+  componentListRepo: new FileComponentListRepository(),
   // The deployment history the About screen lists (migrations/0078). Written on the
   // deployment target by record-deployment.cjs as a new build comes up -- never from the
   // build machine, which reaches the NAS only over SMB.

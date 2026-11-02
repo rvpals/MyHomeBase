@@ -2,11 +2,14 @@
 // else, so the internals stay rearrangeable.
 
 export {
+  LIBRARY_COLUMNS,
   LIBRARY_VIEWS,
   LIBRARY_VIEW_ICONS,
   LIBRARY_VIEW_INFO,
   isLibraryView,
   labelForEmptyGroup,
+  parseLibraryColumns,
+  type LibraryColumnCount,
   type LibraryFolder,
   type LibraryFolderNode,
   type LibraryGroup,

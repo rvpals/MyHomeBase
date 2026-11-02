@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { BulkConfirm } from "@/components/bulk-confirm";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import {
+  DownloadAllGlyph,
+  FilesGlyph,
+  PenGlyph,
+  XGlyph,
+} from "@/components/document-action-icons";
 import { Modal } from "@/components/modal";
+import { RowActionBar, type RowAction } from "@/components/row-action-bar";
 import { TaxonomyChipRow } from "@/components/taxonomy-icon";
 // Imported from the leaf modules, NOT from `@/lib/documents`. This is a client
 // component, and the module's barrel re-exports the repository and the file store --
@@ -38,9 +45,18 @@ import { documentsEditorHref } from "./documents-sections";
 // showing the same rows behind a different nav row would be the same screen twice —
 // the shape Clips settled on when it absorbed its own `all` section.
 //
+// The four row actions are a `RowActionBar` docked into the Title cell, revealed on
+// hover — there is no actions column. A column of four buttons was dead weight on
+// every row the reader was not pointing at, and it was the first thing to wrap on a
+// phone. The bar is *not* a shell floating component: it is a control on an existing
+// surface, scoped to one row, with no reader-facing switch and no persisted id.
+//
 // Narrow: `DataGrid` delegates to `DataGridCompact` below 1024px, so each document
 // becomes a card with the same columns stacked. The filter row wraps via `max-lg:`,
-// and the dialog is the shared `Modal`, which is already full-width on a phone.
+// and the dialog is the shared `Modal`, which is already full-width on a phone. The
+// action bar stops floating there and sits statically under the title — a card head
+// is exactly where a floating bar would cover the title it belongs to, and touch has
+// no hover to reveal it with.
 
 const INPUT_CLASS =
   "rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -250,80 +266,193 @@ export function DocumentsMainView({
     });
   }
 
-  const columns: DataGridColumn<DocumentSummary>[] = [
-    {
-      key: "title",
-      header: "Title",
-      value: (row) => row.title,
-      // The cell draws the description under the title, so the search box has to
-      // see it too — otherwise a word the user is looking straight at finds
-      // nothing. It stays out of `value` so Title still sorts and exports as the
-      // title alone.
-      searchValue: (row) => row.description,
-      render: (row) => (
-        <div className="flex flex-col">
-          <span className="flex items-center gap-2">
-            <span className="text-ink">{row.title}</span>
-            {/*
-              The OCR button sits beside the title rather than in the actions column
-              because it acts on *this document's text*, which is what the title names
-              — and because the actions column is already four buttons wide on a
-              desktop and is the first thing to wrap on a phone.
+  /**
+   * The four row actions, in reading order.
+   *
+   * All four are rendered on every row, with the two file actions *disabled* at
+   * zero files rather than hidden. A bar that is four wide on one row and two wide
+   * on the next reads as broken, and the buttons no longer carry labels to explain
+   * the difference — so the width is held steady and the hint says why the pair is
+   * out. (The old labelled column could afford to hide them; a floating bar cannot.)
+   *
+   * Download is an `href`, not an `onClick`: it is a real navigation to the zip
+   * route, and should behave like one.
+   */
+  function documentActions(row: DocumentSummary): RowAction[] {
+    const hasFiles = row.attachmentCount > 0;
+    const files = `${row.attachmentCount} file(s)`;
+    return [
+      {
+        key: "files",
+        icon: <FilesGlyph className="h-4 w-4" />,
+        hint: hasFiles
+          ? `Show the ${files} and folders on “${row.title}”`
+          : `No files on “${row.title}”`,
+        onClick: () => setShowingFiles(row),
+        isDisabled: !hasFiles,
+      },
+      {
+        key: "download",
+        icon: <DownloadAllGlyph className="h-4 w-4" />,
+        hint: hasFiles
+          ? `Download all ${files} on “${row.title}”`
+          : `No files to download on “${row.title}”`,
+        href: `/api/documents/${row.id}/download`,
+        isDisabled: !hasFiles,
+      },
+      {
+        key: "edit",
+        icon: <PenGlyph className="h-4 w-4" />,
+        hint: `Edit “${row.title}”`,
+        href: documentsEditorHref(row.id),
+      },
+      {
+        key: "delete",
+        icon: <XGlyph className="h-4 w-4" />,
+        hint: `Move “${row.title}” to the bin`,
+        onClick: () => {
+          setPendingDelete(row);
+          setError(undefined);
+        },
+        isDanger: true,
+        isDisabled: isPending,
+      },
+    ];
+  }
 
-              Hidden entirely for a document with no files: "read the text of nothing"
-              is not an action, and a disabled button would invite a click that can
-              never do anything.
-            */}
-            {/*
-              What this document's text is, before the control that changes it. Two
-              marks rather than one: "searchable" says the contents can be found,
-              "OCR" adds that some of it was *recognised* rather than read exactly —
-              which is what a reader needs to know before trusting a surprising hit.
+  const titleColumn: DataGridColumn<DocumentSummary> = {
+    key: "title",
+    header: "Title",
+    value: (row) => row.title,
+    // The cell draws the description under the title, so the search box has to
+    // see it too — otherwise a word the user is looking straight at finds
+    // nothing. It stays out of `value` so Title still sorts and exports as the
+    // title alone.
+    searchValue: (row) => row.description,
+    // The list cell: the title, plus the action bar docked into its corner.
+    //
+    // `group relative` is what the bar positions and reveals against, and it is
+    // deliberately the *whole title cell* rather than the title text — the cell is
+    // the full width of the column, so the bar lands at the column's right edge
+    // and the pointer has the whole cell to trigger it. See `RowActionBar`: the
+    // caller owns the hover because only the caller knows how far it should reach.
+    //
+    // `pr-24` reserves the bar's own width on wide screens so a long title slides
+    // out from under it instead of being covered. On compact the bar is static
+    // (see below), so the reservation comes off with `max-lg:pr-0`.
+    render: (row) => (
+      <div className="group relative flex flex-col pr-24 max-lg:pr-0">
+        {renderTitleBody(row)}
+        {/*
+          Narrow: the bar stops floating. Hover does not exist on touch, and a
+          card head is exactly where a floating bar would cover the title it is
+          meant to belong to — so on compact it drops to its own line under the
+          title, statically, always visible. A `max-lg:` restyle rather than a
+          component fork: the desktop classes are untouched, so a wide screen
+          provably cannot regress. The `@media (hover: none)` rule in
+          `globals.css` is what makes it reachable on a touch *laptop*, where
+          `max-lg:` never fires.
+        */}
+        <RowActionBar
+          label={`Actions for “${row.title}”`}
+          className="max-lg:pointer-events-auto max-lg:relative max-lg:mt-2 max-lg:self-start max-lg:opacity-100"
+          actions={documentActions(row)}
+        />
+      </div>
+    ),
+    // The record modal gets the same content with no controls: Edit and Delete do
+    // not belong in a read-out of one record, which is the rule the old actions
+    // column honoured with `excludeFromRecordView`.
+    renderRecord: (row) => <div className="flex flex-col">{renderTitleBody(row)}</div>,
+  };
 
-              Nothing is drawn for an unindexed document. An absent badge is the
-              quiet state here, and a row of grey "not indexed" chips down a library
-              nobody has indexed yet would be noise, not information.
-            */}
-            {row.textState !== "none" && (
-              <span
-                title={
-                  row.textState === "ocr"
-                    ? "Searchable. Some of this text was read by OCR, so it may contain recognition errors."
-                    : "Searchable. The text was read exactly, from the files' own text layer."
-                }
-                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  row.textState === "ocr"
-                    ? "bg-amber-400/15 text-amber-300"
-                    : "bg-emerald-400/15 text-emerald-300"
-                }`}
-              >
-                {row.textState === "ocr" ? "OCR" : "Searchable"}
-              </span>
-            )}
-            {row.attachmentCount > 0 && (
-              <button
-                type="button"
-                onClick={() => runOcr(row)}
-                disabled={ocrBusy !== undefined}
-                title={
-                  row.textState === "none"
-                    ? `Read the text inside the ${row.attachmentCount} file(s) on ${row.title}`
-                    : `Read ${row.title} again — already-read files are reused, so only new or changed ones cost time`
-                }
-                className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition-colors hover:border-brass hover:text-brass disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {ocrBusy === row.id ? "…" : row.textState === "none" ? "OCR" : "Re-read"}
-              </button>
-            )}
-          </span>
-          {row.description !== "" && (
-            <span className="truncate text-xs text-muted" title={row.description}>
-              {row.description}
+  /**
+   * The Title cell's content, without the wrapper or the action bar.
+   *
+   * Shared by the list cell and the record modal so the two can differ in exactly
+   * one thing — whether the actions are there — rather than being two copies of a
+   * title, a pair of text badges and an OCR button that would drift apart.
+   *
+   * The OCR control stays here rather than moving into the new bar: it acts on
+   * *this document's text*, which is what the title names, and it carries a busy
+   * state and a label that changes with `textState`. An icon-only button in a
+   * hover bar could show neither.
+   */
+  function renderTitleBody(row: DocumentSummary) {
+    return (
+      <>
+        <span className="flex items-center gap-2">
+          <span className="text-ink">{row.title}</span>
+          {/*
+            The OCR button sits inline beside the title rather than joining the
+            `RowActionBar`, because it acts on *this document's text*, which is what
+            the title names — and because it carries two things an icon-only button
+            in a hover bar could not show: a busy state ("…") and a label that turns
+            from "OCR" into "Re-read" once the text has been read.
+
+            Hidden entirely for a document with no files: "read the text of nothing"
+            is not an action, and a disabled button would invite a click that can
+            never do anything. (The bar's two file actions take the opposite line and
+            disable instead — it holds the bar's width steady, which matters for a
+            floating control and not for an inline one.)
+          */}
+          {/*
+            What this document's text is, before the control that changes it. Two
+            marks rather than one: "searchable" says the contents can be found,
+            "OCR" adds that some of it was *recognised* rather than read exactly —
+            which is what a reader needs to know before trusting a surprising hit.
+  
+            Nothing is drawn for an unindexed document. An absent badge is the
+            quiet state here, and a row of grey "not indexed" chips down a library
+            nobody has indexed yet would be noise, not information.
+          */}
+          {row.textState !== "none" && (
+            <span
+              title={
+                row.textState === "ocr"
+                  ? "Searchable. Some of this text was read by OCR, so it may contain recognition errors."
+                  : "Searchable. The text was read exactly, from the files' own text layer."
+              }
+              className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                row.textState === "ocr"
+                  ? "bg-amber-400/15 text-amber-300"
+                  : "bg-emerald-400/15 text-emerald-300"
+              }`}
+            >
+              {row.textState === "ocr" ? "OCR" : "Searchable"}
             </span>
           )}
-        </div>
-      ),
-    },
+          {row.attachmentCount > 0 && (
+            <button
+              type="button"
+              onClick={() => runOcr(row)}
+              disabled={ocrBusy !== undefined}
+              title={
+                row.textState === "none"
+                  ? `Read the text inside the ${row.attachmentCount} file(s) on ${row.title}`
+                  : `Read ${row.title} again — already-read files are reused, so only new or changed ones cost time`
+              }
+              className="shrink-0 rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted transition-colors hover:border-brass hover:text-brass disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {ocrBusy === row.id ? "…" : row.textState === "none" ? "OCR" : "Re-read"}
+            </button>
+          )}
+        </span>
+        {row.description !== "" && (
+          <span className="truncate text-xs text-muted" title={row.description}>
+            {row.description}
+          </span>
+        )}
+      </>
+    );
+  }
+
+  // There is no actions column any more. The four buttons it carried are the
+  // `RowActionBar` docked into the Title cell above — a column of controls was dead
+  // weight on every row the reader was not pointing at, and it was the first thing
+  // to wrap on a phone.
+  const columns: DataGridColumn<DocumentSummary>[] = [
+    titleColumn,
     {
       key: "categories",
       header: "Categories",
@@ -363,46 +492,6 @@ export function DocumentsMainView({
       header: "Updated",
       value: (row) => row.updatedAt,
       render: (row) => <span className="text-muted">{row.updatedAt.slice(0, 10)}</span>,
-    },
-    {
-      key: "actions",
-      header: "",
-      // An action column is not part of the record, so it stays out of the record
-      // modal — `components.md` is explicit about this.
-      excludeFromRecordView: true,
-      render: (row) => (
-        <span className="flex flex-wrap gap-2">
-          {row.attachmentCount > 0 && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setShowingFiles(row)}
-              title={`List the ${row.attachmentCount} file(s) on ${row.title}`}
-            >
-              Show files
-            </Button>
-          )}
-          {row.attachmentCount > 0 && (
-            <Button size="sm" variant="secondary" href={`/api/documents/${row.id}/download`}>
-              Download all
-            </Button>
-          )}
-          <Button size="sm" variant="secondary" href={documentsEditorHref(row.id)}>
-            Edit
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            disabled={isPending}
-            onClick={() => {
-              setPendingDelete(row);
-              setError(undefined);
-            }}
-          >
-            Delete
-          </Button>
-        </span>
-      ),
     },
   ];
 

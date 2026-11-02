@@ -25,6 +25,32 @@ export function isLibraryView(value: string): value is LibraryView {
   return (LIBRARY_VIEWS as readonly string[]).includes(value);
 }
 
+/**
+ * How many columns a track list may be dealt into.
+ *
+ * A closed set of three rather than a free number: the grid classes are written out at
+ * the call site (Tailwind can't see a computed class name), and beyond three a row has
+ * no width left for a title.
+ */
+export const LIBRARY_COLUMNS = [1, 2, 3] as const;
+
+export type LibraryColumnCount = (typeof LIBRARY_COLUMNS)[number];
+
+/**
+ * Read a column count off the URL, falling back to one.
+ *
+ * Parses rather than trusts, like `isLibraryView` above: `?cols=` is reader-supplied, so
+ * a missing, non-numeric, fractional or out-of-range value all mean "the default" rather
+ * than an error -- a bad query string should show the library, not break the page.
+ */
+export function parseLibraryColumns(value: string | null): LibraryColumnCount {
+  if (value === null) return 1;
+  // `Number` rather than `parseInt`, which would read "2.5" and "2abc" as 2.
+  const parsed = Number(value);
+  const match = LIBRARY_COLUMNS.find((candidate) => candidate === parsed);
+  return match ?? 1;
+}
+
 /** Label and one-line description for each view, shared by the tabs and the CLI. */
 export const LIBRARY_VIEW_INFO: Record<LibraryView, { label: string; description: string }> = {
   "all-songs": { label: "All Songs", description: "Everything in the catalog." },

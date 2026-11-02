@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { TREE_ICON_NAMES_FOR_TEST } from "./browse-icons.fixture";
 import {
+  LIBRARY_COLUMNS,
   LIBRARY_VIEWS,
   LIBRARY_VIEW_ICONS,
   LIBRARY_VIEW_INFO,
   isLibraryView,
   labelForEmptyGroup,
+  parseLibraryColumns,
 } from "./browse";
 
 describe("the library view registry", () => {
@@ -76,5 +78,37 @@ describe("labelForEmptyGroup", () => {
   it("falls back to something printable for the other views", () => {
     expect(labelForEmptyGroup("folders")).not.toBe("");
     expect(labelForEmptyGroup("all-songs")).not.toBe("");
+  });
+});
+
+describe("parseLibraryColumns", () => {
+  it("reads each of the three offered counts", () => {
+    expect(parseLibraryColumns("1")).toBe(1);
+    expect(parseLibraryColumns("2")).toBe(2);
+    expect(parseLibraryColumns("3")).toBe(3);
+  });
+
+  it("offers exactly one, two and three columns", () => {
+    expect(LIBRARY_COLUMNS).toEqual([1, 2, 3]);
+  });
+
+  it("falls back to one column when the parameter is absent", () => {
+    expect(parseLibraryColumns(null)).toBe(1);
+  });
+
+  it("falls back to one column for a value outside the set", () => {
+    // `?cols=` is reader-supplied, so a hand-edited URL must show the library rather
+    // than deal a 0- or 12-column grid.
+    expect(parseLibraryColumns("0")).toBe(1);
+    expect(parseLibraryColumns("4")).toBe(1);
+    expect(parseLibraryColumns("-2")).toBe(1);
+  });
+
+  it("falls back to one column for something that is not a whole number", () => {
+    // parseInt would read these as 2; Number does not, which is why it is used.
+    expect(parseLibraryColumns("2.5")).toBe(1);
+    expect(parseLibraryColumns("2abc")).toBe(1);
+    expect(parseLibraryColumns("abc")).toBe(1);
+    expect(parseLibraryColumns("")).toBe(1);
   });
 });

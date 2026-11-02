@@ -144,13 +144,15 @@ export function GamesArcadeView({
   return (
     <div className="flex flex-col gap-6">
       {/*
-        Two across on a desktop and three on a wide one, one on a phone. `max-lg:`
-        first, so the desktop classes are untouched and a wide screen cannot regress.
-        Two rather than three at the base width because the content column beside the
-        module rail is not wide enough for more, and two divides the catalogue evenly
-        more often than three does as games are added.
+        Square cards, so the column count rises with the width: three on a desktop,
+        four on a wide one, two on a phone. `max-lg:` first, so the desktop classes
+        are untouched and a wide screen cannot regress.
+
+        One per row on a phone was right while the card was a wide strip; a square at
+        full phone width is a 350px tile holding four short lines, so the catalogue
+        scrolls for no reason. Two across keeps a square tile at a sensible size.
       */}
-      <ul className="grid grid-cols-2 gap-4 xl:grid-cols-3 max-lg:grid-cols-1">
+      <ul className="grid grid-cols-3 gap-4 xl:grid-cols-4 max-lg:grid-cols-2">
         {games.map((entry) => (
           <li key={entry.game.key}>
             <GameCard summary={entry} onOpen={() => openGame(entry.game.key)} />
@@ -297,8 +299,18 @@ function GameCard({ summary, onOpen }: { summary: GameSummary; onOpen: () => voi
   const playable = game.status === "available";
 
   return (
-    <article className="flex h-full flex-col justify-between rounded-xl border border-line bg-paper-raised p-4">
-      <div>
+    /*
+      Square, so a row of games reads as a grid of tiles rather than a stack of
+      strips. `aspect-square` over a fixed height: the tile then tracks the column
+      width at every breakpoint instead of needing a height per breakpoint.
+
+      The description is the one part that can overflow a fixed box, so it is the
+      part that gives — `min-h-0` on the top block plus `overflow-hidden` on the
+      text clips a long one rather than pushing the Record/Played row and the Play
+      button out of the bottom of the tile.
+    */
+    <article className="flex aspect-square h-full flex-col justify-between overflow-hidden rounded-xl border border-line bg-paper-raised p-4">
+      <div className="min-h-0">
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="flex items-center gap-2 font-display text-base text-ink">
             {/* `shrink-0` so a long game name wraps rather than squashing the glyph. */}
@@ -311,10 +323,10 @@ function GameCard({ summary, onOpen }: { summary: GameSummary; onOpen: () => voi
             </span>
           )}
         </div>
-        <p className="mt-1 text-sm text-muted">{game.description}</p>
+        <p className="mt-1 overflow-hidden text-sm text-muted">{game.description}</p>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3 shrink-0">
         <dl className="flex gap-4 text-xs text-muted">
           <div>
             <dt className="uppercase tracking-wide">Record</dt>
@@ -333,7 +345,7 @@ function GameCard({ summary, onOpen }: { summary: GameSummary; onOpen: () => voi
         {best && <p className="mt-2 truncate text-xs text-muted">Held by {best.userName}</p>}
 
         {playable && (
-          <Button onClick={onOpen} size="sm" className="mt-3 w-full">
+          <Button onClick={onOpen} size="sm" className="mt-2 w-full">
             Play
           </Button>
         )}

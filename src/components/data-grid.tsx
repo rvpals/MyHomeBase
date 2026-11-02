@@ -93,6 +93,19 @@ export interface DataGridColumn<T> {
    * a row's Edit/Delete buttons don't belong in a read-out of the record.
    */
   excludeFromRecordView?: boolean;
+  /**
+   * Draw this column differently in the single-record modal, instead of `render`.
+   *
+   * `excludeFromRecordView` is the answer when a column is *only* actions. This is
+   * for the column that carries real content **and** a control — a title cell with
+   * a hover action bar docked in its corner. Dropping the whole column would lose
+   * the title; rendering it as-is would put Edit and Delete inside a modal whose
+   * whole job is reading one record. So the column keeps its content here and
+   * leaves the control behind.
+   *
+   * Unset means the modal uses `render`, which is what every existing column does.
+   */
+  renderRecord?: (row: T) => ReactNode;
 }
 
 export type PageSize = number | "ALL";
@@ -1415,7 +1428,12 @@ function DataGridFull<T>({
                     </span>
                   )}
                 </dt>
-                <dd className="break-words text-sm text-ink">{column.render(recordRow)}</dd>
+                {/* `renderRecord` when the column has one — a title cell whose
+                    hover action bar belongs on the list, not in a read-out of one
+                    record. Falls through to `render` for every other column. */}
+                <dd className="break-words text-sm text-ink">
+                  {(column.renderRecord ?? column.render)(recordRow)}
+                </dd>
               </div>
             ))}
           </dl>

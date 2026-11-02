@@ -33,6 +33,20 @@ export interface ViewModeSwitchProps<K extends string> {
    * group and of the compact `<select>`.
    */
   label: string;
+  /**
+   * What the control becomes below 1024px. Defaults to `"select"` — the native picker
+   * described above, which is right for the four- and five-option text switchers this
+   * was built for.
+   *
+   * `"segments"` keeps the segmented row at every width. Opt-in, and only honest for a
+   * *short* set of *short* labels: Music's "Columns 1 / 2 / 3" is three single
+   * characters, so it fits a 390px screen with room to spare, and a full-width dropdown
+   * above every track list would be far heavier than the choice deserves. The reason the
+   * default exists — five labels like "Billing cycle" wrapping into a ragged block —
+   * simply doesn't apply there. Don't reach for this to dodge a picker that is pulling
+   * its weight.
+   */
+  compact?: "select" | "segments";
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -45,12 +59,19 @@ export function ViewModeSwitch<K extends string>({
   value,
   onChange,
   label,
+  compact = "select",
   className = "",
 }: ViewModeSwitchProps<K>) {
+  // `"segments"` drops both boundary classes rather than adding new ones: the row loses
+  // its `max-lg:hidden` so it survives narrow, and the select is not rendered at all.
+  // Not rendering it is the point -- `lg:hidden` on both would mount two controls for
+  // one piece of state, which is the "don't render both and hide one" trap in design.md.
+  const keepSegments = compact === "segments";
   return (
     <div className={className}>
-      {/* Wide: the segmented row. Hidden below the 1024px boundary. */}
-      <div className="flex items-center gap-2 max-lg:hidden">
+      {/* Wide: the segmented row. Hidden below the 1024px boundary unless the caller
+          asked to keep it there. */}
+      <div className={`flex items-center gap-2 ${keepSegments ? "" : "max-lg:hidden"}`}>
         <span className="text-sm font-medium text-muted">{label}</span>
         {/*
           A radiogroup, not a tablist: nothing here is a panel, and one of a set
@@ -89,20 +110,22 @@ export function ViewModeSwitch<K extends string>({
       </div>
 
       {/* Narrow: a native picker, full width so it's thumb-sized. */}
-      <label className="block text-sm lg:hidden">
-        <span className="mb-1 block font-medium text-muted">{label}</span>
-        <select
-          value={value}
-          onChange={(event) => onChange(event.target.value as K)}
-          className={SELECT_CLASS}
-        >
-          {options.map((option) => (
-            <option key={option.key} value={option.key} title={option.hint}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {!keepSegments && (
+        <label className="block text-sm lg:hidden">
+          <span className="mb-1 block font-medium text-muted">{label}</span>
+          <select
+            value={value}
+            onChange={(event) => onChange(event.target.value as K)}
+            className={SELECT_CLASS}
+          >
+            {options.map((option) => (
+              <option key={option.key} value={option.key} title={option.hint}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { getAppVersion } from "@/lib/app-version";
 import { getChangeHistory } from "@/lib/change-history";
+import { getComponentList } from "@/lib/component-list";
 import { listDeployments } from "@/lib/deployments";
 import { getFeatureList } from "@/lib/feature-list";
 import { formatBytes, getSystemInfo } from "@/lib/system-info";
@@ -20,6 +21,7 @@ export default function AboutPage() {
   const appVersion = getAppVersion(deps.buildIdRepo);
   const deployments = listDeployments(deps.deploymentRepo);
   const featureList = getFeatureList(deps.featureListRepo);
+  const componentList = getComponentList(deps.componentListRepo);
 
   const stats = [
     { label: "Hostname", value: systemInfo.server.hostname },
@@ -106,6 +108,8 @@ export default function AboutPage() {
       changeHistoryMarkdown={changeHistory.markdown}
       changeHistorySummary={changeHistory.summary}
       featureListMarkdown={featureList.markdown}
+      components={componentList.entries}
+      componentsAvailable={componentList.isAvailable}
     />
   );
 }

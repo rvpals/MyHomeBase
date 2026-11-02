@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { useState, useEffect, useRef } from "react";
 import { clearCachesAndReload } from "@/components/app-version-watch";
 import { Button } from "@/components/button";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import { CustomizableCard } from "@/components/customizable-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
@@ -22,6 +23,7 @@ import {
   type ChangeHistorySummary,
   type ChangeKind,
 } from "@/lib/change-history";
+import type { ComponentEntry } from "@/lib/component-list";
 import { DEPLOYMENTS_KEEP_COUNT } from "@/lib/deployments";
 // From the leaf file, not the `@/lib/system-info` barrel: that barrel also
 // re-exports `./system-info`, which imports `node:path`, and a client component
@@ -393,6 +395,116 @@ function FeaturesTab({ markdown }: { markdown: string | null }) {
   return <div className="space-y-2">{renderChangeHistory(markdown)}</div>;
 }
 
+// The Code tab. One card today — the component registry — but the tab is named
+// for the subject rather than the card, so the next thing worth knowing about the
+// codebase has somewhere to go without renaming a tab an admin has learned.
+function CodeTab({
+  components,
+  isAvailable,
+}: {
+  components: ComponentEntry[];
+  isAvailable: boolean;
+}) {
+  return (
+    <div className="mt-4">
+      <CollapsibleCard title="Components" defaultOpen>
+        <ComponentsCardBody components={components} isAvailable={isAvailable} />
+      </CollapsibleCard>
+    </div>
+  );
+}
+
+/**
+ * The registered reusable components, name and purpose.
+ *
+ * A plain list rather than a `DataGrid`: the purposes are full sentences, several
+ * of them long, and a grid cell at the width these tabs get would truncate the
+ * answer to the only question the card exists to answer. There is nothing here to
+ * sort by and nothing to export that `components.md` doesn't already hold.
+ *
+ * Narrow: a single-column stack already, so it needs no compact treatment — the
+ * name wraps above the purpose and the source path sits under both.
+ */
+function ComponentsCardBody({
+  components,
+  isAvailable,
+}: {
+  components: ComponentEntry[];
+  isAvailable: boolean;
+}) {
+  if (!isAvailable) {
+    return (
+      <div className="rounded-xl border border-dashed border-line p-8 text-center">
+        <p className="font-display text-lg text-ink">No component registry</p>
+        <p className="mt-1 text-sm text-muted">
+          Add <code className="font-mono">components.md</code> to the project root.
+        </p>
+      </div>
+    );
+  }
+
+  if (components.length === 0) {
+    // Read the file, found no table. Said as its own state rather than folded
+    // into the one above: the fix is different, and "the file is missing" would
+    // send someone looking for a file that is sitting right there.
+    return (
+      <div className="rounded-xl border border-dashed border-line p-8 text-center">
+        <p className="font-display text-lg text-ink">No components listed</p>
+        <p className="mt-1 text-sm text-muted">
+          <code className="font-mono">components.md</code> has no{" "}
+          <code className="font-mono">## Index</code> table to read.
+        </p>
+      </div>
+    );
+  }
+
+  const clientCount = components.filter((entry) => entry.isClient).length;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/*
+        The scope, stated plainly. This is the registered *reusable* set, not
+        every React component in the app — page-local one-offs are deliberately
+        unregistered (`components.md` → "One-offs stay local"), so they are absent
+        by design. Saying so costs two lines and stops the card implying a
+        completeness it does not have.
+      */}
+      <p className="text-sm text-muted">
+        The {components.length} reusable components registered in{" "}
+        <code className="font-mono">components.md</code>, which is the source of this
+        list. {clientCount} are client components. Page-local one-off UI is not
+        registered and so is not listed here.
+      </p>
+
+      <ul className="flex flex-col gap-px">
+        {components.map((entry) => (
+          <li
+            key={entry.sourcePath + entry.name}
+            className="border-b border-line py-2 last:border-b-0"
+          >
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="font-mono text-sm text-ink">{entry.name}</span>
+              {/* The one fact about a component that changes how you may use it,
+                  so it earns a mark rather than a column of "no". Only drawn for
+                  a client component — a badge on all 96 rows would be wallpaper. */}
+              {entry.isClient && (
+                <span
+                  title="A client component — it runs in the browser and may use state, effects and event handlers."
+                  className="rounded bg-brass-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brass-dark"
+                >
+                  Client
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-sm text-muted">{entry.purpose}</p>
+            <p className="mt-0.5 font-mono text-xs text-muted opacity-70">{entry.sourcePath}</p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function inferModuleFromContent(h3Title: string, followingContent: string): string {
   // Pattern 1: "Module Name: Feature" format
   const colonIndex = h3Title.indexOf(":");
@@ -543,6 +655,8 @@ export function AboutView({
   changeHistoryMarkdown,
   changeHistorySummary,
   featureListMarkdown,
+  components,
+  componentsAvailable,
 }: {
   appName: string;
   appVersion: string;
@@ -560,6 +674,10 @@ export function AboutView({
   changeHistorySummary: ChangeHistorySummary | null;
   /** `MyHomeBase_feature.md`, or null when the checkout has no such file. */
   featureListMarkdown: string | null;
+  /** The registered reusable components, from `components.md`'s Index table. */
+  components: ComponentEntry[];
+  /** False when `components.md` could not be read — a different empty state. */
+  componentsAvailable: boolean;
 }) {
   // The Server Log tab. Fetched from the client rather than passed down from
   // page.tsx on purpose: the log is the one thing on this screen you want to
@@ -899,6 +1017,11 @@ export function AboutView({
       key: "features",
       label: "Features",
       content: <FeaturesTab markdown={featureListMarkdown} />,
+    },
+    {
+      key: "code",
+      label: "Code",
+      content: <CodeTab components={components} isAvailable={componentsAvailable} />,
     },
     {
       key: "deployments",

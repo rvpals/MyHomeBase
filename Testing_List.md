@@ -146,6 +146,41 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-01 — Release (Document Library hover actions, About → Code tab, Music columns, Games tiles)
+
+**No migrations.** The app must be **republished** for the code. Items 1–11 are the Documents Home row
+actions, 12–16 the About → Code tab, 17–22 Music columns and the scan overlay, 23 the Games tiles and 24 the
+Keywords ✕. **Items 1–16 were reported tested on screen in the session that wrote them; items 17–24 are
+earlier-session work read from its diff and have not been seen.** **Items 1, 5 and 11 are easiest on a
+phone**, and item 4 needs a document with files.
+
+- [ ] **1.** Documents → Home: hovering a row shows a small bar of four icons at the right edge of its Title cell; moving off the row hides it
+- [ ] **2.** Documents → Home: there is no longer a last column of buttons, and the Title column does not lose its text under the bar (a long title slides out from under it)
+- [ ] **3.** Documents → Home: hovering each icon names the document in its hint — Show files (folder), Download all (stack and arrow), Edit (pen), Delete (✕)
+- [ ] **4.** Documents → Home, on a document with files: Show files lists them, and Download all downloads a zip
+- [ ] **5.** Documents → Home on a phone: the four icons sit on their own line under the title and are always visible; tapping Edit opens the editor
+- [ ] **6.** Documents → Home: Edit opens the document's editor, and Delete asks to move it to the bin
+- [ ] **7.** Documents → Home, on a document with no files: Show files and Download all are greyed out with a "No files…" hint, and the bar is the same width as on other rows
+- [ ] **8.** Documents → Home: tabbing through the page into a row reveals its bar, and the icons can be reached and pressed from the keyboard
+- [ ] **9.** Documents → Home: opening a row's record view (the view-record button) shows the title and description but no action icons
+- [ ] **10.** Documents → Home: the OCR / Re-read button and the Searchable / OCR badge still sit beside the title and still work
+- [ ] **11.** Documents → Home: ticking rows and using the bulk bar (Categories & tags, Delete) still works, and clicking an icon does not tick the row
+- [ ] **12.** Administration → About: a **Code** tab sits between Features and Deployments
+- [ ] **13.** Administration → About → Code: a **Components** card, open on arrival, lists components with a name, a purpose line and a `src/…` path, and the intro gives the count (97)
+- [ ] **14.** Administration → About → Code: client components carry a **Client** badge, and `Button` does not
+- [ ] **15.** Administration → About → Code: the Components card collapses and reopens, and `RowActionBar` is in the list
+- [ ] **16.** Administration → About → Code on a phone: names, purposes and paths read without sideways scrolling
+- [ ] **17.** Music → Library → All Songs: a **Columns 1 / 2 / 3** switch appears above the list, and choosing 2 or 3 deals the tracks into that many columns
+- [ ] **18.** Music → Library: the choice is in the address (`?cols=2`), survives a refresh, and choosing 1 removes it; `?cols=9` shows one column rather than an error
+- [ ] **19.** Music → Library on a phone: the switch stays as three small segments (not a dropdown), and 3 shows two columns
+- [ ] **20.** Music → Library → Artists / Genres / Albums: the switch is absent on the grid of groups and appears once a group is picked
+- [ ] **21.** Music → Library: clicking a track in a multi-column list still plays and queues in reading order
+- [ ] **22.** Music → Scan Music: pressing Start briefly shows "Starting scan…", then hands over to the progress panel
+- [ ] **23.** Games: the arcade cards are square tiles — three across on a desktop, two on a phone — and a long description is clipped without pushing Play out of the tile
+- [ ] **24.** Documents → Keywords: the ✕ sits beside each word, ignoring a word does not also select it, and the Ignored words strip still brings it back
+
+---
+
 ## 2026-11-01 — Release (Document Library Keywords, System Messages tabs, market-day refresh)
 
 **No migrations.** The app must be **republished** for the code. Items 1–11 are the Documents Keywords

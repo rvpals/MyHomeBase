@@ -85,6 +85,7 @@ pattern instead of inventing one.
 | [`PersonalToolbars`](#personaltoolbars) | Admin-configured shortcut bars, docked to a screen edge or floating where the reader drags them — **beside** the navigation, never replacing it | [src/components/personal-toolbar.tsx](src/components/personal-toolbar.tsx) | yes |
 | [`MusicSleepTimer`](#musicsleeptimer) | **Stop the music after a while** — preset/custom duration picker plus a live countdown | [src/components/music-sleep-timer.tsx](src/components/music-sleep-timer.tsx) | yes |
 | [`SelectionBar`](#selectionbar) | Tick several rows, then send them somewhere (with `useSelection`) | [src/components/selection-bar.tsx](src/components/selection-bar.tsx) | yes |
+| [`RowActionBar`](#rowactionbar) | **One row's actions, floated over it on hover** — icon buttons instead of an actions column | [src/components/row-action-bar.tsx](src/components/row-action-bar.tsx) | no |
 | [`ViewportSwitch`](#viewportswitch) | The global compact/full switch | [src/components/viewport-switch.tsx](src/components/viewport-switch.tsx) | yes |
 | [`PlayingCard`](#playingcard) | **One playing card** — face, back, or empty slot | [src/components/playing-card.tsx](src/components/playing-card.tsx) | no |
 | [`CardHand`](#cardhand) | A row of cards with a title, total and badge | [src/components/card-hand.tsx](src/components/card-hand.tsx) | no |
@@ -328,6 +329,18 @@ enough that a changed button label isn't enough — a bulk edit, a merge, a batc
   count it. The picker chips and the Related links are real `<Link>`s whose
   `onNavigate` routes the plain click through the same transition — so they keep
   their hrefs for middle-click and "copy link", and still show the overlay.
+- Music → Scan Music
+  ([music-scan-view.tsx](<src/app/(protected)/modules/[slug]/music-scan-view.tsx>)) —
+  the **start handoff only**, and the clearest example of where this component stops.
+  It is gated on `isStarting` (the `useTransition` around `startScanAction`, which
+  writes the run row and returns), *not* on `isRunning`. A scan takes minutes to tens
+  of minutes on the NAS, and the Progress panel in the next column — percent, current
+  file, polled from `mus_scan_runs` — is the whole reason that table exists. Holding a
+  `fixed inset-0` scrim up for the run would hide the one thing worth watching, block
+  the app while the work proceeds on the server anyway, and re-raise itself on every
+  refresh mid-scan. So the overlay covers the ambiguous second before the run row
+  exists and then hands over. No `onCancel`, because nothing on this page can stop a
+  scan once the action has returned.
 
 **Render it as a sibling of a `Modal`, not a child.** It is `z-[60]` where `Modal` is
 `z-50`, so the dialog dims along with the rest of the page — otherwise the thing the
@@ -430,6 +443,7 @@ and an optional "Show SQL" re-run dialog. Do not build another table.
 | `formatAggregate?` | `(result: number) => ReactNode` | Formats that total, e.g. `(cents) => formatCents(cents)`. Defaults to `toLocaleString()`. |
 | `minWidth?` | `number` | Resize floor in pixels. Default `64`. |
 | `excludeFromRecordView?` | `boolean` | Keep this column out of the record modal. **Set it on action columns** — a row's Edit/Delete buttons don't belong in a read-out of the record. |
+| `renderRecord?` | `(row: T) => ReactNode` | Draw this column differently *in the record modal*, instead of `render`. For the column that carries real content **and** a control — a title cell with a `RowActionBar` docked in its corner. Excluding it would lose the title; rendering it as-is would put Edit and Delete in a read-out. Unset means the modal uses `render`. |
 
 ### Grid props — `DataGridProps<T>`
 
@@ -1903,6 +1917,7 @@ so the desktop classes provably can't regress.
 | `value` | `K` | The selected key. Controlled — the caller owns the state. |
 | `onChange` | `(key: K) => void` | |
 | `label` | `string` | Shown before the control; also the group's accessible name. |
+| `compact?` | `"select" \| "segments"` | What the control becomes below 1024px. Default `"select"` — the native picker described above. `"segments"` keeps the segmented row at every width, and renders **no** `<select>` at all (not two controls with one hidden). Only for a **short set of short labels**; see below. |
 | `className?` | `string` | |
 
 Generic over the key type, so a caller's own union (`TransactionGroupBy`) survives the
@@ -1923,6 +1938,14 @@ Rendered as a `radiogroup` with `aria-checked` per segment, since one of a set o
 mutually exclusive choices is what a radio is — and the visual fill alone doesn't
 convey the state to a screen reader.
 
+**When to pass `compact="segments"`.** The default `<select>` exists because five labels
+like "Billing cycle" would wrap into a ragged block on a phone. That reasoning doesn't
+reach a control whose options are `1 / 2 / 3` — three single characters fit a 390px
+screen easily, and a full-width dropdown above the content would be far heavier than the
+choice deserves. So: reach for it only when the options are **few and genuinely short**,
+and leave the default alone otherwise. It isn't an escape hatch from a picker that's
+pulling its weight.
+
 **Used by:** Expense — the Transactions screen's All / Account / Billing cycle / Vendor /
 Category switcher
 [expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx).
@@ -1932,7 +1955,11 @@ switcher (Compact / Tall / Hidden) and a **View** switcher (List / Card), each p
 per device in `localStorage` (`myhomebase:admin-location-manager-map` and
 `…-manager-view`). Two instances rather than one five-way control, because they answer
 different questions — how big the map is, and how a row is drawn — and the combinations
-are all meaningful.
+are all meaningful. Music → Library — the **Columns 1 / 2 / 3** switcher over the track
+lists
+[music-library-view.tsx](src/app/(protected)/modules/[slug]/music-library-view.tsx), the
+one caller passing `compact="segments"`, persisted in the URL as `?cols=` beside the
+existing `?view=`.
 
 ---
 
@@ -6097,6 +6124,98 @@ already being claimed.
 **The moon glyph is hand-drawn, not a `SlotIcon`** — it is a transport control sitting in
 a row with play, pause and queue, which `coding-guide.md` keeps hand-drawn so they read as
 buttons rather than as places.
+
+## RowActionBar
+
+A small bar of icon-only actions that floats over the row it belongs to, revealed on
+hover. Use it when a list's per-row controls would otherwise cost a whole column —
+four buttons wide on a desktop is four buttons of dead weight on every row the reader
+is not pointing at. If the actions apply to a *ticked selection* rather than to one
+row, you want `SelectionBar` instead.
+
+- **Source:** [src/components/row-action-bar.tsx](src/components/row-action-bar.tsx)
+- **Import:** `import { RowActionBar } from "@/components/row-action-bar";`
+- **Client component:** no (`"use client"` comes from the page that renders it)
+- **Below 1024px:** responsive via `max-lg:` **at the call site**. See *Narrow* below —
+  the component does not decide this, because where a static bar belongs depends on
+  the row's own shape.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `actions` | `RowAction[]` | In reading order. See the shape below. |
+| `label` | `string` | Accessible name for the group, e.g. ``Actions for “Tax return 2024”``. Required — without it a screen reader announces loose buttons with nothing saying what they share. |
+| `className?` | `string` | Merged last. This is where the narrow override goes. |
+
+`RowAction`:
+
+| Field | Type | Notes |
+|------|------|-------|
+| `key` | `string` | React key within the bar. Not persisted anywhere. |
+| `icon` | `ReactNode` | Pass an icon that honours `className`; size it yourself (`h-4 w-4`). |
+| `hint` | `string` | Native tooltip **and** the accessible name. Write the whole sentence and name the record. |
+| `onClick?` | `() => void` | Ignored when `href` is set. |
+| `href?` | `string` | Renders a real `<a>` — for a download or a navigation. |
+| `isDanger?` | `boolean` | Destructive tint. At most one per bar. |
+| `isDisabled?` | `boolean` | Greys out and blocks the click. Give `hint` a reason when you set it. |
+
+```tsx
+<div className="group relative flex flex-col pr-24 max-lg:pr-0">
+  {title}
+  <RowActionBar
+    label={`Actions for “${row.title}”`}
+    className="max-lg:pointer-events-auto max-lg:relative max-lg:mt-2 max-lg:self-start max-lg:opacity-100"
+    actions={[
+      { key: "edit", icon: <PenGlyph className="h-4 w-4" />, hint: `Edit “${row.title}”`, href: editHref(row.id) },
+      { key: "delete", icon: <XGlyph className="h-4 w-4" />, hint: `Move “${row.title}” to the bin`, onClick: () => setPendingDelete(row), isDanger: true },
+    ]}
+  />
+</div>
+```
+
+**Used by:** the Document Library's Home screen, in the Title column of
+[documents-main-view.tsx](src/app/(protected)/modules/[slug]/documents-main-view.tsx).
+It replaced a four-button actions column there.
+
+**The caller owns the hover.** The component renders the bar; the element that reacts
+to the pointer is yours, because only you know how far the hover target should reach —
+a table cell, a card, a whole row. Put `group relative` on that element. In a
+`DataGrid` the natural choice is the whole Title cell: it is the full width of the
+column, so the bar lands at the column's right edge and the pointer has the whole cell
+to trigger it. Reserve the bar's width with `pr-*` so a long title slides out from
+under it rather than being covered.
+
+**It is not a shell floating component.** `design.md` → *The floating layer* governs
+the app's four reader-switchable surfaces (the clock, the calculator…), which register
+in `FLOATING_COMPONENTS` and carry permanent ids. This is a control on an existing
+surface, scoped to one row, with no reader-facing switch and nothing persisted — the
+same call `PersonalToolbar`'s ✎ edit shortcut makes. Do not register it.
+
+**The glyphs stay hand-drawn and carry no icon slot.** `coding-guide.md` → *What must
+NOT become a slot* puts row actions (pencil, trash, refresh, search) in exactly this
+category, so an inline delete cannot become full-colour artwork that weakens the
+destructive read.
+
+**Narrow.** Hover does not exist on touch, so the bar must not stay hover-only there.
+Two separate mechanisms, and you need both:
+
+- `@media (hover: none)` in `globals.css` makes `.row-action-bar` permanently visible
+  and clickable on any device that cannot hover — the query is on the *input*, not the
+  width, because a touch laptop at 1400px needs it too.
+- The **call site** decides where it then sits. The Document Library drops it out of
+  its floating position onto its own line under the title with `max-lg:` overrides,
+  because `DataGridCompact` renders the title as the card head and a floating bar
+  there would cover the very title it belongs to.
+
+**Why the reveal is opacity, not `hidden`.** A `display:none` bar cannot take focus, so
+the keyboard could never reach it. The resting state is `opacity-0` plus
+`pointer-events-none` — the latter so an invisible bar does not swallow clicks meant
+for the row underneath — and `group-focus-within` restores both, which is what makes
+the bar tab-reachable.
+
+**Keeping it out of `DataGrid`'s record modal.** A column that is *only* actions uses
+`excludeFromRecordView`. A column that carries real content *and* this bar uses
+`renderRecord` instead, which the modal prefers over `render` — so the title still
+prints and the controls stay behind, where a read-out of one record has no use for them.
 
 ## SelectionBar
 

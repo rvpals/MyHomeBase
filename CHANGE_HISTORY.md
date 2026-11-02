@@ -1,5 +1,68 @@
 # Change History
 
+## 2026-11-01 22:07 — Document Library hover actions, About → Code tab, Music columns, Games tiles
+
+**No migrations.** Nothing in this release adds or alters a table. A **republish is required** for the
+code; there is nothing to apply on the NAS and no new package.
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not invoked by the
+assistant. A and B were written this session and Min reported each one tested on screen; **the Vitest file
+added in B has never been executed.** **C was written in earlier sessions and was read from its diff for
+this entry — it is unverified on screen**, as is `parseLibraryColumns`' new test block. `Testing_List.md`
+carries items for all of it.
+
+### A. Documents: Home screen row actions are a hover bar
+
+- **The four buttons are now icon-only** — Show files (folder and sheet), Download all (stack with a down
+  arrow), Edit (pen) and Delete (✕) — in a bar that floats over the hovered row, docked at the right edge of
+  the **Title** cell. Each carries a hint naming the document ("Edit “Lease 2024”"), which is also its
+  accessible name.
+- **The last column is gone.** The old column of four labelled buttons was dead weight on every row the
+  pointer wasn't on, and the first thing to wrap on a phone.
+- **All four show on every row.** Show files and Download all **disable** at zero files (the hint says
+  "No files on …") rather than disappearing, so the bar stays the same width row to row.
+- **Keyboard and touch.** Tabbing into a row reveals the bar. On a device that can't hover
+  (`@media (hover: none)`) it is always visible. Below 1024px it stops floating and sits on its own line
+  under the title, so it never covers the title it belongs to.
+- **The OCR / Re-read button stays beside the title**, as before — it carries a busy state and a label that
+  changes, which an icon in the bar could not show.
+- **The record view stays free of controls.** `DataGridColumn` gained an optional **`renderRecord`**: the
+  record modal uses it in place of `render`, so the title prints there without Edit and Delete.
+  `excludeFromRecordView` drops a whole column; this is for one that carries content *and* a control.
+- **New reusable `RowActionBar`** (`src/components/row-action-bar.tsx`) and four hand-drawn glyphs in
+  `document-action-icons.tsx`. No icon slots: `coding-guide.md` keeps row actions hand-drawn. It is not a
+  shell floating component — nothing to register in `FLOATING_COMPONENTS`.
+
+### B. Admin → About: a Code tab
+
+- **A new Code tab**, directly after Features, with a **Components** card (open by default) listing every
+  registered reusable component: name, a **Client** badge where it is a client component, what it is for,
+  and its source path. Today that is **97**.
+- **The source is `components.md`'s Index table**, parsed on the server — not a scan of `src/components/`,
+  which would give filenames without purposes. The card says so: page-local one-offs are deliberately
+  unregistered and so are not listed.
+- **Two empty states:** `components.md` missing, and present with no `## Index` table.
+- **New `src/lib/component-list/`**, laid out like `feature-list` — `getComponentList`, a file repository
+  wired as `deps.componentListRepo`, and a colocated Vitest file (8 cases: rows, stopping at the next
+  heading, link/code stripping, escaped pipes, a malformed row, missing file, no table, the repository).
+- **Docs:** the `RowActionBar` row that was missing from the Index table is added, and `renderRecord` is in
+  the `DataGrid` column table.
+
+### C. Earlier-session work shipped in the same tree (unverified on screen)
+
+- **Music → Library: a Columns 1 / 2 / 3 switch** deals a track list into columns. It shows only where a track
+  list is on screen (All Songs, Most Played, Playlists, or a picked group), rides in the URL as `?cols=`
+  (1 is the default and stays out of it), and three columns fall back to two below 1024px.
+  `parseLibraryColumns` reads the parameter and treats anything outside 1–3, or not a whole number, as one.
+- **`ViewModeSwitch` gained `compact="segments"`**, which keeps the segmented row on a phone instead of
+  swapping to a dropdown; the default is unchanged.
+- **Music → Scan Music:** a subtle "Starting scan…" overlay covers only the hand-off to the server, then gives
+  way to the progress panel.
+- **Games: arcade cards are square tiles** — three across on a desktop, four on a wide screen, two on a phone
+  (it was one) — with the description clipped rather than pushing Play out of the tile.
+- **Documents → Keywords:** the ✕ that stops a word being ranked moves from its own column to beside the word,
+  and no longer also selects the word.
+
 ## 2026-11-01 — Document Library Keywords, System Messages tabs, market-day refresh
 
 **No migrations.** Nothing in this release adds or alters a table; every new setting is a

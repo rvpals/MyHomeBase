@@ -11,7 +11,35 @@
 
 import { Button } from "@/components/button";
 import { useMusicPlayer, type PlayableTrack } from "@/components/music-player-provider";
+import type { LibraryColumnCount } from "@/lib/music";
 import { recordPlayAction } from "./music-actions";
+
+/**
+ * The list's own classes, and each row's, for a given column count.
+ *
+ * Written out per count rather than built from a template string because Tailwind scans
+ * source text for class names -- `grid-cols-${n}` would compile to nothing.
+ *
+ * At 1 column this is the card with `divide-y` separators the list has always been. The
+ * separators can't survive a grid (a horizontal rule between cells reads as a line
+ * through the middle of a row), so the multi-column shapes give each cell its own
+ * hairline border instead and keep the outer card. Three columns drops to two below
+ * 1024px via `max-lg:`, so the desktop choice is untouched by the phone cap.
+ */
+const COLUMN_CLASSES: Record<
+  LibraryColumnCount,
+  { list: string; row: string }
+> = {
+  1: { list: "divide-y divide-line rounded-xl border border-line", row: "" },
+  2: {
+    list: "grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line",
+    row: "bg-paper",
+  },
+  3: {
+    list: "grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-line bg-line max-lg:grid-cols-2",
+    row: "bg-paper",
+  },
+};
 
 export interface TrackListRow {
   id: number;
@@ -35,6 +63,7 @@ export function TrackList({
   onRemove,
   onMove,
   numbered = false,
+  columns = 1,
 }: {
   rows: TrackListRow[];
   emptyMessage: string;
@@ -64,6 +93,15 @@ export function TrackList({
    * be played top to bottom -- so it is the one view that earns the numbers.
    */
   numbered?: boolean;
+  /**
+   * How many columns to deal the rows into. Defaults to 1, which renders exactly the
+   * single-column card this list has always been -- so the Magic Playlist and any
+   * caller that doesn't opt in provably cannot change shape.
+   *
+   * Above 1 the rows flow left to right across a grid. Reading order stays the DOM
+   * order either way, so the queue a click builds is unaffected by the layout.
+   */
+  columns?: LibraryColumnCount;
 }) {
   const player = useMusicPlayer();
 
@@ -85,8 +123,10 @@ export function TrackList({
     void recordPlayAction(row.id);
   };
 
+  const layout = COLUMN_CLASSES[columns];
+
   return (
-    <ul className="divide-y divide-line rounded-xl border border-line">
+    <ul className={layout.list}>
       {rows.map((row, index) => {
         const isCurrent = player?.current?.id === row.id;
         return (
@@ -96,10 +136,16 @@ export function TrackList({
           // being painted, so the banding reads as a stripe rather than a second card.
           // The current track's `bg-brass-soft` is painted on the button above this, so
           // it still wins where it matters.
+          // Exactly one background class, never two. `layout.row` paints the cell in
+          // the multi-column shapes, where `gap-px` over the list's `bg-line` is what
+          // draws the separators -- a transparent cell there would show the line colour
+          // through the whole row. The odd-row tint replaces it rather than being
+          // appended, because two background utilities on one element are resolved by
+          // their order in the stylesheet, not in this string.
           <li
             key={`${row.id}-${row.displayTitle}`}
             className={`flex items-center gap-2 pr-2 ${
-              numbered && index % 2 === 1 ? "bg-paper-raised" : ""
+              numbered && index % 2 === 1 ? "bg-paper-raised" : layout.row
             }`}
           >
             {onMove !== undefined && (
