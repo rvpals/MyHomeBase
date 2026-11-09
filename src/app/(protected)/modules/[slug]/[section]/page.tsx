@@ -131,6 +131,7 @@ function renderSection(
         section={section}
         isAdmin={isAdmin}
         filterQuery={filterQuery}
+        searchQuery={recipeSearch}
         requestedTab={requestedTab}
         calendarScope={calendarScope}
         calendarAnchor={calendarAnchor}

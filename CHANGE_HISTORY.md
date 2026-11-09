@@ -1,5 +1,46 @@
 # Change History
 
+## 2026-11-09 21:10 — Journal search navigates to Entries; Search Results tab with full bulk actions
+
+**No migrations.** Nothing in this release adds or alters a table. A **republish is required** for the
+code; there is nothing to apply on the NAS and no new package.
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not invoked.
+Min runs the gates and tests the UI.
+
+### A. Journal: home screen search navigates to the Entries section
+
+Previously the search button on the Journal home screen ran a query inline and showed results in a
+minimal 3-column grid with no checkboxes, no bulk actions and no column controls — a visually different
+experience from every other entry list in the module.
+
+The search button now reveals an input as before, but submitting navigates to
+`/modules/journal/entries?search=<term>` instead of querying in place. All result rendering moved
+into the Entries section.
+
+### B. Journal Entries: new "Search Results" tab with identical DataGrid to Unlocked Entries
+
+The Entries section gains a **Search Results** tab that appears first in the strip whenever a
+`?search=` query is present. The tab uses exactly the same DataGrid configuration as Unlocked
+Entries: same columns (Date, Time, Title with clip badge and encrypted placeholder, Categories, Tags,
+Place), `enableSelection`, all six bulk actions (Bulk edit, Bulk overwrite, Lock, Unlock, Encrypt,
+Delete), `enableRecordView`, `storageKey`, `enableExport`, and `compactLayout="record"` for phones.
+
+The search input at the top of the tab lets the reader re-query without navigating away. After any
+bulk action the grid re-runs the search so the results stay current.
+
+The search limit was raised from 50 to 500 to match the other tabs.
+
+All four existing tabs (Unlocked Entries, Substantial Entries, All Entries, Log) are unchanged.
+
+### C. `copy_change_history.bat` — standalone doc-copy script
+
+New batch file copies `CHANGE_HISTORY.md` and `MyHomeBase_feature.md` to the NAS independently of a
+full `/release` session. The target path is a parameter at the top of the file. Steps 1 and 4 of the
+`/release` command are now commented out — the backup and the doc copy are run separately.
+
+---
+
 ## 2026-11-01 22:07 — Document Library hover actions, About → Code tab, Music columns, Games tiles
 
 **No migrations.** Nothing in this release adds or alters a table. A **republish is required** for the

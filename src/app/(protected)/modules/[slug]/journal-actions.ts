@@ -86,9 +86,9 @@ import { configuredPhotoRoot, isPhotoRootFromSetting } from "./journal-photo-roo
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
 const JOURNAL_MODULE_SLUG = "journal";
-const SEARCH_RESULT_LIMIT = 50;
-// Higher than search's cap: this is a browse screen, and DataGrid paginates
-// whatever it's handed rather than rendering all of it at once.
+// Same cap as the Entries grid tabs: search results now land in the standard
+// DataGrid, which paginates whatever it's handed.
+const SEARCH_RESULT_LIMIT = 500;
 const ENTRIES_RESULT_LIMIT = 500;
 
 export interface ActionResult {

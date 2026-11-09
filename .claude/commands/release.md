@@ -26,6 +26,8 @@ belongs in the script, and vice versa. Same for
 `INSTRUCTION_SETUP_SYNOLOGY.md`; deploy/restart/stop is `ADMIN_MANUAL.md`. (Windows was
 retired — for that, `manual_release.bat -Target Windows`.)
 
+<!-- REM Step 1 — Skipped. Run `npm run backup:nas` manually before releasing.
+
 ## 1. Back up the NAS production database
 
 ```bash
@@ -42,6 +44,8 @@ one, and only runs when the release has a migration.
 
 Confirm the new files exist at a plausible size before continuing — the script prints
 each name and size, and exits non-zero if the `.db` couldn't be copied.
+
+END REM -->
 
 ## 2. Update the markdown docs
 

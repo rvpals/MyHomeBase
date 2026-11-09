@@ -25,6 +25,7 @@ import {
   findEntries,
   listLogEntries,
   recycleEntries,
+  searchEntries,
   withLockedCondition,
   withLogCondition,
   type BulkEntryEditInput,
@@ -63,7 +64,8 @@ export type BulkRefreshScope =
   | { tab: "main"; filter: JournalFilter }
   | { tab: "unlocked"; filter: JournalFilter }
   | { tab: "substantial"; filter: JournalFilter }
-  | { tab: "log" };
+  | { tab: "log" }
+  | { tab: "search"; term: string };
 
 export interface BulkActionResult {
   ok: boolean;
@@ -80,6 +82,7 @@ function toErrorResult(error: unknown, fallback: string): BulkActionResult {
 
 function refresh(scope: BulkRefreshScope): JournalEntry[] {
   if (scope.tab === "log") return listLogEntries(deps.journalRepo, ENTRIES_LIMIT);
+  if (scope.tab === "search") return searchEntries(deps.journalRepo, scope.term, ENTRIES_LIMIT);
   // `"all"` for the Log scope — all three grid tabs show every entry, logged
   // activities included. The lock and body-length scopes are what separate
   // them, and both are re-applied here rather than assumed unchanged: Lock on

@@ -116,6 +116,7 @@ function SectionBody({
   isAdmin,
   userId,
   filterQuery,
+  searchQuery,
   requestedTab,
   calendarScope,
   calendarAnchor,
@@ -131,6 +132,8 @@ function SectionBody({
   userId: number;
   /** From ?filter= — an ad-hoc filter query for the Entries section. */
   filterQuery?: string;
+  /** From ?search= — a text search for the Entries section's Search Results tab. */
+  searchQuery?: string;
   /** From ?tab= — which Entries tab to open on: "main", "unlocked" or "log". */
   requestedTab?: string;
   /** From ?scope=/?anchor=/?date= — which period the Calendar shows, and the
@@ -272,10 +275,13 @@ function SectionBody({
       // ?tab=log (set by the Statistics card's Log tile) opens on the Log tab
       // and ?tab=main on All Entries; anything else opens on Unlocked Entries,
       // the first tab — ?filter= only ever narrows the grid tabs.
+      // ?search= (set by the home screen's search button) opens on the Search
+      // Results tab unless the reader also asked for a specific tab.
       return (
         <JournalEntriesPanel
           filterQuery={filterQuery}
-          initialTab={requestedTab}
+          searchQuery={searchQuery}
+          initialTab={searchQuery && !requestedTab ? "search" : requestedTab}
           canRunSql={isAdmin}
         />
       );
@@ -556,6 +562,7 @@ export async function JournalSection({
   section,
   isAdmin,
   filterQuery,
+  searchQuery,
   requestedTab,
   calendarScope,
   calendarAnchor,
@@ -568,6 +575,8 @@ export async function JournalSection({
   section: JournalSection;
   isAdmin: boolean;
   filterQuery?: string;
+  /** From ?search= — a text search across titles, content, categories, tags, places. */
+  searchQuery?: string;
   requestedTab?: string;
   calendarScope?: string;
   calendarAnchor?: string;
@@ -619,6 +628,7 @@ export async function JournalSection({
           isAdmin={isAdmin}
           userId={currentUser.id}
           filterQuery={filterQuery}
+          searchQuery={searchQuery}
           requestedTab={requestedTab}
           calendarScope={calendarScope}
           calendarAnchor={calendarAnchor}

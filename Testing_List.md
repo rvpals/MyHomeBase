@@ -146,6 +146,22 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-09 — Release (Journal search → Entries tab, bulk actions on search results)
+
+**No migrations.** Republish required. No risky items — no new tables, no phone-only layouts.
+
+- [ ] **1.** Journal home screen: search button reveals an input, submitting navigates to Entries section with Search Results tab open
+- [ ] **2.** Journal Entries: Search Results tab appears first when arriving via search, shows matching entries
+- [ ] **3.** Journal Entries — Search Results: grid has same columns as Unlocked Entries (Date, Time, Title, Categories, Tags, Place)
+- [ ] **4.** Journal Entries — Search Results: checkboxes appear, selecting rows reveals all six bulk action buttons (Bulk edit, Bulk overwrite, Lock, Unlock, Encrypt, Delete)
+- [ ] **5.** Journal Entries — Search Results: re-typing in the search box and submitting updates the grid without navigating
+- [ ] **6.** Journal Entries — Search Results: bulk delete moves entries to recycle bin and grid refreshes with updated search results
+- [ ] **7.** Journal Entries — Search Results: row click opens the entry
+- [ ] **8.** Journal Entries: Unlocked, Substantial, All Entries, Log tabs are unchanged
+- [ ] **9.** Journal home screen: search button with no `?search=` param — Entries opens on Unlocked Entries tab as before
+
+---
+
 ## 2026-11-01 — Release (Document Library hover actions, About → Code tab, Music columns, Games tiles)
 
 **No migrations.** The app must be **republished** for the code. Items 1–11 are the Documents Home row

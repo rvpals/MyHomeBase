@@ -30,6 +30,7 @@ import {
   listFilters,
   listLogEntries,
   listTags,
+  searchEntries,
   tryParseFilterQuery,
   withLockedCondition,
   withLogCondition,
@@ -63,11 +64,18 @@ export interface JournalEntriesPanelProps {
    */
   filterQuery?: string;
   /**
-   * Which tab to open on — "log" for the Log tab, "main" for All Entries,
-   * "substantial" for Substantial Entries, anything else (or nothing) for
-   * Unlocked Entries, which is the first tab and the default. Not validated
-   * here: the view matches the key against the four it knows and falls back to
-   * "unlocked", so a stale `?tab=` opens the default rather than 404ing.
+   * A text search across titles, content, categories, tags and places. When
+   * present, the view adds a "Search Results" tab with the matching entries.
+   * Independent of `filterQuery` — the two use different query paths.
+   */
+  searchQuery?: string;
+  /**
+   * Which tab to open on — "search" for the Search Results tab, "log" for the
+   * Log tab, "main" for All Entries, "substantial" for Substantial Entries,
+   * anything else (or nothing) for Unlocked Entries, which is the first tab and
+   * the default. Not validated here: the view matches the key against the ones
+   * it knows and falls back to "unlocked", so a stale `?tab=` opens the default
+   * rather than 404ing.
    */
   initialTab?: string;
   /** Optional heading, for embedding outside the Entries section. */
@@ -84,6 +92,7 @@ export interface JournalEntriesPanelProps {
 export function JournalEntriesPanel({
   filterName,
   filterQuery,
+  searchQuery,
   initialTab,
   title,
   description,
@@ -188,6 +197,14 @@ export function JournalEntriesPanel({
   const categories = listCategories(deps.journalRepo);
   const tags = listTags(deps.journalRepo);
 
+  // Text search — independent of the filter above. When present, the view
+  // adds a "Search Results" tab with these rows. Skipped when absent so the
+  // query is never run for a reader who didn't ask for it.
+  const trimmedSearch = (searchQuery ?? "").trim();
+  const searchEntryResults = trimmedSearch !== ""
+    ? searchEntries(deps.journalRepo, trimmedSearch, ENTRIES_LIMIT)
+    : [];
+
   // How many clips are attached to each entry on screen, for the paperclip badge.
   //
   // Composed HERE, in the presentation layer, and deliberately not in
@@ -198,10 +215,16 @@ export function JournalEntriesPanel({
   //
   // One query for the whole page, not one per row: `countClipsForTargets` groups in
   // SQL, and ids with no clips are simply absent from the map.
+  const allEntryIds = [
+    ...entries,
+    ...unlockedEntries,
+    ...substantialEntries,
+    ...searchEntryResults,
+  ].map((entry) => entry.id);
   const clipCounts = countClipsForTargets(
     deps.clipsRepo,
     "journal",
-    [...new Set([...entries, ...unlockedEntries, ...substantialEntries].map((entry) => entry.id))],
+    [...new Set(allEntryIds)],
   );
 
   return (
@@ -209,6 +232,8 @@ export function JournalEntriesPanel({
       initialEntries={entries}
       initialUnlockedEntries={unlockedEntries}
       initialSubstantialEntries={substantialEntries}
+      initialSearchEntries={searchEntryResults}
+      initialSearchQuery={trimmedSearch || undefined}
       initialSql={sqlFor(scopedFilter)}
       initialUnlockedSql={sqlFor(unlockedFilter)}
       initialSubstantialSql={sqlFor(scopedFilter, "substantial")}

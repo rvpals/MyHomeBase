@@ -36,7 +36,7 @@
 // Route-local. The filter tree, its SQL compilation and its English description
 // all live in src/lib/journal/filters.ts — this file only presents them.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
@@ -67,6 +67,7 @@ import {
   findJournalEntriesAction,
   runJournalSqlAction,
   saveJournalFilterAction,
+  searchJournalEntriesAction,
 } from "./journal-actions";
 import {
   bulkEncryptJournalEntriesAction,
@@ -249,6 +250,8 @@ export function JournalEntriesView({
   initialEntries,
   initialUnlockedEntries,
   initialSubstantialEntries,
+  initialSearchEntries = [],
+  initialSearchQuery,
   initialSql,
   initialUnlockedSql,
   initialSubstantialSql,
@@ -269,10 +272,125 @@ export function JournalEntriesView({
   tagIcons,
   clipCounts = {},
 }: JournalEntriesViewProps) {
+  const hasSearch = initialSearchQuery !== undefined && initialSearchQuery !== "";
+
+  const tabs = [
+    // The Search Results tab is first when present — the reader searched for
+    // something, so the results are what they came for. Absent otherwise, so
+    // the strip reads exactly as it did before search existed.
+    ...(hasSearch
+      ? [
+          {
+            key: "search",
+            label: "Search Results",
+            content: (
+              <SearchTab
+                key="search"
+                initialEntries={initialSearchEntries}
+                initialTerm={initialSearchQuery}
+                clipCounts={clipCounts}
+                categoryOptions={categoryOptions}
+                tagOptions={tagOptions}
+                locationCategoryOptions={locationCategoryOptions}
+                locationTagOptions={locationTagOptions}
+              />
+            ),
+          },
+        ]
+      : []),
+    {
+      key: "unlocked",
+      label: "Unlocked Entries",
+      content: (
+        <EntriesTab
+          key="unlocked"
+          lockScope="unlocked"
+          bodyScope="all"
+          clipCounts={clipCounts}
+          initialEntries={initialUnlockedEntries}
+          initialSql={initialUnlockedSql}
+          canRunSql={canRunSql}
+          initialFilters={initialFilters}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+          initialFilterId={initialFilterId}
+          appliedQuery={appliedQuery}
+          queryError={queryError}
+        />
+      ),
+    },
+    {
+      key: "substantial",
+      label: "Substantial Entries",
+      content: (
+        <EntriesTab
+          key="substantial"
+          lockScope="all"
+          bodyScope="substantial"
+          clipCounts={clipCounts}
+          initialEntries={initialSubstantialEntries}
+          initialSql={initialSubstantialSql}
+          canRunSql={canRunSql}
+          initialFilters={initialFilters}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+          initialFilterId={initialFilterId}
+          appliedQuery={appliedQuery}
+          queryError={queryError}
+        />
+      ),
+    },
+    {
+      key: "main",
+      label: "All Entries",
+      content: (
+        <EntriesTab
+          key="all"
+          lockScope="all"
+          bodyScope="all"
+          clipCounts={clipCounts}
+          initialEntries={initialEntries}
+          initialSql={initialSql}
+          canRunSql={canRunSql}
+          initialFilters={initialFilters}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+          initialFilterId={initialFilterId}
+          appliedQuery={appliedQuery}
+          queryError={queryError}
+        />
+      ),
+    },
+    {
+      key: "log",
+      label: (
+        <span className="flex items-center gap-1.5">
+          <SlotIcon slot={LOG_SLOT} className="h-4 w-4" />
+          Log
+        </span>
+      ),
+      content: (
+        <JournalLogView
+          entries={logEntries}
+          categoryIcons={categoryIcons}
+          tagIcons={tagIcons}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+        />
+      ),
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
-      {/* Only rendered when embedded somewhere that isn't the section (the
-          section supplies its own heading). */}
       {(title || description) && (
         <div>
           {title && <h2 className="font-display text-xl font-semibold text-ink">{title}</h2>}
@@ -281,130 +399,17 @@ export function JournalEntriesView({
       )}
 
       <Tabs
-        // Uncontrolled still — the tab is a starting point, not state the URL
-        // keeps in step. `Tabs` ignores a key it doesn't know and shows the
-        // first tab, so no validation is needed on the way in.
-        //
-        // The screen opens on **Unlocked Entries**, the first tab — the
-        // everyday view, and what `?tab=` lands on when it names nothing
-        // recognised. `"unlocked"` is still written out rather than left to
-        // `Tabs`' first-item fallback, so the landing tab stays a decision
-        // this line makes: reordering the strip must not silently move it.
-        //
-        // `?tab=main` still reaches All Entries, which is why "main" is in the
-        // list below even though it is no longer the default.
         defaultActiveKey={
-          initialTab === "log" ||
-          initialTab === "main" ||
-          initialTab === "unlocked" ||
-          initialTab === "substantial"
-            ? initialTab
-            : "unlocked"
+          initialTab === "search" && hasSearch
+            ? "search"
+            : initialTab === "log" ||
+                initialTab === "main" ||
+                initialTab === "unlocked" ||
+                initialTab === "substantial"
+              ? initialTab
+              : "unlocked"
         }
-        items={[
-          {
-            key: "unlocked",
-            label: "Unlocked Entries",
-            content: (
-              <EntriesTab
-                // `key` is load-bearing, not decoration. `Tabs` renders only the
-                // active tab's content, at one position in the tree, and all
-                // three grid tabs are the same component type — so without a
-                // distinct key React reconciles them as **one instance** and
-                // keeps its state across a tab switch. `useState(initialEntries)`
-                // then only ever runs for whichever tab mounted first, and the
-                // other two render that tab's rows under their own heading.
-                key="unlocked"
-                lockScope="unlocked"
-                bodyScope="all"
-                clipCounts={clipCounts}
-                initialEntries={initialUnlockedEntries}
-                initialSql={initialUnlockedSql}
-                canRunSql={canRunSql}
-                initialFilters={initialFilters}
-                categoryOptions={categoryOptions}
-                tagOptions={tagOptions}
-                locationCategoryOptions={locationCategoryOptions}
-                locationTagOptions={locationTagOptions}
-                initialFilterId={initialFilterId}
-                appliedQuery={appliedQuery}
-                queryError={queryError}
-              />
-            ),
-          },
-          {
-            key: "substantial",
-            label: "Substantial Entries",
-            content: (
-              // A third instance of the same component, with its own state —
-              // again only because of the `key`. See the note on the first tab.
-              <EntriesTab
-                // See the note on the Unlocked Entries tab's key above.
-                key="substantial"
-                lockScope="all"
-                bodyScope="substantial"
-                clipCounts={clipCounts}
-                initialEntries={initialSubstantialEntries}
-                initialSql={initialSubstantialSql}
-                canRunSql={canRunSql}
-                initialFilters={initialFilters}
-                categoryOptions={categoryOptions}
-                tagOptions={tagOptions}
-                locationCategoryOptions={locationCategoryOptions}
-                locationTagOptions={locationTagOptions}
-                initialFilterId={initialFilterId}
-                appliedQuery={appliedQuery}
-                queryError={queryError}
-              />
-            ),
-          },
-          {
-            key: "main",
-            label: "All Entries",
-            content: (
-              // The same component again, with its own state — only because of
-              // the `key`. See the note on the Unlocked Entries tab.
-              <EntriesTab
-                // See the note on the Unlocked Entries tab's key above.
-                key="all"
-                lockScope="all"
-                bodyScope="all"
-                clipCounts={clipCounts}
-                initialEntries={initialEntries}
-                initialSql={initialSql}
-                canRunSql={canRunSql}
-                initialFilters={initialFilters}
-                categoryOptions={categoryOptions}
-                tagOptions={tagOptions}
-                locationCategoryOptions={locationCategoryOptions}
-                locationTagOptions={locationTagOptions}
-                initialFilterId={initialFilterId}
-                appliedQuery={appliedQuery}
-                queryError={queryError}
-              />
-            ),
-          },
-          {
-            key: "log",
-            label: (
-              <span className="flex items-center gap-1.5">
-                <SlotIcon slot={LOG_SLOT} className="h-4 w-4" />
-                Log
-              </span>
-            ),
-            content: (
-              <JournalLogView
-                entries={logEntries}
-                categoryIcons={categoryIcons}
-                tagIcons={tagIcons}
-                categoryOptions={categoryOptions}
-                tagOptions={tagOptions}
-                locationCategoryOptions={locationCategoryOptions}
-                locationTagOptions={locationTagOptions}
-              />
-            ),
-          },
-        ]}
+        items={tabs}
       />
     </div>
   );
@@ -429,6 +434,10 @@ export interface JournalEntriesViewProps {
    * entries that fell outside that cap.
    */
   initialSubstantialEntries: JournalEntry[];
+  /** The Search Results tab's rows, from `searchEntries`. Empty when no search was asked. */
+  initialSearchEntries?: JournalEntry[];
+  /** The text search term that produced `initialSearchEntries`. */
+  initialSearchQuery?: string;
   /**
    * The statement each tab's first page came from, for the grid's "Show SQL"
    * dialog. One per tab because the three differ in exactly the conditions the
@@ -1430,6 +1439,408 @@ function EntriesTab({
 
       {/* Migration 0155. Raised by the paperclip on a Title cell: lists that
           entry's clips, or opens the clip directly when there is only one. */}
+      {clipsForEntry !== undefined && (
+        <EntryClipsDialog
+          entryId={clipsForEntry}
+          onClose={() => setClipsForEntry(undefined)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Search Results tab
+// ---------------------------------------------------------------------------
+
+const SEARCH_INPUT_CLASS =
+  "min-w-0 flex-1 rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
+
+function SearchTab({
+  initialEntries,
+  initialTerm,
+  clipCounts,
+  categoryOptions,
+  tagOptions,
+  locationCategoryOptions,
+  locationTagOptions,
+}: {
+  initialEntries: JournalEntry[];
+  initialTerm: string;
+  clipCounts: Record<number, number>;
+  categoryOptions: string[];
+  tagOptions: string[];
+  locationCategoryOptions: string[];
+  locationTagOptions: string[];
+}) {
+  const router = useRouter();
+  const [entries, setEntries] = useState(initialEntries);
+  const [term, setTerm] = useState(initialTerm);
+  const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [notice, setNotice] = useState("");
+
+  const [clipsForEntry, setClipsForEntry] = useState<number | undefined>(undefined);
+  const [bulkEdit, setBulkEdit] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
+  const [bulkOverwrite, setBulkOverwrite] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
+  const [confirmDelete, setConfirmDelete] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
+  const [confirmLock, setConfirmLock] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void; isLocked: boolean } | undefined
+  >();
+  const [confirmEncrypt, setConfirmEncrypt] = useState<
+    { rows: JournalEntry[]; clearSelection: () => void } | undefined
+  >();
+  const [encryptError, setEncryptError] = useState<string | undefined>(undefined);
+  const [isBulkBusy, setIsBulkBusy] = useState(false);
+
+  function currentScope(): BulkRefreshScope {
+    return { tab: "search", term };
+  }
+
+  function applyBulkResult(nextEntries: JournalEntry[], message: string, clearSelection: () => void) {
+    setEntries(nextEntries);
+    setNotice(message);
+    setError(undefined);
+    clearSelection();
+    setBulkEdit(undefined);
+    setBulkOverwrite(undefined);
+    setConfirmDelete(undefined);
+    setConfirmLock(undefined);
+    setConfirmEncrypt(undefined);
+    router.refresh();
+  }
+
+  async function handleSearch(event: FormEvent) {
+    event.preventDefault();
+    const query = term.trim();
+    if (query === "") return;
+    setIsSearching(true);
+    setError(undefined);
+    setNotice("");
+    try {
+      const result = await searchJournalEntriesAction(query);
+      if (!result.ok) {
+        setError(result.error ?? "Search failed.");
+        return;
+      }
+      setEntries(result.entries ?? []);
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  async function runBulkDelete(rows: JournalEntry[], clearSelection: () => void) {
+    setIsBulkBusy(true);
+    setError(undefined);
+    setNotice("");
+    try {
+      const result = await deleteJournalEntriesAction(
+        rows.map((entry) => entry.id),
+        currentScope(),
+      );
+      if (!result.ok || !result.entries) {
+        setError(result.error ?? "Failed to delete the selected entries.");
+        return;
+      }
+      applyBulkResult(result.entries, result.message ?? "Entries deleted.", clearSelection);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to delete the selected entries.");
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }
+
+  async function runBulkLock(
+    rows: JournalEntry[],
+    isLocked: boolean,
+    clearSelection: () => void,
+  ) {
+    const failed = `Failed to ${isLocked ? "lock" : "unlock"} the selected entries.`;
+    setIsBulkBusy(true);
+    setError(undefined);
+    setNotice("");
+    try {
+      const result = await bulkLockJournalEntriesAction(
+        rows.map((entry) => entry.id),
+        isLocked,
+        currentScope(),
+      );
+      if (!result.ok || !result.entries) {
+        setError(result.error ?? failed);
+        return;
+      }
+      applyBulkResult(result.entries, result.message ?? "Entries updated.", clearSelection);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : failed);
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }
+
+  async function runBulkEncrypt(
+    rows: JournalEntry[],
+    password: string,
+    hint: string,
+    clearSelection: () => void,
+  ) {
+    setIsBulkBusy(true);
+    setEncryptError(undefined);
+    setError(undefined);
+    setNotice("");
+    try {
+      const result = await bulkEncryptJournalEntriesAction(
+        rows.map((entry) => entry.id),
+        password,
+        hint,
+        currentScope(),
+      );
+      if (!result.ok || !result.entries) {
+        setEncryptError(result.error ?? "Failed to encrypt the selected entries.");
+        return;
+      }
+      applyBulkResult(result.entries, result.message ?? "Entries encrypted.", clearSelection);
+    } catch (caught) {
+      setEncryptError(
+        caught instanceof Error ? caught.message : "Failed to encrypt the selected entries.",
+      );
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <form onSubmit={handleSearch} className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={term}
+          onChange={(event) => setTerm(event.target.value)}
+          placeholder="Search titles, content, categories, tags, or places…"
+          aria-label="Search journal entries"
+          className={SEARCH_INPUT_CLASS}
+        />
+        <Button type="submit" disabled={isSearching || term.trim() === ""}>
+          {isSearching ? "Searching…" : "Search"}
+        </Button>
+      </form>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      {notice && <p className="text-sm text-muted">{notice}</p>}
+
+      <section>
+        <p className="mb-3 text-sm text-muted">
+          {isSearching ? (
+            "Searching…"
+          ) : (
+            <>
+              <span className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold text-brass-dark tabular-nums">
+                {entries.length}
+              </span>{" "}
+              {entries.length === 1 ? "entry" : "entries"} matching &ldquo;{term.trim()}&rdquo;.
+              Click a row to open it.
+            </>
+          )}
+        </p>
+        <DataGrid
+          columns={withClipBadge(COLUMNS, clipCounts, setClipsForEntry)}
+          rows={entries}
+          getRowKey={(entry) => entry.id}
+          emptyMessage={`No entries match "${term.trim()}".`}
+          enableExport
+          exportFileName="journal-search-entries"
+          storageKey="myhomebase:journal-entries-grid"
+          enableRecordView
+          onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
+          enableSelection
+          renderSelectionActions={(selectedRows, clearSelection) => (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
+              >
+                Bulk edit
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() => setBulkOverwrite({ rows: selectedRows, clearSelection })}
+              >
+                Bulk overwrite
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() =>
+                  setConfirmLock({ rows: selectedRows, clearSelection, isLocked: true })
+                }
+              >
+                Lock
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() =>
+                  setConfirmLock({ rows: selectedRows, clearSelection, isLocked: false })
+                }
+              >
+                Unlock
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() => {
+                  setEncryptError(undefined);
+                  setConfirmEncrypt({ rows: selectedRows, clearSelection });
+                }}
+              >
+                Encrypt
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={isBulkBusy}
+                onClick={() => setConfirmDelete({ rows: selectedRows, clearSelection })}
+              >
+                Delete
+              </Button>
+            </>
+          )}
+        />
+      </section>
+
+      {bulkEdit && (
+        <JournalEntriesBulkEdit
+          selected={bulkEdit.rows}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+          scope={currentScope()}
+          onCancel={() => setBulkEdit(undefined)}
+          onApplied={(nextEntries, message) =>
+            applyBulkResult(nextEntries, message, bulkEdit.clearSelection)
+          }
+        />
+      )}
+
+      {bulkOverwrite && (
+        <JournalEntriesBulkOverwrite
+          selected={bulkOverwrite.rows}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+          scope={currentScope()}
+          onCancel={() => setBulkOverwrite(undefined)}
+          onApplied={(nextEntries, message) =>
+            applyBulkResult(nextEntries, message, bulkOverwrite.clearSelection)
+          }
+        />
+      )}
+
+      {confirmDelete && (
+        <BulkConfirm
+          title="Delete these entries?"
+          description="They move to the recycle bin under Data Management, and can be restored from there."
+          count={confirmDelete.rows.length}
+          noun={{ one: "entry", many: "entries" }}
+          caveat={
+            confirmDelete.rows.some((entry) => entry.isLocked) ? (
+              <>
+                Some of these are <span className="text-ink">locked</span>. They move to the bin
+                too, still locked — restoring one brings it back locked.
+              </>
+            ) : undefined
+          }
+          confirmLabel="Delete"
+          isBusy={isBulkBusy}
+          onCancel={() => setConfirmDelete(undefined)}
+          onConfirm={() => void runBulkDelete(confirmDelete.rows, confirmDelete.clearSelection)}
+        />
+      )}
+
+      {confirmLock && (
+        <BulkConfirm
+          title={confirmLock.isLocked ? "Lock these entries?" : "Unlock these entries?"}
+          description={
+            confirmLock.isLocked
+              ? "A locked entry can't be edited or deleted on its own screen until it is unlocked."
+              : "Unlocking makes these entries editable again."
+          }
+          count={confirmLock.rows.length}
+          noun={{ one: "entry", many: "entries" }}
+          caveat={(() => {
+            const unchanged = confirmLock.rows.filter(
+              (entry) => entry.isLocked === confirmLock.isLocked,
+            ).length;
+            if (unchanged === 0) return undefined;
+            return (
+              <>
+                {unchanged === 1 ? "1 is" : `${unchanged} are`} already{" "}
+                {confirmLock.isLocked ? "locked" : "unlocked"} and will be left alone.
+              </>
+            );
+          })()}
+          confirmLabel={confirmLock.isLocked ? "Lock" : "Unlock"}
+          tone="primary"
+          isBusy={isBulkBusy}
+          onCancel={() => setConfirmLock(undefined)}
+          onConfirm={() =>
+            void runBulkLock(
+              confirmLock.rows,
+              confirmLock.isLocked,
+              confirmLock.clearSelection,
+            )
+          }
+        />
+      )}
+
+      {confirmEncrypt && (
+        <EncryptionPrompt
+          mode="encrypt"
+          asModal
+          count={confirmEncrypt.rows.length}
+          heading={
+            confirmEncrypt.rows.length === 1
+              ? "Encrypt this entry"
+              : `Encrypt ${confirmEncrypt.rows.length} entries`
+          }
+          actionLabel="Encrypt"
+          error={encryptError}
+          isBusy={isBulkBusy}
+          onCancel={() => {
+            setConfirmEncrypt(undefined);
+            setEncryptError(undefined);
+          }}
+          onSubmit={(password, hint) =>
+            void runBulkEncrypt(
+              confirmEncrypt.rows,
+              password,
+              hint,
+              confirmEncrypt.clearSelection,
+            )
+          }
+        />
+      )}
+
+      <BusyOverlay
+        isBusy={isBulkBusy && confirmEncrypt !== undefined}
+        message="Encrypting…"
+        detail="Don't close this window."
+      />
+
       {clipsForEntry !== undefined && (
         <EntryClipsDialog
           entryId={clipsForEntry}
