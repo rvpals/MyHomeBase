@@ -84,6 +84,8 @@ not at the top of the file — from the same evidence as step 2:
 
 Phrase each item as the behaviour a person would go and look at, not the code changed.
 
+<!-- REM Step 4 — Skipped. Use copy_change_history.bat to ship docs to NAS separately.
+
 ## 4. Ship the changelog and the feature catalogue to NAS
 
 The About page reads `CHANGE_HISTORY.md` from the running app's working directory, so the
@@ -124,6 +126,8 @@ head -3 //NAS_DS223/app/myhomebase/MyHomeBase_feature.md
 
 Say whether the file needed changing, and what changed if so. It's committed in step 5
 along with everything else.
+
+END REM -->
 
 ## 5. Commit and push
 
