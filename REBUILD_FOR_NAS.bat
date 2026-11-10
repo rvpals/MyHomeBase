@@ -37,12 +37,28 @@ if not exist "%OUTPUT_DIR%\server.js" (
     exit /b 1
 )
 
+REM --- Zip the build with a timestamp ---
+for /f "tokens=1-3 delims=/" %%a in ("%DATE%") do set "D=%%c%%a%%b"
+for /f "tokens=1-3 delims=:." %%a in ("%TIME: =0%") do set "T=%%a%%b%%c"
+set "ZIP_NAME=NAS_%D%_%T%.zip"
+set "ZIP_PATH=%~dp0%ZIP_NAME%"
+
+echo.
+echo === Zipping build to %ZIP_NAME% ===
+powershell -NoProfile -Command "Compress-Archive -Path '%OUTPUT_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force"
+if errorlevel 1 (
+    echo WARNING: zip failed. The build folder is still available at %OUTPUT_DIR%.
+) else (
+    echo Created: %ZIP_PATH%
+)
+
 echo.
 echo Build complete. Output is in:
 echo   %OUTPUT_DIR%
 echo.
-echo To publish to the NAS, copy the contents to \\NAS_DS223\app\myhomebase
-echo (preserving data\, .env, start.sh, app.log, app.pid, fallback.pid).
+echo Zip: %ZIP_PATH%
+echo   Copy the zip to any machine with NAS access, extract it, and run
+echo   COPY_TO_NAS.bat from the same folder.
 echo.
 echo IF THIS RELEASE ADDS A MIGRATION, apply it on the NAS over SSH:
 echo     cd /volume1/app/myhomebase ^&^& node --env-file-if-exists=.env migrate.cjs
