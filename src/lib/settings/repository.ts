@@ -17,20 +17,37 @@ function toDomain(row: SettingRow): Setting {
   });
 }
 
+function isMissingTable(err: unknown): boolean {
+  return (
+    err instanceof Error && "code" in err && err.code === "SQLITE_ERROR" &&
+    /no such table/i.test(err.message)
+  );
+}
+
 // The real repository. Swap the database without touching any use-case.
 export class SqliteSettingsRepository implements SettingsRepository {
   constructor(private db: Database.Database) {}
 
   listSettings(): Setting[] {
-    const rows = this.db.prepare("SELECT * FROM sys_app_settings ORDER BY key ASC").all() as SettingRow[];
-    return rows.map(toDomain);
+    try {
+      const rows = this.db.prepare("SELECT * FROM sys_app_settings ORDER BY key ASC").all() as SettingRow[];
+      return rows.map(toDomain);
+    } catch (err: unknown) {
+      if (isMissingTable(err)) return [];
+      throw err;
+    }
   }
 
   getSetting(key: string): Setting | undefined {
-    const row = this.db.prepare("SELECT * FROM sys_app_settings WHERE key = ?").get(key) as
-      | SettingRow
-      | undefined;
-    return row ? toDomain(row) : undefined;
+    try {
+      const row = this.db.prepare("SELECT * FROM sys_app_settings WHERE key = ?").get(key) as
+        | SettingRow
+        | undefined;
+      return row ? toDomain(row) : undefined;
+    } catch (err: unknown) {
+      if (isMissingTable(err)) return undefined;
+      throw err;
+    }
   }
 
   updateAll(updates: SettingUpdate[]): void {
@@ -65,6 +82,9 @@ export class SqliteSettingsRepository implements SettingsRepository {
       )
       .run(key, value);
   }
+
+  // Write methods intentionally do NOT catch missing-table errors — a silent
+  // write failure would hide real bugs.
 
   resetToDefaults(defaults: Setting[]): void {
     const insert = this.db.prepare(

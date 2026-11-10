@@ -7,7 +7,7 @@ Day-to-day operator notes for the two places MyHomeBase runs. This is the
 | | Synology NAS | Windows |
 |---|---|---|
 | Port | 3000 | 5200 |
-| Deploy with | `REBUILD_PUBLISH_NAS.bat` (SMB) | `REBUILD_PUBLISH.bat` |
+| Deploy with | `REBUILD_PUBLISH_NAS.bat` (SMB), or split: build with `REBUILD_FOR_NAS.bat` then copy with `COPY_TO_NAS.bat` | `REBUILD_PUBLISH.bat` |
 | Launcher | `start.sh` (DSM Task Scheduler) | `START_PRD.bat` / `start_prd.sh` |
 | Supervised? | Yes — restarts itself | No — nothing restarts it |
 
@@ -35,6 +35,28 @@ In full:
    keepalive" → **Run**.
 4. **Check it came back** — load the site; `app.log` in the app folder holds the
    startup output if it didn't.
+
+### Two-step alternative: build first, copy later
+
+`REBUILD_PUBLISH_NAS.bat` requires the NAS to be reachable during the build. When
+the NAS is offline, or you want to inspect the build before shipping it, split the
+work into two commands:
+
+```powershell
+.\REBUILD_FOR_NAS.bat              # builds into dist-nas\ (no NAS needed)
+# ... inspect, test, wait for the NAS to come up ...
+.\COPY_TO_NAS.bat                  # copies dist-nas\ to the NAS
+```
+
+`REBUILD_FOR_NAS.bat` produces the same aarch64 package as the all-in-one script
+(it runs `npm run publish:nas`) and drops it in `dist-nas\` by default — pass a
+path argument to change the output folder. `COPY_TO_NAS.bat` picks up from there:
+it checks NAS reachability, writes `deploy.trigger`, robocopy-mirrors the build,
+and prints the same post-deploy guidance.
+
+Both scripts have configurable variables at the top (`OUTPUT_DIR` / `SOURCE_DIR`
+and `NAS_PATH`), and both accept a command-line argument that overrides the
+default folder.
 
 **Migrations apply themselves.** `start.sh` runs `migrate.cjs` on a triggered
 deploy, in the window after the old process stops and before the new one binds, so
@@ -113,9 +135,9 @@ PID and exits immediately. The running Node process already has `server.js`
 loaded in memory, so **the NAS keeps serving the old build indefinitely** while
 the new one sits on disk next to it.
 
-- **Deployed with `REBUILD_PUBLISH_NAS.bat`?** Nothing to do. It writes
-  `deploy.trigger` itself, last, after the copy has fully landed — so the app
-  can't come back up on a half-copied build. The switch happens within a minute.
+- **Deployed with `REBUILD_PUBLISH_NAS.bat` or `COPY_TO_NAS.bat`?** Nothing to
+  do. Both write `deploy.trigger` before the copy — so the app restarts during or
+  immediately after the files land. The switch happens within a minute.
 - **Hand-copied over SMB or File Station?** Create the trigger yourself: drop any
   file named `deploy.trigger` into the app folder (contents don't matter, an
   empty file is fine). The next scheduled run picks it up. No SSH needed.
@@ -209,17 +231,19 @@ taskkill /F /PID <pid>
 
 These exist to keep routine work out of a Claude session — the gates, the release
 mechanics and a file copy are all deterministic, and streaming their output
-through a model costs tokens for nothing. Each is a `.bat` wrapper at the repo root over a
-`.ps1`; the first two wrap a script in `scripts/` and pick `pwsh` with a fallback
-to `powershell`, while `COPY_NAS_START_SH` keeps its `.ps1` beside the `.bat` at
-the repo root. All of them pass every argument straight through, so use whichever
-you prefer.
+through a model costs tokens for nothing. The first three are `.bat` wrappers over
+`.ps1` scripts; `full_test` and `manual_release` wrap scripts in `scripts/` and
+pick `pwsh` with a fallback to `powershell`, while `COPY_NAS_START_SH` keeps its
+`.ps1` beside the `.bat` at the repo root. `REBUILD_FOR_NAS` and `COPY_TO_NAS`
+are standalone `.bat` files with no PowerShell counterpart.
 
 | File | What it does |
 |---|---|
 | `full_test.bat` → `scripts/full-test.ps1` | Every quality gate from `/verify`, in the same order |
 | `manual_release.bat` → `scripts/manual-release.ps1` | The mechanical steps of `/release` — backup, changelog, commit, push |
 | `COPY_NAS_START_SH.bat` → `COPY_NAS_START_SH.ps1` | Copies `start.sh` to the NAS and `chmod +x` it — the one file a publish never ships |
+| `REBUILD_FOR_NAS.bat` | Build-only half of `REBUILD_PUBLISH_NAS.bat` — produces the aarch64 package locally, no NAS needed |
+| `COPY_TO_NAS.bat` | Copy-only half — mirrors a local build to the NAS, writes `deploy.trigger`, prints post-deploy guidance |
 
 ### `full_test.bat` — the whole quality gate
 

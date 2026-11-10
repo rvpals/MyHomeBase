@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deploy Without NAS — MyHomeBase</title>
+<style>
+  :root {
+    --bg: #fafafa; --fg: #1a1a1a; --muted: #555; --border: #ddd;
+    --card-bg: #fff; --code-bg: #f4f4f4; --accent: #2563eb;
+    --green: #16a34a; --amber: #d97706; --red: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111; --fg: #e5e5e5; --muted: #999; --border: #333;
+      --card-bg: #1a1a1a; --code-bg: #222; --accent: #60a5fa;
+      --green: #4ade80; --amber: #fbbf24; --red: #f87171;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--fg);
+    max-width: 760px; margin: 0 auto; padding: 2rem 1.5rem 4rem;
+    line-height: 1.6;
+  }
+  h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+  .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: 0.95rem; }
+  h2 {
+    font-size: 1.15rem; margin: 2.5rem 0 0.75rem;
+    padding-bottom: 0.35rem; border-bottom: 1px solid var(--border);
+  }
+  h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; }
+  p, li { margin-bottom: 0.5rem; }
+  ul, ol { padding-left: 1.5rem; }
+  code {
+    font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+    font-size: 0.88em; background: var(--code-bg);
+    padding: 0.15em 0.35em; border-radius: 3px;
+  }
+  pre {
+    background: var(--code-bg); padding: 1rem 1.25rem; border-radius: 6px;
+    overflow-x: auto; margin: 0.75rem 0 1rem; line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; font-size: 0.85rem; }
+  .card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 1.25rem 1.5rem; margin: 1rem 0;
+  }
+  .step-num {
+    display: inline-block; width: 1.7rem; height: 1.7rem; line-height: 1.7rem;
+    text-align: center; border-radius: 50%; background: var(--accent);
+    color: #fff; font-weight: 700; font-size: 0.85rem; margin-right: 0.5rem;
+    flex-shrink: 0;
+  }
+  .step { display: flex; align-items: baseline; margin-bottom: 0.75rem; }
+  .step-body { flex: 1; }
+  .tag {
+    display: inline-block; font-size: 0.75rem; font-weight: 600;
+    padding: 0.15em 0.55em; border-radius: 4px; margin-right: 0.3rem;
+    vertical-align: middle;
+  }
+  .tag-green  { background: var(--green); color: #fff; }
+  .tag-amber  { background: var(--amber); color: #111; }
+  .tag-red    { background: var(--red);   color: #fff; }
+  .flow-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+  .flow-table th, .flow-table td {
+    text-align: left; padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .flow-table th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+  .note {
+    border-left: 3px solid var(--amber); padding: 0.75rem 1rem;
+    background: var(--card-bg); border-radius: 0 6px 6px 0; margin: 1rem 0;
+    font-size: 0.92rem;
+  }
+  .note strong { color: var(--amber); }
+  .warn {
+    border-left: 3px solid var(--red); padding: 0.75rem 1rem;
+    background: var(--card-bg); border-radius: 0 6px 6px 0; margin: 1rem 0;
+    font-size: 0.92rem;
+  }
+  .warn strong { color: var(--red); }
+  .ok { color: var(--green); }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.82rem; }
+</style>
+</head>
+<body>
+
+<h1>Deploy Without NAS</h1>
+<p class="subtitle">Build on a dev machine, copy from any machine that can reach the NAS.</p>
+
+<h2>When to use this</h2>
+<p>The normal deploy is one command — <code>REBUILD_PUBLISH_NAS.bat</code> — but it
+needs the repo, Node.js, npm, <em>and</em> the NAS all on the same machine. Use the
+two-step split when the build machine can't reach the NAS, or the machine with NAS
+access doesn't have the dev toolchain:</p>
+<ul>
+  <li>The dev machine has the repo and Node but no NAS access</li>
+  <li>A second machine (or the same one, later) has NAS access but no repo or npm</li>
+  <li>You want to inspect the build before shipping it</li>
+</ul>
+
+<h2>The two scripts</h2>
+<table class="flow-table">
+  <thead>
+    <tr><th>Script</th><th>What it does</th><th>NAS needed?</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>REBUILD_FOR_NAS.bat</code></td>
+      <td>Builds the aarch64 package into <code>dist-nas\</code></td>
+      <td><span class="ok">No</span></td>
+    </tr>
+    <tr>
+      <td><code>COPY_TO_NAS.bat</code></td>
+      <td>Copies the build to the NAS, triggers a restart</td>
+      <td>Yes</td>
+    </tr>
+  </tbody>
+</table>
+<p class="muted">Together they do exactly what <code>REBUILD_PUBLISH_NAS.bat</code> does — same
+build command, same robocopy, same deploy trigger, same exclusions.</p>
+
+<h2>Step by step</h2>
+
+<h3>On the dev machine <span class="muted">(has the repo, Node, npm — no NAS access needed)</span></h3>
+
+<div class="card">
+  <div class="step">
+    <span class="step-num">1</span>
+    <div class="step-body">
+      <strong>Build the aarch64 package</strong>
+    </div>
+  </div>
+<pre><code>cd C:\git\MyHomeBase
+.\REBUILD_FOR_NAS.bat</code></pre>
+  <p>This runs <code>npm run publish:nas</code>, which does a production build,
+  swaps in the arm64 <code>better-sqlite3</code> prebuild, and bundles the
+  migration runner (<code>migrate.cjs</code>). Output lands in <code>dist-nas\</code>
+  by default.</p>
+  <p>To use a different output folder:</p>
+<pre><code>.\REBUILD_FOR_NAS.bat D:\staging\nas-build</code></pre>
+</div>
+
+<div class="card">
+  <div class="step">
+    <span class="step-num">2</span>
+    <div class="step-body">
+      <strong>Transfer the build + copy script</strong>
+    </div>
+  </div>
+  <p>Copy <strong>two things</strong> to the machine that can reach the NAS
+  (USB drive, file share, cloud storage — whatever works):</p>
+  <table class="flow-table">
+    <thead><tr><th>What</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>The entire <code>dist-nas\</code> folder</td>
+        <td>The self-contained app — everything the NAS needs to run</td>
+      </tr>
+      <tr>
+        <td><code>COPY_TO_NAS.bat</code></td>
+        <td>The copy script — standalone, no repo or Node required</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>Put them in the same folder on the destination machine. The script looks for
+  <code>dist-nas\</code> next to itself by default, or pass a path argument to point
+  it elsewhere.</p>
+</div>
+
+<h3>On the machine with NAS access <span class="muted">(no repo, Node, or npm needed)</span></h3>
+
+<div class="card">
+  <div class="step">
+    <span class="step-num">3</span>
+    <div class="step-body">
+      <strong>Copy to the NAS</strong>
+    </div>
+  </div>
+<pre><code>.\COPY_TO_NAS.bat</code></pre>
+  <p>This does four things in order:</p>
+  <ol>
+    <li>Checks that <code>\\NAS_DS223\app\myhomebase</code> is reachable</li>
+    <li>Writes <code>deploy.trigger</code> <em>before</em> the copy (so the restart
+    overlaps with the file transfer — a few seconds of "connection refused"
+    instead of up to a minute of 500s from a half-replaced build)</li>
+    <li>Robocopy <code>/MIR</code> mirrors the build to the NAS</li>
+    <li>Prints post-deploy guidance (.env, start.sh, migration reminders)</li>
+  </ol>
+  <p>If the build folder is somewhere else:</p>
+<pre><code>.\COPY_TO_NAS.bat D:\transfers\dist-nas</code></pre>
+  <p class="muted">The copy machine only needs Windows and network access to the NAS share.
+  No Node, no npm, no repo — <code>COPY_TO_NAS.bat</code> is a plain batch file
+  that calls <code>robocopy</code>.</p>
+</div>
+
+<div class="card">
+  <div class="step">
+    <span class="step-num">4</span>
+    <div class="step-body">
+      <strong>Wait for the restart</strong> — automatic, under a minute
+    </div>
+  </div>
+  <p>The NAS keepalive task runs every minute. When it sees <code>deploy.trigger</code>,
+  it stops the old process, runs migrations, and starts the new build. To force it
+  immediately:</p>
+  <p>DSM &rarr; Task Scheduler &rarr; select "MyHomeBase keepalive" &rarr; <strong>Run</strong></p>
+</div>
+
+<h2>What gets preserved on the NAS</h2>
+<p>Robocopy <code>/MIR</code> deletes files that are no longer in the build — but
+these are always excluded and never touched:</p>
+<table class="flow-table">
+  <thead>
+    <tr><th>Excluded</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>data\</code></td><td>The production database</td></tr>
+    <tr><td><code>.env</code></td><td>Secrets (DB path, Google OAuth, signup secret)</td></tr>
+    <tr><td><code>start.sh</code></td><td>NAS-side launcher — created once, never shipped</td></tr>
+    <tr><td><code>app.log</code></td><td>Runtime log</td></tr>
+    <tr><td><code>app.pid</code></td><td>Running process PID</td></tr>
+    <tr><td><code>fallback.pid</code></td><td>Fallback process PID</td></tr>
+    <tr><td><code>deploy.trigger</code></td><td>Just written — excluded so /MIR doesn't delete it</td></tr>
+  </tbody>
+</table>
+
+<h2>Migrations</h2>
+<p>Migrations are <strong>automatic</strong>. The build includes <code>migrate.cjs</code>
+(bundled by <code>publish-nas.mjs</code>). When <code>start.sh</code> detects a triggered
+deploy, it runs <code>migrate.cjs</code> before starting the app. The migration runner:</p>
+<ul>
+  <li>Takes a timestamped backup of the database first</li>
+  <li>Applies any pending <code>.sql</code> files from <code>migrations/</code></li>
+  <li>Aborts startup on failure — the keepalive retries every minute and <code>app.log</code>
+  shows what broke</li>
+</ul>
+<div class="note">
+  <strong>Note:</strong> To run migrations manually (diagnosing a failure, or applying before
+  the automatic restart):
+<pre><code>cd /volume1/app/myhomebase && node --env-file-if-exists=.env migrate.cjs</code></pre>
+</div>
+
+<h2>Configurable defaults</h2>
+<p>Both scripts have variables at the top you can edit:</p>
+<table class="flow-table">
+  <thead>
+    <tr><th>Script</th><th>Variable</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>REBUILD_FOR_NAS.bat</code></td>
+      <td><code>OUTPUT_DIR</code></td>
+      <td><code>dist-nas</code> (relative to repo root)</td>
+    </tr>
+    <tr>
+      <td rowspan="2"><code>COPY_TO_NAS.bat</code></td>
+      <td><code>SOURCE_DIR</code></td>
+      <td><code>dist-nas</code> (relative to repo root)</td>
+    </tr>
+    <tr>
+      <td><code>NAS_PATH</code></td>
+      <td><code>\\NAS_DS223\app\myhomebase</code></td>
+    </tr>
+  </tbody>
+</table>
+<p>A command-line argument overrides the folder in both scripts. Edit <code>NAS_PATH</code>
+inside <code>COPY_TO_NAS.bat</code> if the NAS share path changes.</p>
+
+<h2>Troubleshooting</h2>
+
+<h3>"Cannot reach" the NAS path</h3>
+<ul>
+  <li>Is the NAS powered on and on the network?</li>
+  <li>Can you open <code>\\NAS_DS223</code> in Explorer?</li>
+  <li>Windows may need credentials — open the share in Explorer once and tick
+  "Remember my credentials"</li>
+</ul>
+
+<h3>App shows 500s or won't load after deploy</h3>
+<p>Wait up to 2 minutes. If still down, open the app in a browser —
+<code>start.sh</code> serves the last 100 lines of <code>app.log</code> as a
+diagnostic page when <code>server.js</code> can't start. The keepalive task
+retries every minute.</p>
+
+<h3>ABI mismatch after a DSM Node upgrade</h3>
+<p>If <code>app.log</code> shows <code>NODE_MODULE_VERSION</code> errors, the
+<code>better-sqlite3</code> native binary doesn't match the NAS's Node version.
+Check the ABI on the NAS:</p>
+<pre><code>node -p process.versions.modules    # over SSH</code></pre>
+<p>Then rebuild with the correct ABI:</p>
+<pre><code>set NAS_NODE_ABI=127
+.\REBUILD_FOR_NAS.bat</code></pre>
+
+<h3>Failure page never appears</h3>
+<p>The NAS-side <code>start.sh</code> is not shipped by the publish. If it's missing
+or outdated, run:</p>
+<pre><code>.\COPY_NAS_START_SH.bat myuser</code></pre>
+
+<div class="warn">
+  <strong>Never</strong> point any script or migration at the production database directly.
+  The live DB is on the NAS at <code>/volume1/app/myhomebase/data/</code>. The repo's
+  <code>data/</code> folder is a stale local copy.
+</div>
+
+<footer>
+  MyHomeBase deployment guide &mdash; see also
+  <a href="ADMIN_MANUAL.md">ADMIN_MANUAL.md</a> and
+  <a href="INSTRUCTION_SETUP_SYNOLOGY.md">INSTRUCTION_SETUP_SYNOLOGY.md</a>
+  for full setup and operations reference.
+</footer>
+
+</body>
+</html>
