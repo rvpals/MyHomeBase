@@ -27,9 +27,11 @@ import {
   entriesSql,
   findEntries,
   listCategories,
+  listEnabledPrefillTemplates,
   listFilters,
   listLogEntries,
   listTags,
+  resolveJournalPreferences,
   searchEntries,
   tryParseFilterQuery,
   withLockedCondition,
@@ -39,6 +41,9 @@ import {
 // Clips is read here, in the presentation layer, so `src/lib/journal` never has to
 // import `src/lib/clips`. See the note at the `clipCounts` read below.
 import { countClipsForTargets } from "@/lib/clips";
+import { listDashboardTextures } from "@/lib/dashboard-texture";
+import { listModuleSettingsFor } from "@/lib/module-settings";
+import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
 // The bulk-edit dialog's "From your saved places" tab filters by these. They are
 // the *place* taxonomy from the application-wide library, unrelated to the entry
@@ -227,6 +232,13 @@ export function JournalEntriesPanel({
     [...new Set(allEntryIds)],
   );
 
+  // The Merge bulk action mounts the ordinary entry form, so it needs what that
+  // form needs — the same reads the New Journal Entry section makes.
+  const journalModule = getModuleBySlug(deps.moduleRepo, "journal");
+  const preferences = resolveJournalPreferences(
+    journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
+  );
+
   return (
     <JournalEntriesView
       initialEntries={entries}
@@ -245,6 +257,9 @@ export function JournalEntriesPanel({
         (row) => row.name,
       )}
       locationTagOptions={listLocationTags(deps.sysLocationRepo).map((row) => row.name)}
+      preferences={preferences}
+      contentTextures={listDashboardTextures(deps.dashboardTextureRepo)}
+      prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}
       initialFilterId={initialFilterId}
       appliedQuery={appliedQuery}
       queryError={queryError}

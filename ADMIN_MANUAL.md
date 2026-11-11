@@ -43,29 +43,16 @@ the NAS is offline, or you want to inspect the build before shipping it, split t
 work into two commands:
 
 ```powershell
-.\REBUILD_FOR_NAS.bat              # builds into dist-nas\ and zips to NAS_DIST.zip
+.\REBUILD_FOR_NAS.bat              # builds into dist-nas\
 # ... inspect, test, wait for the NAS to come up ...
 .\COPY_TO_NAS.bat                  # copies dist-nas\ to the NAS
 ```
 
 `REBUILD_FOR_NAS.bat` produces the same aarch64 package as the all-in-one script
-(it runs `npm run publish:nas`), drops it in `dist-nas\` by default, and zips the
-output to `NAS_DIST.zip` in the repo root (overwriting any previous zip). Pass a
+(it runs `npm run publish:nas`) and drops it in `dist-nas\` by default. Pass a
 path argument to change the output folder. `COPY_TO_NAS.bat` picks up from there:
 it checks NAS reachability, writes `deploy.trigger`, robocopy-mirrors the build,
 and prints the same post-deploy guidance.
-
-### Deploying from a different machine (no repo or dev tools)
-
-When the machine with NAS access doesn't have the repo, Node, or npm — for
-example a home PC — transfer `NAS_DIST.zip` and `EXTRACT_TO_NAS.bat` to it, then:
-
-```powershell
-.\EXTRACT_TO_NAS.bat NAS_DIST.zip
-```
-
-This extracts to a temp folder, mirrors to the NAS, writes `deploy.trigger`, and
-cleans up. Only Windows and network access to the NAS share are required.
 
 **Migrations apply themselves.** `start.sh` runs `migrate.cjs` on a triggered
 deploy, in the window after the old process stops and before the new one binds, so
@@ -243,7 +230,7 @@ mechanics and a file copy are all deterministic, and streaming their output
 through a model costs tokens for nothing. The first three are `.bat` wrappers over
 `.ps1` scripts; `full_test` and `manual_release` wrap scripts in `scripts/` and
 pick `pwsh` with a fallback to `powershell`, while `COPY_NAS_START_SH` keeps its
-`.ps1` beside the `.bat` at the repo root. `REBUILD_FOR_NAS`, `COPY_TO_NAS`, and `EXTRACT_TO_NAS`
+`.ps1` beside the `.bat` at the repo root. `REBUILD_FOR_NAS` and `COPY_TO_NAS`
 are standalone `.bat` files with no PowerShell counterpart.
 
 | File | What it does |
@@ -251,9 +238,8 @@ are standalone `.bat` files with no PowerShell counterpart.
 | `full_test.bat` → `scripts/full-test.ps1` | Every quality gate from `/verify`, in the same order |
 | `manual_release.bat` → `scripts/manual-release.ps1` | The mechanical steps of `/release` — backup, changelog, commit, push |
 | `COPY_NAS_START_SH.bat` → `COPY_NAS_START_SH.ps1` | Copies `start.sh` to the NAS and `chmod +x` it — the one file a publish never ships |
-| `REBUILD_FOR_NAS.bat` | Build-only half of `REBUILD_PUBLISH_NAS.bat` — produces the aarch64 package locally and zips to `NAS_DIST.zip` |
+| `REBUILD_FOR_NAS.bat` | Build-only half of `REBUILD_PUBLISH_NAS.bat` — produces the aarch64 package locally in `dist-nas\` |
 | `COPY_TO_NAS.bat` | Copy-only half — mirrors a local `dist-nas\` build to the NAS, writes `deploy.trigger` |
-| `EXTRACT_TO_NAS.bat` | Extracts a build zip and deploys to the NAS — no repo or dev tools needed, just Windows + NAS access |
 
 ### `full_test.bat` — the whole quality gate
 

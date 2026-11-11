@@ -23,14 +23,18 @@ import {
   describeBulkEncryptResult,
   describeBulkLockResult,
   findEntries,
+  getEntry,
   listLogEntries,
+  mergeEntryDraft,
   recycleEntries,
   searchEntries,
+  splitMergeSources,
   withLockedCondition,
   withLogCondition,
   type BulkEntryEditInput,
   type JournalEntry,
   type JournalFilter,
+  type MergedEntryDraft,
 } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
@@ -243,5 +247,93 @@ export async function bulkEncryptJournalEntriesAction(
     };
   } catch (error) {
     return toErrorResult(error, "Failed to encrypt the selected entries.");
+  }
+}
+
+/**
+ * Re-reads the grid's rows for its current scope, with no write.
+ *
+ * For the screens that change a row outside the bulk actions above — a merge
+ * saves a new entry from its own form — so the list can show it without a page
+ * reload.
+ */
+export async function refreshJournalEntriesAction(
+  scope: BulkRefreshScope,
+): Promise<BulkActionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    return { ok: true, entries: refresh(scope) };
+  } catch (error) {
+    return toErrorResult(error, "Failed to re-read the entries.");
+  }
+}
+
+export interface MergeDraftResult {
+  ok: boolean;
+  error?: string;
+  draft?: MergedEntryDraft;
+  /** How many of the requested ids were found and actually merged. */
+  mergedCount?: number;
+  /**
+   * The ids that actually went into the draft, in the order they were asked for.
+   *
+   * Returned as well as the count because the screen offers to delete the
+   * originals once the merged entry is saved, and that offer must name exactly
+   * the entries whose content was captured. A requested id that no longer
+   * existed is skipped here, so re-using the reader's original selection for
+   * the delete could bin an entry this merge never read.
+   */
+  mergedIds?: number[];
+  /**
+   * Locked entries left out of the merge. Always 0 on the Review Data screen,
+   * which never lists a locked entry; the Entries grid can show one.
+   */
+  skippedLockedCount?: number;
+}
+
+/**
+ * Builds the merged draft for the ticked entries — shared by the Review Data
+ * screen and the Entries grid.
+ *
+ * The grid's rows carry a 100-word excerpt, not the whole entry, so the full
+ * entries are fetched here before merging — a draft built from excerpts would
+ * silently truncate the reader's writing, which is the one failure these
+ * screens must not have. Nothing is written by this action: the draft goes back
+ * to the browser and the reader edits it in the ordinary entry form.
+ *
+ * Saving creates a new entry and still leaves every source entry in place; the
+ * screen then *offers* to bin the originals. The sources are only removed after
+ * the merged entry is safely written, so a merge abandoned half way cannot lose
+ * any writing.
+ *
+ * Ids that no longer exist are skipped, and locked entries are skipped and
+ * counted (`splitMergeSources`). An encrypted source makes `mergeEntryDraft`
+ * throw, which comes back as the error.
+ */
+export async function buildJournalMergeDraftAction(ids: number[]): Promise<MergeDraftResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const found = ids
+      .map((id) => getEntry(deps.journalRepo, id))
+      .filter((entry): entry is JournalEntry => entry !== undefined);
+    const { sources, lockedCount } = splitMergeSources(found);
+    if (sources.length === 0) {
+      return {
+        ok: false,
+        error:
+          lockedCount > 0
+            ? "Every selected entry is locked, so there is nothing to merge."
+            : "None of the selected entries could be read.",
+      };
+    }
+    return {
+      ok: true,
+      draft: mergeEntryDraft(sources),
+      mergedCount: sources.length,
+      mergedIds: sources.map((entry) => entry.id),
+      skippedLockedCount: lockedCount,
+    };
+  } catch (error) {
+    return toErrorResult(error, "Failed to build the merged entry.");
   }
 }

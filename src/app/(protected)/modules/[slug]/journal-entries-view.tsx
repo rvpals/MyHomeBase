@@ -47,6 +47,8 @@ import { EncryptionPrompt } from "@/components/encryption-prompt";
 import { SlotIcon } from "@/components/slot-icon";
 import { Tabs } from "@/components/tabs";
 import { getIconSlot } from "@/lib/icons";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
+import type { JournalPreferences, JournalPrefillTemplate } from "@/lib/journal";
 import {
   ENCRYPTED_TITLE_PLACEHOLDER,
   // The threshold is read from lib rather than written as "10" in the copy, so
@@ -75,6 +77,7 @@ import {
   deleteJournalEntriesAction,
   type BulkRefreshScope,
 } from "./journal-bulk-actions";
+import { JournalMergeDialogs, useJournalMerge } from "./journal-merge-flow";
 // Clips on a journal screen. The dialog lives in the Clips file group because
 // Clips owns the concept — the Journal only has to know how to open it, and
 // `src/lib/journal` still knows nothing about clips.
@@ -261,6 +264,9 @@ export function JournalEntriesView({
   tagOptions,
   locationCategoryOptions,
   locationTagOptions,
+  preferences,
+  contentTextures,
+  prefillTemplates,
   initialFilterId,
   appliedQuery,
   queryError,
@@ -293,6 +299,9 @@ export function JournalEntriesView({
                 tagOptions={tagOptions}
                 locationCategoryOptions={locationCategoryOptions}
                 locationTagOptions={locationTagOptions}
+                preferences={preferences}
+                contentTextures={contentTextures}
+                prefillTemplates={prefillTemplates}
               />
             ),
           },
@@ -315,6 +324,9 @@ export function JournalEntriesView({
           tagOptions={tagOptions}
           locationCategoryOptions={locationCategoryOptions}
           locationTagOptions={locationTagOptions}
+          preferences={preferences}
+          contentTextures={contentTextures}
+          prefillTemplates={prefillTemplates}
           initialFilterId={initialFilterId}
           appliedQuery={appliedQuery}
           queryError={queryError}
@@ -338,6 +350,9 @@ export function JournalEntriesView({
           tagOptions={tagOptions}
           locationCategoryOptions={locationCategoryOptions}
           locationTagOptions={locationTagOptions}
+          preferences={preferences}
+          contentTextures={contentTextures}
+          prefillTemplates={prefillTemplates}
           initialFilterId={initialFilterId}
           appliedQuery={appliedQuery}
           queryError={queryError}
@@ -361,6 +376,9 @@ export function JournalEntriesView({
           tagOptions={tagOptions}
           locationCategoryOptions={locationCategoryOptions}
           locationTagOptions={locationTagOptions}
+          preferences={preferences}
+          contentTextures={contentTextures}
+          prefillTemplates={prefillTemplates}
           initialFilterId={initialFilterId}
           appliedQuery={appliedQuery}
           queryError={queryError}
@@ -384,6 +402,9 @@ export function JournalEntriesView({
           tagOptions={tagOptions}
           locationCategoryOptions={locationCategoryOptions}
           locationTagOptions={locationTagOptions}
+          preferences={preferences}
+          contentTextures={contentTextures}
+          prefillTemplates={prefillTemplates}
         />
       ),
     },
@@ -464,6 +485,13 @@ export interface JournalEntriesViewProps {
   locationCategoryOptions: string[];
   locationTagOptions: string[];
   /**
+   * What the Merge bulk action's entry form needs, the same reads the New Journal
+   * Entry section makes. Only the grid tabs' Merge uses them.
+   */
+  preferences: JournalPreferences;
+  contentTextures?: DashboardTextureItem[];
+  prefillTemplates: JournalPrefillTemplate[];
+  /**
    * A saved filter to start on, resolved by the caller (looking a name up needs a
    * DB read, which a client component can't do). Pre-selected but **not** locked:
    * the dropdown stays live so the reader can switch away.
@@ -537,6 +565,9 @@ function EntriesTab({
   tagOptions,
   locationCategoryOptions,
   locationTagOptions,
+  preferences,
+  contentTextures,
+  prefillTemplates,
   initialFilterId,
   appliedQuery,
   queryError,
@@ -631,6 +662,14 @@ function EntriesTab({
   const [encryptError, setEncryptError] = useState<string | undefined>(undefined);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  // The Merge bulk action. See journal-merge-flow.tsx.
+  const merging = useJournalMerge({
+    scope: currentScope,
+    applyRows: (nextEntries, message) => applyBulkResult(nextEntries, message, () => undefined),
+    setError,
+    setNotice,
+    setBusy: setIsBulkBusy,
+  });
 
   /**
    * The adjective this tab's copy calls its rows by — "unlocked entries",
@@ -1277,6 +1316,17 @@ function EntriesTab({
                 </Button>
                 <Button
                   size="sm"
+                  variant="secondary"
+                  disabled={isBulkBusy || selectedRows.length < 2}
+                  title={
+                    selectedRows.length < 2 ? "Tick two or more entries to merge them" : undefined
+                  }
+                  onClick={() => void merging.start(selectedRows, clearSelection)}
+                >
+                  Merge
+                </Button>
+                <Button
+                  size="sm"
                   variant="danger"
                   disabled={isBulkBusy}
                   onClick={() => setConfirmDelete({ rows: selectedRows, clearSelection })}
@@ -1290,6 +1340,25 @@ function EntriesTab({
         )}
       </section>
 
+      <JournalMergeDialogs
+        merge={merging.merge}
+        cleanup={merging.cleanup}
+        formOptions={{
+          categoryOptions,
+          tagOptions,
+          preferences,
+          contentTextures,
+          prefillTemplates,
+          locationCategoryOptions,
+          locationTagOptions,
+        }}
+        isBusy={isBulkBusy}
+        onMergeClose={merging.close}
+        onSavingChange={setIsBulkBusy}
+        onMergeSaved={(saved) => void merging.handleSaved(saved)}
+        onCleanupKeep={merging.keep}
+        onCleanupDelete={(sourceIds) => void merging.runCleanup(sourceIds)}
+      />
       {bulkEdit && (
         <JournalEntriesBulkEdit
           selected={bulkEdit.rows}
@@ -1464,6 +1533,9 @@ function SearchTab({
   tagOptions,
   locationCategoryOptions,
   locationTagOptions,
+  preferences,
+  contentTextures,
+  prefillTemplates,
 }: {
   initialEntries: JournalEntry[];
   initialTerm: string;
@@ -1472,6 +1544,9 @@ function SearchTab({
   tagOptions: string[];
   locationCategoryOptions: string[];
   locationTagOptions: string[];
+  preferences: JournalPreferences;
+  contentTextures?: DashboardTextureItem[];
+  prefillTemplates: JournalPrefillTemplate[];
 }) {
   const router = useRouter();
   const [entries, setEntries] = useState(initialEntries);
@@ -1502,6 +1577,15 @@ function SearchTab({
   function currentScope(): BulkRefreshScope {
     return { tab: "search", term };
   }
+
+  // The Merge bulk action. See journal-merge-flow.tsx.
+  const merging = useJournalMerge({
+    scope: currentScope,
+    applyRows: (nextEntries, message) => applyBulkResult(nextEntries, message, () => undefined),
+    setError,
+    setNotice,
+    setBusy: setIsBulkBusy,
+  });
 
   function applyBulkResult(nextEntries: JournalEntry[], message: string, clearSelection: () => void) {
     setEntries(nextEntries);
@@ -1709,6 +1793,17 @@ function SearchTab({
               </Button>
               <Button
                 size="sm"
+                variant="secondary"
+                disabled={isBulkBusy || selectedRows.length < 2}
+                title={
+                  selectedRows.length < 2 ? "Tick two or more entries to merge them" : undefined
+                }
+                onClick={() => void merging.start(selectedRows, clearSelection)}
+              >
+                Merge
+              </Button>
+              <Button
+                size="sm"
                 variant="danger"
                 disabled={isBulkBusy}
                 onClick={() => setConfirmDelete({ rows: selectedRows, clearSelection })}
@@ -1719,6 +1814,26 @@ function SearchTab({
           )}
         />
       </section>
+
+      <JournalMergeDialogs
+        merge={merging.merge}
+        cleanup={merging.cleanup}
+        formOptions={{
+          categoryOptions,
+          tagOptions,
+          preferences,
+          contentTextures,
+          prefillTemplates,
+          locationCategoryOptions,
+          locationTagOptions,
+        }}
+        isBusy={isBulkBusy}
+        onMergeClose={merging.close}
+        onSavingChange={setIsBulkBusy}
+        onMergeSaved={(saved) => void merging.handleSaved(saved)}
+        onCleanupKeep={merging.keep}
+        onCleanupDelete={(sourceIds) => void merging.runCleanup(sourceIds)}
+      />
 
       {bulkEdit && (
         <JournalEntriesBulkEdit

@@ -1,5 +1,37 @@
 # Change History
 
+## 2026-11-11 11:12 — Journal: Merge bulk action on every entry grid; NAS build no longer zips
+
+**No migrations.** No tables added or altered. A **republish is required**; no new package.
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not invoked.
+Min runs the gates and tests the UI. None of this has been seen on screen.
+
+### A. Journal Entries: Merge bulk action
+
+The Review Data screen's "Merge checked" (draft one new entry from several, edit it, save, then offer
+to delete the originals) is now also a **Merge** button in the bulk actions of the Entries grids: the
+Unlocked, Substantial and All Entries tabs, the Search Results tab and the Log tab.
+
+- The button needs two or more ticked rows. Nothing is written until the draft is saved; the originals
+  are only moved to the recycle bin if you then choose to.
+- **Locked entries are left out and counted** (the dialog says how many), because deleting the originals
+  would otherwise bin a locked row. **Encrypted entries** make the merge refuse with the existing
+  "remove encryption first" message.
+- The merge dialogs are one shared component (`journal-merge-flow.tsx`) with a `useJournalMerge` hook
+  holding the flow; each grid supplies how it redraws its rows. Review Data uses the same dialogs but
+  keeps its own flow.
+- `buildJournalMergeDraftAction` moved from `journal-review-actions.ts` to the shared
+  `journal-bulk-actions.ts`, and now skips locked entries. A new `refreshJournalEntriesAction` re-reads a
+  grid after the merge saves. New lib helper `splitMergeSources` (with tests) separates the locked ones.
+- `JournalEntriesPanel` now also reads the entry-form options (preferences, textures, prefill templates)
+  for the merge form.
+
+### B. NAS build script no longer zips
+
+`REBUILD_FOR_NAS.bat` stops after building into `dist-nas\` (no `NAS_DIST.zip`), and `EXTRACT_TO_NAS.bat`
+is removed. `ADMIN_MANUAL.md` no longer describes the zip or the different-machine deploy.
+
 ## 2026-11-11 12:34 — Journal bulk edit/overwrite: debug logging via system log
 
 **No migrations.** No tables added or altered.

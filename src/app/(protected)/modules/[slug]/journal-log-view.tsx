@@ -7,13 +7,15 @@ import { Comments } from "@/components/comments";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { JournalViewer } from "@/components/journal-viewer";
 import { Modal } from "@/components/modal";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import { ENCRYPTED_TITLE_PLACEHOLDER, displayEntryTitle } from "@/lib/journal";
-import type { JournalEntry } from "@/lib/journal";
+import type { JournalEntry, JournalPreferences, JournalPrefillTemplate } from "@/lib/journal";
 import { getJournalEntryAction } from "./journal-correct-actions";
 import { journalEntriesFilterHref } from "./journal-shared";
 import { deleteLogEntriesAction } from "./journal-log-actions";
 import { JournalEntriesBulkEdit } from "./journal-entries-bulk-edit";
 import { JournalEntriesBulkOverwrite } from "./journal-entries-bulk-overwrite";
+import { JournalMergeDialogs, useJournalMerge } from "./journal-merge-flow";
 
 export interface JournalLogViewProps {
   entries: JournalEntry[];
@@ -25,6 +27,10 @@ export interface JournalLogViewProps {
   locationCategoryOptions: string[];
   locationTagOptions: string[];
   tagOptions: string[];
+  /** What the Merge bulk action's entry form needs. See the Entries grid. */
+  preferences: JournalPreferences;
+  contentTextures?: DashboardTextureItem[];
+  prefillTemplates: JournalPrefillTemplate[];
 }
 
 /**
@@ -53,6 +59,9 @@ export function JournalLogView({
   locationCategoryOptions,
   locationTagOptions,
   tagOptions,
+  preferences,
+  contentTextures,
+  prefillTemplates,
 }: JournalLogViewProps) {
   const router = useRouter();
 
@@ -70,6 +79,19 @@ export function JournalLogView({
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // The Merge bulk action. Re-reads the unfiltered Log list, as the bulk edit does.
+  const merging = useJournalMerge({
+    scope: () => ({ tab: "log" }),
+    applyRows: (nextEntries, message) => {
+      setEntries(nextEntries);
+      setNotice(message);
+      setError("");
+      router.refresh();
+    },
+    setError: (message) => setError(message ?? ""),
+    setNotice,
+    setBusy: setIsBusy,
+  });
 
   /**
    * Opens a row in the viewer, reading the entry fresh rather than showing the
@@ -235,6 +257,17 @@ export function JournalLogView({
             </Button>
             <Button
               size="sm"
+              variant="secondary"
+              disabled={isBusy || selectedRows.length < 2}
+              title={
+                selectedRows.length < 2 ? "Tick two or more entries to merge them" : undefined
+              }
+              onClick={() => void merging.start(selectedRows, clearSelection)}
+            >
+              Merge
+            </Button>
+            <Button
+              size="sm"
               variant="danger"
               disabled={isBusy}
               onClick={() =>
@@ -245,6 +278,26 @@ export function JournalLogView({
             </Button>
           </>
         )}
+      />
+
+      <JournalMergeDialogs
+        merge={merging.merge}
+        cleanup={merging.cleanup}
+        formOptions={{
+          categoryOptions,
+          tagOptions,
+          preferences,
+          contentTextures,
+          prefillTemplates,
+          locationCategoryOptions,
+          locationTagOptions,
+        }}
+        isBusy={isBusy}
+        onMergeClose={merging.close}
+        onSavingChange={setIsBusy}
+        onMergeSaved={(saved) => void merging.handleSaved(saved)}
+        onCleanupKeep={merging.keep}
+        onCleanupDelete={(sourceIds) => void merging.runCleanup(sourceIds)}
       />
 
       {bulkEdit && (

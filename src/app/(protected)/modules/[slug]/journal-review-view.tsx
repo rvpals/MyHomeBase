@@ -21,14 +21,17 @@ import type {
   JournalEntry,
   JournalPreferences,
   JournalPrefillTemplate,
-  MergedEntryDraft,
   SameDateGroup,
   SameDateRow,
 } from "@/lib/journal";
 import { JournalEntryEditForm } from "./entries/[id]/entry-edit-form";
-import { JournalEntryForm } from "./journal-entry-form";
+import { buildJournalMergeDraftAction } from "./journal-bulk-actions";
 import {
-  buildJournalMergeDraftAction,
+  JournalMergeDialogs,
+  type PendingMerge,
+  type PendingMergeCleanup,
+} from "./journal-merge-flow";
+import {
   getJournalSameDateEntryAction,
   loadJournalSameDateDataAction,
   lockJournalSameDateEntriesAction,
@@ -455,6 +458,7 @@ export function JournalReviewView({
         draft: result.draft,
         sourceIds,
         sourceCount: result.mergedCount ?? sourceIds.length,
+        skippedLockedCount: result.skippedLockedCount ?? 0,
         clearSelection,
       });
     } finally {
@@ -750,106 +754,50 @@ export function JournalReviewView({
         </Modal>
       )}
 
-      {merge && (
-        <Modal
-          title={`Merge ${merge.sourceCount} ${plural(merge.sourceCount)}`}
-          description={
-            "This is a draft — nothing has been saved and none of the original entries have " +
-            "been touched. Edit it as you like, then save it to create one new entry. You'll " +
-            "be asked afterwards whether to delete the originals."
+      <JournalMergeDialogs
+        merge={merge}
+        cleanup={mergeCleanup}
+        formOptions={{
+          categoryOptions,
+          tagOptions,
+          preferences,
+          contentTextures,
+          prefillTemplates,
+          locationCategoryOptions,
+          locationTagOptions,
+        }}
+        isBusy={isBusy}
+        onMergeClose={() => setMerge(undefined)}
+        onSavingChange={(saving) => {
+          if (saving) {
+            setScanLabel({
+              message: "Saving the merged entry…",
+              detail: "The original entries are left untouched until you choose.",
+            });
           }
-          size="lg"
-          onClose={() => setMerge(undefined)}
-        >
-          {/* The same form the New Journal Entry section uses, seeded with the
-              draft. Reused rather than rebuilt so the merged entry gets the
-              location picker, the weather fetch, the handwriting sheet and the
-              fullscreen editor for free — and so a change to how an entry is
-              written lands on both screens at once. */}
-          <JournalEntryForm
-            categoryOptions={categoryOptions}
-            tagOptions={tagOptions}
-            preferences={preferences}
-            contentTextures={contentTextures}
-            prefillTemplates={prefillTemplates}
-            locationCategoryOptions={locationCategoryOptions}
-            locationTagOptions={locationTagOptions}
-            initialValues={merge.draft}
-            saveLabel="Save merged entry"
-            // Writing the merged entry is a long write behind a dialog whose
-            // only other signal is the Save button's label. The form owns the
-            // flag and only reports it here.
-            onSavingChange={(saving) => {
-              if (saving) {
-                setScanLabel({
-                  message: "Saving the merged entry…",
-                  detail: "The original entries are left untouched until you choose.",
-                });
-              }
-              setIsScanning(saving);
-            }}
-            onSaved={() => {
-              // The new entry lands on the same date as its sources, so that date
-              // now has one more entry, not one fewer — the list has to be
-              // re-read rather than patched. `router.refresh()` (fired by the
-              // form) re-runs the server panel, and the ticks are dropped because
-              // the rows behind them have been re-numbered.
-              merge.clearSelection();
-              // Hand straight over to the cleanup offer, carrying the ids before
-              // `merge` is cleared. The merged entry is written at this point, so
-              // binning the originals is now safe to offer.
-              setMergeCleanup({ sourceIds: merge.sourceIds });
-              setMerge(undefined);
-            }}
-          />
-        </Modal>
-      )}
-
-      {mergeCleanup && (
-        <Modal
-          title="Merged entry created successfully"
-          description={
-            `Would you like to delete the original ${mergeCleanup.sourceIds.length} ` +
-            `${plural(mergeCleanup.sourceIds.length)} the merge was built from? They move ` +
-            "to the recycle bin, so this can be undone."
-          }
-          onClose={() => {
-            // Declining is a normal outcome, not a dismissal to recover from:
-            // the merged entry is saved and the originals stay. Say both, so
-            // closing this box never looks like the merge was lost.
-            setMergeCleanup(undefined);
-            setNotice("Merged entry saved. The originals are still here.");
-          }}
-          isBusy={isBusy}
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                disabled={isBusy}
-                onClick={() => {
-                  setMergeCleanup(undefined);
-                  setNotice("Merged entry saved. The originals are still here.");
-                }}
-              >
-                Keep them
-              </Button>
-              <Button
-                variant="danger"
-                disabled={isBusy}
-                onClick={() => void runMergeCleanup(mergeCleanup.sourceIds)}
-              >
-                {isBusy ? "Working…" : `Delete ${mergeCleanup.sourceIds.length}`}
-              </Button>
-            </>
-          }
-        >
-          <p className="text-sm text-ink">
-            The merged entry has been saved. Deleting the originals moves{" "}
-            {mergeCleanup.sourceIds.length} {plural(mergeCleanup.sourceIds.length)} to the
-            recycle bin.
-          </p>
-        </Modal>
-      )}
+          setIsScanning(saving);
+        }}
+        onMergeSaved={(saved) => {
+          // The new entry lands on the same date as its sources, so that date
+          // now has one more entry, not one fewer — the list has to be
+          // re-read rather than patched. `router.refresh()` (fired by the
+          // form) re-runs the server panel, and the ticks are dropped because
+          // the rows behind them have been re-numbered.
+          saved.clearSelection();
+          // The merged entry is written at this point, so binning the
+          // originals is now safe to offer.
+          setMergeCleanup({ sourceIds: saved.sourceIds });
+          setMerge(undefined);
+        }}
+        onCleanupKeep={() => {
+          // Declining is a normal outcome: the merged entry is saved and the
+          // originals stay. Say both, so closing this box never looks like the
+          // merge was lost.
+          setMergeCleanup(undefined);
+          setNotice("Merged entry saved. The originals are still here.");
+        }}
+        onCleanupDelete={(sourceIds) => void runMergeCleanup(sourceIds)}
+      />
 
       {pendingLock && (
         <Modal
@@ -940,31 +888,6 @@ interface PendingDelete {
 interface PendingLock {
   ids: number[];
   clearSelection: () => void;
-}
-
-/** An open merge dialog: the draft being edited, and how it got there. */
-interface PendingMerge {
-  draft: MergedEntryDraft;
-  /**
-   * The entries the draft was built from — the ids the action actually read,
-   * not everything the reader ticked. Kept so the post-save prompt can offer to
-   * bin exactly the entries whose content ended up in the merged entry.
-   */
-  sourceIds: number[];
-  sourceCount: number;
-  clearSelection: () => void;
-}
-
-/**
- * The "delete the originals?" offer, shown once a merged entry is safely saved.
- *
- * Separate state from `PendingMerge` because it outlives it: the merge dialog
- * closes on save and this takes its place, so the two are never on screen
- * together. It carries its own copy of the ids rather than reading them back
- * off `merge`, which by then is gone.
- */
-interface PendingMergeCleanup {
-  sourceIds: number[];
 }
 
 function plural(count: number): string {

@@ -19,10 +19,9 @@ import {
   getEntry,
   listEntries,
   lockEntries,
-  mergeEntryDraft,
   recycleEntries,
 } from "@/lib/journal";
-import type { JournalEntry, MergedEntryDraft, SameDateGroup } from "@/lib/journal";
+import type { JournalEntry, SameDateGroup } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
@@ -133,61 +132,6 @@ export async function lockJournalSameDateEntriesAction(
     return { ok: true, lockedCount, skippedCount, groups: readSameDateGroups(logOnly) };
   } catch (error) {
     return toErrorResult(error, "Failed to lock the selected entries.");
-  }
-}
-
-export interface MergeDraftResult extends ActionResult {
-  draft?: MergedEntryDraft;
-  /** How many of the requested ids were found and actually merged. */
-  mergedCount?: number;
-  /**
-   * The ids that actually went into the draft, in reading order.
-   *
-   * Returned as well as the count because the view offers to delete the
-   * originals once the merged entry is saved, and that offer must name exactly
-   * the entries whose content was captured. A requested id that no longer
-   * existed is skipped here, so re-using the reader's original selection for
-   * the delete could bin an entry this merge never read.
-   */
-  mergedIds?: number[];
-}
-
-/**
- * Builds the merged draft for the ticked entries.
- *
- * The grid's rows carry a 100-word excerpt, not the whole entry, so the full
- * entries are fetched here before merging — a draft built from excerpts would
- * silently truncate the reader's writing, which is the one failure this screen
- * must not have. Nothing is written by *this* action: the draft goes back to the
- * browser and the reader edits it in the ordinary entry form.
- *
- * Saving creates a new entry and still leaves every source entry in place — the
- * view then *offers* to bin the originals, which is a separate call to
- * `recycleJournalSameDateEntriesAction`. The order matters: the sources are only
- * ever removed after the merged entry is safely written, so a merge abandoned or
- * failed half way through cannot lose any writing.
- *
- * Ids that no longer exist are skipped rather than failing the whole merge;
- * `mergedCount` and `mergedIds` report what was actually used, so the view can
- * say so and can scope that delete offer correctly.
- */
-export async function buildJournalMergeDraftAction(ids: number[]): Promise<MergeDraftResult> {
-  await requireModuleAccess(ACCESS_MODULE_SLUG);
-  try {
-    const entries = ids
-      .map((id) => getEntry(deps.journalRepo, id))
-      .filter((entry): entry is JournalEntry => entry !== undefined);
-    if (entries.length === 0) {
-      return { ok: false, error: "None of the selected entries could be read." };
-    }
-    return {
-      ok: true,
-      draft: mergeEntryDraft(entries),
-      mergedCount: entries.length,
-      mergedIds: entries.map((entry) => entry.id),
-    };
-  } catch (error) {
-    return toErrorResult(error, "Failed to build the merged entry.");
   }
 }
 

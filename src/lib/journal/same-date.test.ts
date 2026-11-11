@@ -5,6 +5,7 @@ import {
   findSameDateGroups,
   lockEntries,
   mergeEntryDraft,
+  splitMergeSources,
   toSameDateRows,
 } from "./same-date";
 import type { JournalRepository } from "./ports";
@@ -398,6 +399,37 @@ describe("mergeEntryDraft", () => {
     expect(draft.title).toBe("Run");
     expect(draft.content).toBe("— 09:00 · Run\nFive miles.");
     expect(draft.categories).toEqual(["Health"]);
+  });
+});
+
+describe("splitMergeSources", () => {
+  it("keeps the unlocked entries as merge sources, in the order given", () => {
+    const { sources, lockedCount } = splitMergeSources([
+      entry({ id: 1 }),
+      entry({ id: 2 }),
+    ]);
+    expect(sources.map((e) => e.id)).toEqual([1, 2]);
+    expect(lockedCount).toBe(0);
+  });
+
+  it("leaves locked entries out and counts them", () => {
+    const { sources, lockedCount } = splitMergeSources([
+      entry({ id: 1, isLocked: true }),
+      entry({ id: 2 }),
+      entry({ id: 3, isLocked: true }),
+    ]);
+    expect(sources.map((e) => e.id)).toEqual([2]);
+    expect(lockedCount).toBe(2);
+  });
+
+  it("returns nothing to merge when every entry is locked", () => {
+    const { sources, lockedCount } = splitMergeSources([entry({ id: 1, isLocked: true })]);
+    expect(sources).toEqual([]);
+    expect(lockedCount).toBe(1);
+  });
+
+  it("returns empty results for an empty selection", () => {
+    expect(splitMergeSources([])).toEqual({ sources: [], lockedCount: 0 });
   });
 });
 

@@ -372,6 +372,24 @@ export function mergeEntryDraft(entries: JournalEntry[]): MergedEntryDraft {
   };
 }
 
+/**
+ * Splits a merge's selection into the entries it may use and the locked ones it
+ * must leave alone.
+ *
+ * A locked entry is excluded from review on purpose, so merging it would be a
+ * way round that. The merge also deletes its sources afterwards, and deleting a
+ * locked row moves it to the bin, so letting one in would bin an entry the
+ * reader had settled. Skipped and counted rather than refusing the whole merge,
+ * as bulk edit does: one settled row must not block a twelve-row merge.
+ */
+export function splitMergeSources(entries: JournalEntry[]): {
+  sources: JournalEntry[];
+  lockedCount: number;
+} {
+  const sources = entries.filter((entry) => !entry.isLocked);
+  return { sources, lockedCount: entries.length - sources.length };
+}
+
 // --- Locking ----------------------------------------------------------------
 
 /**

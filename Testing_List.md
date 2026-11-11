@@ -146,6 +146,24 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-11 — Release (Journal Merge bulk action on every entry grid, NAS build script no longer zips)
+
+**No migrations.** Republish required. Risky: the Merge flow has never been seen on screen — it saves a new entry and can move originals to the recycle bin, so try it on throwaway entries first. Also worth a look on a phone (selection bar with one more button).
+
+- [ ] **1.** Journal → Entries → Unlocked, Substantial and All Entries tabs: tick rows and a **Merge** button sits between Encrypt and Delete
+- [ ] **2.** Journal → Entries → Log tab and a Search Results tab: tick rows and **Merge** sits before Delete
+- [ ] **3.** Merge is greyed out with one row ticked (tooltip says to tick two or more) and enabled at two
+- [ ] **4.** Merge opens an editable draft: earliest date/time, titles joined with " / ", each entry's content under a time-and-title heading, categories and tags combined without repeats
+- [ ] **5.** Save merged entry creates one new entry, the grid shows it, and a "delete the originals?" box appears
+- [ ] **6.** Keep them: originals stay; Delete N: originals move to the recycle bin and the grid drops them (restorable under CSV Import → Correct)
+- [ ] **7.** Close the draft without saving: nothing is created and nothing is deleted
+- [ ] **8.** Tick a locked entry along with unlocked ones and Merge: the locked one is left out and the dialog says how many; ticking only locked entries shows an error
+- [ ] **9.** Tick an encrypted entry and Merge: refused with a "remove encryption first" message
+- [ ] **10.** Journal → Review Data: **Merge checked** still works as before (draft, save, delete-originals offer)
+- [ ] **11.** Admin: `REBUILD_FOR_NAS.bat` builds into dist-nas without making a zip, and ADMIN_MANUAL no longer mentions NAS_DIST.zip or EXTRACT_TO_NAS
+
+---
+
 ## 2026-11-11 — Debug logging for journal bulk edit/overwrite
 
 **No migrations.** Republish required. Pure diagnostic scaffolding — no UI change to test; validate by reproducing the bulk overwrite bug with DEBUG on and checking Admin → System Messages.

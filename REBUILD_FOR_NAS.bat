@@ -37,28 +37,4 @@ if not exist "%OUTPUT_DIR%\server.js" (
     exit /b 1
 )
 
-REM --- Zip the build ---
-set "ZIP_PATH=%~dp0NAS_DIST.zip"
-
-echo.
-echo === Zipping build to NAS_DIST.zip ===
-if exist "%ZIP_PATH%" del "%ZIP_PATH%"
-powershell -NoProfile -Command "Compress-Archive -Path '%OUTPUT_DIR%\*' -DestinationPath '%ZIP_PATH%' -Force"
-if errorlevel 1 (
-    echo WARNING: zip failed. The build folder is still available at %OUTPUT_DIR%.
-) else (
-    echo Created: %ZIP_PATH%
-)
-
-echo.
-echo Build complete. Output is in:
-echo   %OUTPUT_DIR%
-echo.
-echo Zip: %ZIP_PATH%
-echo   Copy the zip to any machine with NAS access and run:
-echo   EXTRACT_TO_NAS.bat NAS_DIST.zip
-echo.
-echo IF THIS RELEASE ADDS A MIGRATION, apply it on the NAS over SSH:
-echo     cd /volume1/app/myhomebase ^&^& node --env-file-if-exists=.env migrate.cjs
-echo.
 exit /b 0

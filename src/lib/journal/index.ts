@@ -398,6 +398,7 @@ export {
   findSameDateGroups,
   lockEntries,
   mergeEntryDraft,
+  splitMergeSources,
   toSameDateRows,
 } from "./same-date";
 export type {
