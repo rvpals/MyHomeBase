@@ -152,10 +152,10 @@ export async function bulkEditJournalEntriesAction(
   try {
     log.debug("bulk-edit", () => {
       const parts = [`ids=[${ids.join(",")}]`];
-      if (changes.categories) parts.push(`categories(${changes.categories.mode}): [${changes.categories.names.join(", ")}]`);
-      if (changes.tags) parts.push(`tags(${changes.tags.mode}): [${changes.tags.names.join(", ")}]`);
+      if (changes.categories) parts.push(`categories(${changes.categories.mode}): [${(changes.categories.names ?? []).join(", ")}]`);
+      if (changes.tags) parts.push(`tags(${changes.tags.mode}): [${(changes.tags.names ?? []).join(", ")}]`);
       if (changes.placeName !== undefined) parts.push(`placeName: "${changes.placeName}"`);
-      if (changes.locations) parts.push(`locations(${changes.locations.mode}): ${changes.locations.locations.map(l => l.locationName || `${l.latitude},${l.longitude}`).join(", ")}`);
+      if (changes.locations) parts.push(`locations(${changes.locations.mode}): ${(changes.locations.locations ?? []).map(l => l.locationName || `${l.latitude},${l.longitude}`).join(", ")}`);
       return `bulkEditEntries ${parts.join(" | ")}`;
     });
     const result = bulkEditEntries(deps.journalRepo, ids, changes);
