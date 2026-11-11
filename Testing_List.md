@@ -146,6 +146,15 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-11 — Debug logging for journal bulk edit/overwrite
+
+**No migrations.** Republish required. Pure diagnostic scaffolding — no UI change to test; validate by reproducing the bulk overwrite bug with DEBUG on and checking Admin → System Messages.
+
+- [ ] **1.** Enable DEBUG in Admin → Application Configuration → System Log
+- [ ] **2.** Select entries in Journal Entries, run Bulk Overwrite with categories/tags/location, check Admin → System Messages for three "bulk-edit" log lines showing the submitted values and the result counts
+
+---
+
 ## 2026-11-09 — Release (Journal search → Entries tab, bulk actions on search results)
 
 **No migrations.** Republish required. No risky items — no new tables, no phone-only layouts.

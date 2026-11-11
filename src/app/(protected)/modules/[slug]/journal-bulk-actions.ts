@@ -148,17 +148,30 @@ export async function bulkEditJournalEntriesAction(
   scope: BulkRefreshScope,
 ): Promise<BulkActionResult & { updatedCount?: number; skippedLockedCount?: number }> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
+  const log = deps.systemLogger;
   try {
+    log.debug("bulk-edit", () => {
+      const parts = [`ids=[${ids.join(",")}]`];
+      if (changes.categories) parts.push(`categories(${changes.categories.mode}): [${changes.categories.names.join(", ")}]`);
+      if (changes.tags) parts.push(`tags(${changes.tags.mode}): [${changes.tags.names.join(", ")}]`);
+      if (changes.placeName !== undefined) parts.push(`placeName: "${changes.placeName}"`);
+      if (changes.locations) parts.push(`locations(${changes.locations.mode}): ${changes.locations.locations.map(l => l.locationName || `${l.latitude},${l.longitude}`).join(", ")}`);
+      return `bulkEditEntries ${parts.join(" | ")}`;
+    });
     const result = bulkEditEntries(deps.journalRepo, ids, changes);
+    log.debug("bulk-edit", () => `bulkEditEntries result: updated=${result.updatedCount} skippedLocked=${result.skippedLockedCount} missing=${result.missingCount}`);
     revalidatePath(JOURNAL_MODULE_PATH);
+    const entries = refresh(scope);
+    log.debug("bulk-edit", () => `refresh returned ${entries.length} entries; sample cats=${JSON.stringify(entries.slice(0, 3).map(e => ({ id: e.id, cats: e.categories })))}`);
     return {
       ok: true,
       updatedCount: result.updatedCount,
       skippedLockedCount: result.skippedLockedCount,
-      entries: refresh(scope),
+      entries,
       message: describeBulkEditResult(result),
     };
   } catch (error) {
+    log.debug("bulk-edit", () => `bulkEditEntries error: ${error instanceof Error ? error.message : String(error)}`);
     return toErrorResult(error, "Failed to edit the selected entries.");
   }
 }

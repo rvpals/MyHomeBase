@@ -1,5 +1,27 @@
 # Change History
 
+## 2026-11-11 12:34 — Journal bulk edit/overwrite: debug logging via system log
+
+**No migrations.** No tables added or altered.
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not invoked.
+Min runs the gates and tests the UI.
+
+### A. Journal Entries: debug logging for bulk edit and bulk overwrite
+
+Added debug logging to `bulkEditJournalEntriesAction` (the server action shared by both Bulk Edit and
+Bulk Overwrite). When **DEBUG messages** is enabled in Admin → Application Configuration → System Log,
+three log lines are written to the system log per bulk action:
+
+1. **Before write** — the entry ids and each changed field with its mode and values (categories, tags,
+   placeName, locations).
+2. **After write** — updated count, skipped-locked count, and missing count.
+3. **After refresh** — how many entries the server re-read, with the first three entries' ids and
+   categories as a spot check.
+
+This is diagnostic scaffolding to identify a reported bug where bulk overwrite appears to succeed
+(dialog closes, success message shown) but entries are not visibly updated in the grid.
+
 ## 2026-11-09 21:10 — Journal search navigates to Entries; Search Results tab with full bulk actions
 
 **No migrations.** Nothing in this release adds or alters a table. A **republish is required** for the
