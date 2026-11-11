@@ -146,6 +146,22 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-11 — Release (Journal Time field blank by default, NAS publish through the proxy, small-icu date fix)
+
+**No migrations.** Republish required. Risky: the double-click on the Time field is untested in a real browser. The date fix only shows on the NAS (its Node has en-US locale data only), so check it there, not on the dev box.
+
+- [ ] **1.** Journal → New Journal: the Time field is empty on arrival, Date is still today
+- [ ] **2.** Double-click the Time field: it fills with the current time, and the hint under it says so
+- [ ] **3.** Save with Time left blank: the entry saves and shows no time; save with a time set: the time shows
+- [ ] **4.** After saving, the form clears and Time is blank again for the next entry
+- [ ] **5.** Clone an entry and open the Merge dialog: both still open with their own date/time, Time not overwritten
+- [ ] **6.** Pick a prefill template that sets the time (fixed and "current time"): the Time field now takes it
+- [ ] **7.** The New Journal form on a phone: the extra hint line under Time sits cleanly under the stacked fields
+- [ ] **8.** On the NAS: places that show "today" or a time stamp (the date label only when the day differs from UTC) show a normal date, not 11/11/2026 or a label on every stamp
+- [ ] **9.** On this machine: `npm run publish:nas` gets past the better-sqlite3 download (log shows "Re-running through the proxy" and "using cached" lines)
+
+---
+
 ## 2026-11-11 — Release (Journal Merge bulk action on every entry grid, NAS build script no longer zips)
 
 **No migrations.** Republish required. Risky: the Merge flow has never been seen on screen — it saves a new entry and can move originals to the recycle bin, so try it on throwaway entries first. Also worth a look on a phone (selection bar with one more button).

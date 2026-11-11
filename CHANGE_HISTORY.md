@@ -1,5 +1,56 @@
 # Change History
 
+## 2026-11-11 12:35 — Journal Time field blank by default; NAS publish works through the proxy; small-icu date fix
+
+**No migrations.** No tables added or altered. A **republish is required**; no new package.
+
+**No gates were run this session.** Typecheck, lint, the unit suite and the build were not invoked.
+Min runs the gates and tests the UI. None of this has been seen on screen.
+
+### A. Journal: the Time field starts blank
+
+On New Journal the Time field used to be stamped with the current time on every entry. It now starts
+**blank**, and **double-clicking the field sets the current time**. A blank time is a legitimate value
+(entries are allowed to have none), so nothing in lib or the schema changed.
+
+- `journal-entry-form.tsx`: `seededForm` no longer stamps the time, the mount effect stamps only the
+  date, and the Time input has an `onDoubleClick` plus a visible "Optional. Double-click to set the
+  current time." hint (the gesture is otherwise undiscoverable).
+- **Clear** now also leaves the time blank for the next entry.
+- **Side effect:** prefill templates only fill blank fields, so a template's time (fixed or "current
+  time") now applies, where it could never apply while the field was pre-filled.
+- Clones and the Merge dialog are unchanged: seeded values still win.
+- Not confirmed: that `onDoubleClick` fires on `<input type="time">` in a real browser.
+
+### B. NAS publish: downloads go through the proxy
+
+`npm run publish:nas` died after the build with `TypeError: fetch failed ... read ECONNRESET` on the
+better-sqlite3 arm64 download. Cause: `https_proxy` is set on this machine and Node's `fetch` ignores it
+(curl and npm do not), so it took a route the network resets. Setting `NODE_USE_ENV_PROXY` from inside
+the script is too late (measured: still ECONNRESET), so:
+
+- `scripts/publish-nas.mjs` re-runs itself once with `NODE_USE_ENV_PROXY=1` when a proxy is set
+  (Node 24+); on older Node it warns instead.
+- New `download()` helper for all three downloads (better-sqlite3, sharp + libvips, @napi-rs/canvas):
+  four attempts with 2/4/8 s backoff on resets, timeouts, 5xx and 429; a 404/403 returns immediately.
+  Bodies are cached in `node_modules/.cache/mhb-nas-downloads/` (`NAS_REDOWNLOAD=1` bypasses).
+- `INSTRUCTION_SETUP_SYNOLOGY.md`: new troubleshooting entry.
+- The four arm64 packages were pre-fetched into that cache; the better-sqlite3 binary was checked to be
+  a real AArch64 ELF. The publish itself has not been re-run.
+
+### C. Date helpers no longer depend on the en-CA locale (carried over from an earlier session)
+
+Synology's Node is a small-icu build with only `en-US` data, so `Intl.DateTimeFormat("en-CA")` silently
+fell back to en-US and `todayIsoInZone` returned "11/11/2026" instead of "2026-11-11".
+
+- `src/lib/shared/date.ts`: `todayIsoInZone` assembles the date from `formatToParts` instead.
+- `src/lib/shared/utc-display.ts`: `describeLocalInstant` now uses `todayIsoInZone` instead of
+  `toLocaleDateString("en-CA")`, which made the date label appear on every stamp.
+- `date.test.ts`: new cases that simulate an en-US-only runtime.
+- This was uncommitted when this session began; it was not written or verified here.
+
+---
+
 ## 2026-11-11 11:12 — Journal: Merge bulk action on every entry grid; NAS build no longer zips
 
 **No migrations.** No tables added or altered. A **republish is required**; no new package.

@@ -562,6 +562,14 @@ remain. Then delete `.next` and `node_modules` on the NAS and re-copy:
 cd /volume1/app/myhomebase && rm -rf .next node_modules
 ```
 
+**`npm run publish:nas` dies with `fetch failed ... read ECONNRESET` while swapping in the arm64 binaries**
+The build machine reaches the internet only through a proxy (`https_proxy` is set). curl and npm
+honour it; Node's `fetch` does not, so the GitHub/npm downloads take a direct route that resets.
+The script now re-runs itself with `NODE_USE_ENV_PROXY=1` when a proxy is in the environment
+(Node 24+), retries a dropped download four times, and caches what it fetched in
+`node_modules/.cache/mhb-nas-downloads/`. `NAS_REDOWNLOAD=1` ignores the cache. On Node older than
+24 it only warns — the proxy cannot be used from there.
+
 **`.next` missing after copying**
 `scp -r dist-nas/*` skipped it: shell globs ignore dot-directories. Use `dist-nas/.`.
 Note also that plain `ls` hides it — check with `ls -a` before concluding it's absent.

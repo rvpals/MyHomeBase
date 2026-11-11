@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   calendarAgeSince,
   describeDayOffset,
@@ -64,6 +64,56 @@ describe("todayIsoInZone", () => {
     // The right outcome for a typo in a constant: better than silently falling
     // back to UTC and skipping the wrong days.
     expect(() => todayIsoInZone("America/Nowhere", new Date())).toThrow();
+  });
+
+  describe("on a runtime with only en-US locale data", () => {
+    // The production bug this guards, reproduced rather than described.
+    //
+    // The NAS runs Synology's small-icu Node build, which carries one locale.
+    // Every other locale tag silently resolves to en-US, so the previous
+    // implementation -- which leaned on en-CA's ISO-shaped short date -- returned
+    // "11/11/2026" there and "2026-11-11" on every dev machine. The market-day
+    // check then threw on its own input and the Investments auto refresh failed
+    // on every tick.
+    //
+    // Stubbing the locale rather than the formatter is what makes this a real
+    // test: the genuine Intl still does the timezone arithmetic, exactly as it
+    // does on the NAS, and only the locale negotiation is forced.
+    const RealDateTimeFormat = Intl.DateTimeFormat;
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    function stubSmallIcu(): void {
+      vi.stubGlobal("Intl", {
+        ...Intl,
+        // A `function`, not an arrow: the code under test calls
+        // `new Intl.DateTimeFormat(...)`, and an arrow is not constructible.
+        // Returning an object from a constructor call hands back that object.
+        DateTimeFormat: function (_locale?: unknown, options?: Intl.DateTimeFormatOptions) {
+          return new RealDateTimeFormat("en-US", options);
+        },
+      });
+    }
+
+    it("still returns YYYY-MM-DD, not the en-US M/D/YYYY", () => {
+      stubSmallIcu();
+
+      // The exact instant and zone that produced `got "11/11/2026"` in the log.
+      const instant = new Date(Date.UTC(2026, 10, 11, 15, 0));
+      expect(todayIsoInZone("America/New_York", instant)).toBe("2026-11-11");
+    });
+
+    it("still reads the named zone rather than the server clock", () => {
+      stubSmallIcu();
+
+      // The fallback must cost the locale only -- small-icu keeps full tz data,
+      // so an evening in New York is still the previous day there.
+      const instant = new Date(Date.UTC(2026, 10, 19, 2, 30));
+      expect(todayIsoInZone("America/New_York", instant)).toBe("2026-11-18");
+      expect(todayIsoInZone("UTC", instant)).toBe("2026-11-19");
+    });
   });
 });
 

@@ -44,19 +44,37 @@ export function todayIsoLocal(now: Date = new Date()): string {
  * would be silently wrong the moment the box is set to anything else — and
  * wrong for several hours either side of midnight even when it isn't.
  *
- * `en-CA` is not a cosmetic choice: it is the locale whose short date format is
- * already `YYYY-MM-DD`, so there is nothing to reassemble and no month/day order
- * to get backwards. `timeZone` is an IANA name such as "America/New_York"; an
- * unrecognised one throws from `Intl`, which is the right outcome for a typo in
- * a constant.
+ * Assembled from `formatToParts`, never from a locale whose short date format
+ * happens to be ISO. That shortcut (`new Intl.DateTimeFormat("en-CA").format`)
+ * shipped here and broke on the NAS: Synology's Node is a **small-icu** build
+ * carrying only `en-US` locale data, so `en-CA` silently resolves to `en-US`
+ * and the same code that returns "2026-11-11" on a dev box returns
+ * "11/11/2026" in production. The zone conversion was right; only the digit
+ * order was wrong, and every caller validating the shape then threw. Parts are
+ * *tagged* (`year`/`month`/`day`) rather than ordered, so reassembling them is
+ * the one reading no locale fallback can rearrange.
+ *
+ * `timeZone` is an IANA name such as "America/New_York"; an unrecognised one
+ * throws from `Intl`, which is the right outcome for a typo in a constant.
  */
 export function todayIsoInZone(timeZone: string, now: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(now);
+  }).formatToParts(now);
+
+  const part = (type: "year" | "month" | "day"): string => {
+    const found = parts.find((candidate) => candidate.type === type);
+    // Unreachable with the options above, but a silent `undefined` here would
+    // produce "undefined-11-11" rather than a thrown error, and the callers of
+    // this function key database rows by its result.
+    if (!found) throw new Error(`Intl returned no ${type} for timezone "${timeZone}".`);
+    return found.value;
+  };
+
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 /**

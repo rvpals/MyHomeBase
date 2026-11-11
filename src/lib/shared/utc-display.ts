@@ -6,6 +6,8 @@
 // is probably not in UTC. They stay separate because mixing them is the bug both
 // are written to prevent.
 
+import { todayIsoInZone } from "./date";
+
 /**
  * Parses the timestamp shape SQLite's `datetime('now')` writes —
  * `YYYY-MM-DD HH:MM:SS`, UTC, space-separated — into a `Date`.
@@ -82,7 +84,15 @@ export function describeLocalInstant(
 
   const utcDay = instant.toISOString().slice(0, 10);
   // Same instant, read on the target clock, reduced to a comparable YYYY-MM-DD.
-  const localDay = instant.toLocaleDateString("en-CA", { timeZone });
+  //
+  // Through `todayIsoInZone` rather than `toLocaleDateString("en-CA")`, which is
+  // ISO-shaped only where the runtime actually carries en-CA locale data -- on a
+  // small-icu build it falls back to en-US and yields "11/11/2026", so this
+  // comparison never matches and the date label is appended to every stamp.
+  const localDay = todayIsoInZone(
+    timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    instant,
+  );
   if (localDay === utcDay) return time;
 
   const dayLabel = instant.toLocaleDateString(locale, {

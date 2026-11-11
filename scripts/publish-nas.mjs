@@ -19,7 +19,7 @@
 // Usage:  npm run publish:nas
 // Output: dist-nas/  — copy the whole folder to the NAS.
 
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
   cpSync,
@@ -35,10 +35,17 @@ import {
 } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const ROOT = process.cwd();
 const OUT = path.join(ROOT, "dist-nas");
+
+/**
+ * Where `download()` keeps what it has already fetched. Disposable, and inside
+ * node_modules so it is gitignored and `npm ci` clears it.
+ */
+const DOWNLOAD_CACHE = path.join(ROOT, "node_modules", ".cache", "mhb-nas-downloads");
 
 /**
  * The target Node's ABI, not its version string — that is what a prebuild is
@@ -98,6 +105,58 @@ for (const level of ["log", "warn", "error"]) {
 const BUILD_LOG_FILENAME = "build-log.json";
 
 // ---------------------------------------------------------------------------
+
+// Re-runs this script through the proxy named in the environment, once, before any
+// work happens.
+//
+// Node's `fetch` does NOT honour http_proxy/https_proxy — undici connects direct
+// and ignores them, unlike curl, git and npm, which all read the same variables.
+// On a network that only lets the proxy out, every download below then dies as a
+// connection reset partway through the body:
+//
+//     TypeError: fetch failed ... [cause]: Error: read ECONNRESET
+//
+// which looks like a flaky mirror and is really "there is no route from here".
+// Retrying cannot fix it: all four attempts take the same dead path.
+//
+// Node 24 can read those variables, but only when NODE_USE_ENV_PROXY is set *before
+// the process starts* — the global dispatcher is built during bootstrap, so setting
+// `process.env` here would be too late (measured: still ECONNRESET). Hence a re-exec
+// rather than an assignment.
+//
+// It happens here, above the build, so the child does all the real work and owns the
+// whole build log; the parent only waits and passes the exit code through. The
+// NODE_USE_ENV_PROXY guard is what stops this recursing.
+const envProxy =
+  process.env.https_proxy ??
+  process.env.HTTPS_PROXY ??
+  process.env.http_proxy ??
+  process.env.HTTP_PROXY;
+
+if (envProxy && process.env.NODE_USE_ENV_PROXY !== "1") {
+  const nodeMajor = Number(process.versions.node.split(".")[0]);
+  if (nodeMajor < 24) {
+    // No re-exec: NODE_USE_ENV_PROXY does nothing before Node 24, so spawning a
+    // child would just run the whole build again on the same dead route. Said
+    // plainly here because the failure arrives much later, as a reset in a
+    // download step, and nothing else would connect it to the proxy.
+    console.warn(
+      `! A proxy is set (${envProxy}) but Node ${process.versions.node} cannot use it for ` +
+        `fetch. If a download below fails with ECONNRESET, run this on Node 24+ ` +
+        `(the arm64 prebuilds cannot be fetched without the proxy on this network).`,
+    );
+  } else {
+    step(`Re-running through the proxy in the environment (${envProxy})`);
+    const child = spawnSync(
+      process.execPath,
+      [fileURLToPath(import.meta.url), ...process.argv.slice(2)],
+      { stdio: "inherit", env: { ...process.env, NODE_USE_ENV_PROXY: "1" } },
+    );
+    // `status` is null when the child was killed by a signal (Ctrl-C) rather than
+    // exiting — a non-zero code either way, so the caller's `&&` chain still stops.
+    process.exit(child.status ?? 1);
+  }
+}
 
 step("Building (clears .next first)");
 // `execSync` with one command string, not `execFileSync(..., { shell: true })`:
@@ -214,13 +273,13 @@ console.log(
 const tarballName = `better-sqlite3-v${BETTER_SQLITE3_VERSION}-node-v${NODE_ABI}-${TARGET}.tar.gz`;
 const url = `https://github.com/WiseLibs/better-sqlite3/releases/download/v${BETTER_SQLITE3_VERSION}/${tarballName}`;
 
-const response = await fetch(url);
+const response = await download(url);
 if (!response.ok) {
-  throw new Error(`No prebuild at ${url} (HTTP ${response.status}).`);
+  throw new Error(`Could not fetch the prebuild at ${url} — ${response.reason}.`);
 }
 const scratch = mkdtempSync(path.join(tmpdir(), "mhb-prebuild-"));
 const tarballPath = path.join(scratch, tarballName);
-writeFileSync(tarballPath, Buffer.from(await response.arrayBuffer()));
+writeFileSync(tarballPath, response.body);
 // `cwd` + a RELATIVE tarball path, not `-C <abs>`. Git Bash's GNU tar reads a
 // `C:\...` argument to `-f` as a remote host spec and dies with "Cannot connect
 // to C: resolve failed"; `--force-local` does not save it either. Running from
@@ -277,16 +336,16 @@ step(`Swapping in the ${TARGET} sharp`);
   async function addImgPackage(pkg, version) {
     const short = pkg.replace("@img/", "");
     const url = `https://registry.npmjs.org/${pkg}/-/${short}-${version}.tgz`;
-    const res = await fetch(url);
+    const res = await download(url);
     if (!res.ok) {
       throw new Error(
-        `No ${TARGET} prebuild for ${pkg}@${version} (HTTP ${res.status}) at ${url}. ` +
+        `No ${TARGET} prebuild for ${pkg}@${version} (${res.reason}) at ${url}. ` +
           `Icon uploads would fail on the NAS. Check the version or pin sharp.`,
       );
     }
     const scratchDir = mkdtempSync(path.join(tmpdir(), "mhb-sharp-"));
     const tgz = path.join(scratchDir, `${short}.tgz`);
-    writeFileSync(tgz, Buffer.from(await res.arrayBuffer()));
+    writeFileSync(tgz, res.body);
     // npm tarballs put everything under `package/`; --strip-components lands it flat.
     const dest = path.join(outImg, short);
     mkdirSync(dest, { recursive: true });
@@ -374,14 +433,14 @@ step(`Swapping in the ${TARGET} @napi-rs/canvas (for scanned-PDF OCR)`);
     // `-gnu`, not `-musl`: DSM is a glibc system.
     const pkg = `@napi-rs/canvas-linux-arm64-gnu`;
     const url = `https://registry.npmjs.org/${pkg}/-/canvas-linux-arm64-gnu-${version}.tgz`;
-    const res = await fetch(url);
+    const res = await download(url);
     if (!res.ok) {
-      console.warn(`  ! No ${TARGET} prebuild for ${pkg}@${version} (HTTP ${res.status}).`);
+      console.warn(`  ! No ${TARGET} prebuild for ${pkg}@${version} (${res.reason}).`);
       console.warn("  ! Scanned-PDF OCR will not work on the NAS. Text-layer reads still will.");
     } else {
       const scratchDir = mkdtempSync(path.join(tmpdir(), "mhb-canvas-"));
       const tgz = path.join(scratchDir, "canvas.tgz");
-      writeFileSync(tgz, Buffer.from(await res.arrayBuffer()));
+      writeFileSync(tgz, res.body);
       // A RELATIVE path with `cwd`, never the absolute one: GNU tar reads a leading
       // `C:` as `host:path` and tries to resolve "C" as a remote machine, which fails
       // with "Cannot connect to C: resolve failed". The two tar calls above dodge it
@@ -691,6 +750,68 @@ function* walkEntries(dir) {
     if (entry.isSymbolicLink()) yield { path: full, isSymbolicLink: true };
     else if (entry.isDirectory()) yield* walkEntries(full);
   }
+}
+
+/**
+ * Downloads one file, with retries and an on-disk cache.
+ *
+ * Every download in this script happens AFTER `next build`, so one dropped
+ * connection used to throw away the whole build:
+ *
+ *     TypeError: fetch failed ... [cause]: Error: read ECONNRESET
+ *
+ * That is what a long GitHub-release download looks like through a corporate TLS
+ * proxy, and it says nothing about the URL being wrong — so transient failures
+ * (resets, timeouts, 5xx, 429) are retried with a widening backoff, while a 404 or
+ * 403 comes straight back: that IS the answer, and it means the version or the ABI
+ * is wrong, which no amount of retrying fixes.
+ *
+ * Successful bodies are cached under node_modules/.cache/, keyed by the URL. Every
+ * URL here is version-pinned, so a hit cannot be stale; it only means a re-run after
+ * a failure further down doesn't re-fetch the ~100 MB that already arrived. Set
+ * NAS_REDOWNLOAD=1 to ignore the cache.
+ *
+ * Never throws on a failed download — it returns `ok: false` and each caller decides
+ * whether its own package is fatal (better-sqlite3, sharp) or merely degrades the
+ * deployment (canvas).
+ *
+ * @returns {Promise<{ok: true, body: Buffer} | {ok: false, status: number, reason: string}>}
+ */
+async function download(url, { attempts = 4 } = {}) {
+  const cached = path.join(DOWNLOAD_CACHE, url.replace(/[^a-zA-Z0-9._-]+/g, "_"));
+  if (!process.env.NAS_REDOWNLOAD && existsSync(cached) && statSync(cached).size > 0) {
+    console.log(`  using cached ${path.basename(url)}`);
+    return { ok: true, body: readFileSync(cached) };
+  }
+
+  let reason = "unknown error";
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const body = Buffer.from(await res.arrayBuffer());
+        mkdirSync(DOWNLOAD_CACHE, { recursive: true });
+        writeFileSync(cached, body);
+        return { ok: true, body };
+      }
+      if (res.status !== 429 && res.status < 500) {
+        return { ok: false, status: res.status, reason: `HTTP ${res.status}` };
+      }
+      reason = `HTTP ${res.status}`;
+    } catch (error) {
+      // undici wraps the real failure one level down; the outer message is always
+      // the useless "fetch failed".
+      reason = String(error?.cause?.message ?? error?.message ?? error);
+    }
+    if (attempt < attempts) {
+      const waitSeconds = 2 ** attempt;
+      console.warn(
+        `  ! ${reason} — retrying in ${waitSeconds}s (attempt ${attempt + 1} of ${attempts})`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+    }
+  }
+  return { ok: false, status: 0, reason: `${reason}, after ${attempts} attempts` };
 }
 
 function directorySize(dir) {

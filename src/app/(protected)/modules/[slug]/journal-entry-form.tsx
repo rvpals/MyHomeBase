@@ -136,6 +136,9 @@ function todayIso(): string {
 // server-side would stamp a late-evening entry with the wrong hour (and, past
 // midnight UTC, the wrong day) for anyone in another timezone. Same rule the
 // prefill templates' "current time" follows — see migration 0062.
+//
+// Only the Time field's double-click stamp calls this now. The field itself
+// starts blank — see `seededForm`.
 function nowIso(): string {
   const now = new Date();
   return `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
@@ -220,19 +223,28 @@ export interface JournalEntryFormInitialValues {
 /**
  * Applies `initialValues` over a blank form.
  *
- * `stamp` decides whether the clock is read. It is false during render — on the
- * server and on the hydrating client — and true from the effect that stamps the
- * form after mount, and from `reset`. Reading the clock during render would put
- * the *server's* instant into the initial HTML, which the client then hydrates
- * over with its own: a value mismatch React does not repair on a controlled
- * input, and which an `<input type="time">` resolves by showing nothing at all.
- * Same rule as `canFullscreen` below — browser-only data is read after mount.
+ * `stamp` decides whether the clock is read **for the date**. It is false during
+ * render — on the server and on the hydrating client — and true from the effect
+ * that stamps the form after mount, and from `reset`. Reading the clock during
+ * render would put the *server's* instant into the initial HTML, which the client
+ * then hydrates over with its own: a value mismatch React does not repair on a
+ * controlled input, and which an `<input type="date">` resolves by showing nothing
+ * at all. Same rule as `canFullscreen` below — browser-only data is read after
+ * mount.
+ *
+ * The **time** is never stamped, at either phase: a blank Time field means the
+ * entry records no time, which the schema treats as a legitimate value rather
+ * than a missing one (`normalizeEntryTime`), and most entries carry none. A
+ * writer who wants the current moment double-clicks the field. Seeding it with
+ * the clock instead put a time on every entry written from this form whether or
+ * not the hour meant anything, and the writer had no way to clear it back to
+ * "untimed" short of selecting the segments and pressing Delete.
  */
 function seededForm(
   initialValues: JournalEntryFormInitialValues | undefined,
   stamp: boolean,
 ) {
-  const blank = emptyForm(stamp ? todayIso() : "", stamp ? nowIso() : "");
+  const blank = emptyForm(stamp ? todayIso() : "", "");
   if (!initialValues) return blank;
   return {
     ...blank,
@@ -329,11 +341,12 @@ export function JournalEntryForm({
   saveLabel?: string;
 }) {
   const router = useRouter();
-  // Date and time both start at the writer's current clock, unless the caller
-  // seeded them — but the clock is read in the effect below, not here: this
-  // initialiser also runs on the server, and stamping it there blanked the Time
-  // field on arrival. Starts with both empty, so the server's HTML and the
-  // client's first render agree, and the effect fills them in on mount.
+  // The date starts at the writer's current clock unless the caller seeded it —
+  // but the clock is read in the effect below, not here: this initialiser also
+  // runs on the server, and stamping it there blanked the Date field on arrival.
+  // Starts empty, so the server's HTML and the client's first render agree, and
+  // the effect fills it in on mount. The time starts blank and stays blank until
+  // the writer sets one; see `seededForm`.
   const [form, setForm] = useState(() => seededForm(initialValues, false));
   // Seeded from `initialLocations` when the caller supplied pins (Clone), empty
   // otherwise. Copied rather than aliased, for the same reason the form's own
@@ -414,19 +427,17 @@ export function JournalEntryForm({
     setCanFullscreen(canGoFullscreen());
   }, []);
 
-  // Stamps the blank date and time with the writer's clock, once, after mount.
-  // Only the fields the caller did not seed and the writer has not already
-  // typed into: the guard is on the current value being empty, so a clone's
-  // seeded date survives, and so a fast typist who set a time before this ran
-  // does not have it overwritten.
+  // Stamps the blank date with the writer's clock, once, after mount. Only if the
+  // caller did not seed it and the writer has not already typed into it: the guard
+  // is on the current value being empty, so a clone's seeded date survives, and so
+  // a fast typist who picked a day before this ran does not have it overwritten.
+  //
+  // The time is deliberately NOT stamped here — an untimed entry is a legitimate
+  // one, and the writer stamps the clock by double-clicking the field.
   useEffect(() => {
     setForm((current) => {
-      if (current.date !== "" && current.time !== "") return current;
-      return {
-        ...current,
-        ...(current.date === "" ? { date: todayIso() } : {}),
-        ...(current.time === "" ? { time: nowIso() } : {}),
-      };
+      if (current.date !== "") return current;
+      return { ...current, date: todayIso() };
     });
   }, []);
 
@@ -798,9 +809,25 @@ export function JournalEntryForm({
           <span className="mb-1 block font-medium text-ink">Date</span>
           <input type="date" value={form.date} onChange={(event) => update("date", event.target.value)} className={INPUT_CLASS} />
         </label>
+        {/* Blank by default, unlike Date: see `seededForm`. Double-click stamps the
+            current time — a free gesture on a time input, since the browser's own
+            segment-select happens on the single click. The hint is on screen rather
+            than only in `title`, because a gesture nothing announces is a gesture
+            nobody finds. */}
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-ink">Time</span>
-          <input type="time" step={1} value={form.time} onChange={(event) => update("time", event.target.value)} className={INPUT_CLASS} />
+          <input
+            type="time"
+            step={1}
+            value={form.time}
+            onChange={(event) => update("time", event.target.value)}
+            onDoubleClick={() => update("time", nowIso())}
+            title="Double-click to set the current time"
+            className={INPUT_CLASS}
+          />
+          <span className="mt-1 block text-xs text-muted">
+            Optional. Double-click to set the current time.
+          </span>
         </label>
 
         <label className="block text-sm sm:col-span-2">
