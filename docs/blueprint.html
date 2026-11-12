@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyHomeBase Blueprint</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1d2330;--mute:#5d6678;--card:#fff;--line:#e2e4ea;--acc:#2455c3;--acc2:#e8eefc;--warn:#9a3b00;--warnbg:#fff1e6;--ok:#17653a;--okbg:#e6f5ec;--code:#f1f3f8}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12151c;--fg:#e6e9f0;--mute:#9aa3b5;--card:#1a1f29;--line:#2c3342;--acc:#7ea2ff;--acc2:#1f2a47;--warn:#ffb27a;--warnbg:#33241a;--ok:#7fd9a2;--okbg:#17291f;--code:#10131a}}
+:root[data-theme="dark"]{--bg:#12151c;--fg:#e6e9f0;--mute:#9aa3b5;--card:#1a1f29;--line:#2c3342;--acc:#7ea2ff;--acc2:#1f2a47;--warn:#ffb27a;--warnbg:#33241a;--ok:#7fd9a2;--okbg:#17291f;--code:#10131a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{display:grid;grid-template-columns:240px minmax(0,1fr);gap:32px;max-width:1180px;margin:0 auto;padding:0 16px}
+nav{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:24px 0;font-size:14px}
+nav a{display:block;padding:4px 10px;color:var(--mute);text-decoration:none;border-left:2px solid var(--line)}
+nav a:hover{color:var(--acc);border-color:var(--acc)}
+nav b{display:block;margin:0 0 8px 10px}
+main{padding:24px 0 80px;min-width:0}
+h1{font-size:2rem;margin:.2em 0}
+h2{font-size:1.45rem;margin:2.2em 0 .4em;padding-top:.6em;border-top:1px solid var(--line)}
+h3{font-size:1.1rem;margin:1.4em 0 .3em}
+p{margin:.5em 0}
+.lead{font-size:1.1rem;color:var(--mute)}
+.take{background:var(--acc2);border-left:4px solid var(--acc);padding:10px 14px;border-radius:6px;margin:.8em 0;font-weight:500}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font:.88em ui-monospace,Consolas,monospace}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;font:13px/1.5 ui-monospace,Consolas,monospace;position:relative}
+pre code{background:none;padding:0}
+.copy{position:absolute;top:6px;right:6px;font-size:12px;padding:2px 8px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:4px;cursor:pointer}
+.tablewrap{overflow-x:auto;margin:.8em 0}
+table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--card)}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--code)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:4px 16px 12px;margin:14px 0}
+.card h3{margin-top:.8em}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;margin-right:4px;font-weight:600}
+.gen{background:var(--okbg);color:var(--ok)}.dom{background:var(--warnbg);color:var(--warn)}
+.risk{background:var(--warnbg);border-left:4px solid var(--warn);padding:8px 14px;border-radius:6px;margin:.6em 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.stat b{display:block;font-size:1.4rem;color:var(--acc)}.stat span{font-size:13px;color:var(--mute)}
+.guess{font-size:12px;color:var(--warn);font-weight:600}
+ol.sum li{margin:.4em 0}
+button.theme{position:fixed;right:12px;top:12px;z-index:5;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:6px;padding:4px 10px;cursor:pointer}
+@media (max-width:860px){.wrap{display:block}nav{position:static;max-height:none;padding:12px 0}nav a{display:inline-block;border:0;padding:2px 8px}nav b{display:none}}
+@media print{nav,button{display:none}.wrap{display:block}}
+</style>
+</head>
+<body>
+<button class="theme" id="theme" aria-label="Toggle theme">Theme</button>
+<div class="wrap">
+<nav>
+<b>Contents</b>
+<a href="#overview">1 Overview</a>
+<a href="#qualities">2 What makes it good</a>
+<a href="#loops">3 Feedback loops</a>
+<a href="#structure">4 Structure</a>
+<a href="#conventions">5 Conventions</a>
+<a href="#docs">6 Docs &amp; agent guidance</a>
+<a href="#workflow">7 Workflow</a>
+<a href="#risks">8 Weak spots</a>
+<a href="#blueprint">9 Blueprint</a>
+<a href="#summary">Top 5 insights</a>
+</nav>
+<main>
+<h1>MyHomeBase: project insights &amp; reusable blueprint</h1>
+<p class="lead">Written for: someone scaffolding a new Claude-Code-assisted project who wants to copy what works here and skip what doesn't. Every claim cites a path in the repo; guesses are marked <span class="guess">GUESS</span>.</p>
+
+<!-- 1 -->
+<h2 id="overview">1. Overview</h2>
+<p class="take">A single-developer household web app, built almost entirely with Claude Code. Its leverage comes from one enforced architectural rule plus a small set of docs that tell the agent what to read before acting.</p>
+<div class="stats">
+<div class="stat"><b>222</b><span>commits, 2026-07-12 to 2026-11-11</span></div>
+<div class="stat"><b>1,813</b><span>TS/TSX files in src/</span></div>
+<div class="stat"><b>~412k</b><span>lines in src/</span></div>
+<div class="stat"><b>350</b><span>test files (all colocated in src/lib)</span></div>
+<div class="stat"><b>98</b><span>domain folders in src/lib/</span></div>
+<div class="stat"><b>169</b><span>numbered SQL migrations</span></div>
+<div class="stat"><b>77</b><span>files in src/cli/</span></div>
+</div>
+<p><strong>What it is.</strong> MyHomeBase bundles a dozen feature modules (investments, journal, expense tracker, classroom, music, games, photos, household, clips, documents, tools) with per-user module access, deployed to a Synology NAS.</p>
+<p><strong>Stack</strong> (<code>package.json</code>): Next.js 16 App Router, React 19.2.4, TypeScript (strict), Tailwind 4, SQLite via <code>better-sqlite3</code> 12.9, zod 4, Vitest 5, Playwright 1.62, ESLint 9, tsx for scripts. No ORM.</p>
+<p><strong>Architecture.</strong> All logic lives in <code>src/lib/&lt;domain&gt;/</code> as plain TypeScript with no React or Next imports. The web app (<code>src/app/</code>) and a CLI (<code>src/cli/</code>) are peer front-ends that only present. Repositories implement interfaces (<code>ports.ts</code>); one composition root (<code>src/lib/wiring.ts</code>) builds real dependencies; tests use hand-written fakes.</p>
+
+<!-- 2 -->
+<h2 id="qualities">2. What makes this project good (ranked by impact)</h2>
+<p class="take">The top three (an enforced layering rule, a pre-read doc index, and registries that make every "where does X go" question answerable) account for most of the benefit.</p>
+
+<div class="card"><h3>1. One hard, machine-enforced architectural rule <span class="tag gen">generic</span></h3>
+<p><strong>Practice:</strong> nothing in <code>src/lib/</code> may import <code>react</code> or <code>next</code>, and it is checked twice.</p>
+<p><strong>Evidence:</strong> <code>eslint.config.mjs</code> (<code>no-restricted-imports</code> scoped to <code>src/lib/**</code>) and <code>scripts/check-lib-boundary.mjs</code> (regex over static, dynamic and <code>require</code> imports; its header explains why a <code>grep</code> one-liner failed on Windows).</p>
+<p><strong>Why it helps:</strong> the agent gets a binary pass/fail on the most important design decision. Logic cannot drift into components without a red build.</p></div>
+
+<div class="card"><h3>2. A short CLAUDE.md that routes to deeper docs by task <span class="tag gen">generic</span></h3>
+<p><strong>Practice:</strong> ~1,500 words of "before you do X, read Y" rules instead of a monolith.</p>
+<p><strong>Evidence:</strong> <code>CLAUDE.md</code> lists triggers: scaffold &rarr; <code>ARCHITECTURE.md</code>; UI &rarr; <code>components.md</code>; styling &rarr; <code>design.md</code>; schema &rarr; <code>coding-guide.md</code>; new module &rarr; <code>modules.md</code>.</p>
+<p><strong>Why it helps:</strong> context stays small and relevant. The agent loads a 58k-word registry only when it is about to build UI.</p></div>
+
+<div class="card"><h3>3. Plan-then-wait approval gate <span class="tag gen">generic</span></h3>
+<p><strong>Practice:</strong> multi-file work needs a written plan (files, migration, icon slots, paid services, open questions) and explicit approval.</p>
+<p><strong>Evidence:</strong> <code>CLAUDE.md</code> "Plan before building — wait for approval", with a stated exemption list (typos, renames, single-file fixes).</p>
+<p><strong>Why it helps:</strong> catches misreadings before 400 lines are written, and forces cost questions ("is it free?") up front.</p></div>
+
+<div class="card"><h3>4. Parity between UI and CLI <span class="tag gen">generic idea</span></h3>
+<p><strong>Practice:</strong> every use-case must run from a terminal too.</p>
+<p><strong>Evidence:</strong> <code>src/cli/todo.ts</code> imports from <code>@/lib/todo</code> and <code>@/lib/wiring</code> only; <code>CLI_registry.md</code> lists commands and the uncovered use-cases.</p>
+<p><strong>Why it helps:</strong> the CLI is a litmus test for leaked logic, and gives the agent a way to exercise features without a browser.</p></div>
+
+<div class="card"><h3>5. Registries that make placement mechanical <span class="tag gen">pattern</span> <span class="tag dom">content domain</span></h3>
+<p><strong>Practice:</strong> modules, components, tables, CLI commands and icon slots each have a registry doc and a naming rule.</p>
+<p><strong>Evidence:</strong> <code>modules.md</code> (slug / prefix table, retired prefixes), <code>coding-guide.md</code> (three-letter table prefix per module: <code>jrn_</code>, <code>exp_</code>, <code>doc_</code>), <code>components.md</code>.</p>
+<p><strong>Why it helps:</strong> naming and placement decisions become lookups. Retired prefixes are recorded so they are never reused.</p></div>
+
+<div class="card"><h3>6. Numbered migrations with a human-readable twin <span class="tag gen">generic</span></h3>
+<p><strong>Practice:</strong> every schema change is <code>NNNN_name.sql</code> plus <code>NNNN_name.md</code> explaining columns, seed data and rollback.</p>
+<p><strong>Evidence:</strong> <code>migrations/0001_create_modules.{sql,md}</code> through <code>0169</code>; <code>scripts/migrate.ts</code> backs up the DB first and tracks applied files in <code>sys_schema_migrations</code>.</p>
+<p><strong>Why it helps:</strong> history is append-only and explained; the agent never edits applied schema.</p></div>
+
+<div class="card"><h3>7. Authorise-first server actions, with the reason written down <span class="tag gen">generic</span></h3>
+<p><strong>Practice:</strong> every exported action starts with <code>requireModuleAccess(SLUG)</code>, <code>requireAdmin()</code> or <code>requireUser()</code>.</p>
+<p><strong>Evidence:</strong> <code>src/app/(protected)/require-access.ts</code> explains that an action is its own POST endpoint, and why slug matching is exact. 84 action files reference a guard (grep count; I did not verify that every exported action is guarded).</p>
+<p><strong>Why it helps:</strong> a security rule phrased as "first line of every action" is something an agent can follow and a reviewer can scan.</p></div>
+
+<div class="card"><h3>8. Fakes for use-cases, real SQLite for shapes <span class="tag gen">generic</span></h3>
+<p><strong>Practice:</strong> hand-written in-memory repositories test business rules; real SQLite tests repository contracts.</p>
+<p><strong>Evidence:</strong> <code>src/lib/household/household.test.ts</code> (<code>FakeHouseholdRepository implements HouseholdRepository</code>) beside <code>repository.test.ts</code>; <code>lessons_learned.md</code> explains why the fake alone missed a data-loss bug.</p>
+<p><strong>Why it helps:</strong> fast unit tests without hiding the class of bug fakes cannot see.</p></div>
+
+<div class="card"><h3>9. A lessons-learned log of traps, not a changelog <span class="tag gen">generic</span></h3>
+<p><strong>Practice:</strong> only mistakes whose <em>mechanism</em> generalises, each ending in numbered rules.</p>
+<p><strong>Evidence:</strong> <code>lessons_learned.md</code> (Partial&lt;&gt; plus <code>?? ""</code> turning a compile error into silent data loss; debugging the wrong layer). Standing traps are repeated in <code>CLAUDE.md</code> (stale <code>.next</code>, "prove where it renders", uncommitted work is unverified).</p>
+<p><strong>Why it helps:</strong> converts expensive sessions into rules the next session reads on day one.</p></div>
+
+<div class="card"><h3>10. Safety rails around the production database <span class="tag gen">idea</span> <span class="tag dom">NAS paths</span></h3>
+<p><strong>Practice:</strong> gates run on a copy and refuse to start if the DB env var is unset or inside the repo.</p>
+<p><strong>Evidence:</strong> <code>.claude/commands/verify.md</code> ground rules; <code>scripts/prepare-smoke-db.ts</code>, <code>scripts/migration-dry-run.ts</code>; <code>CLAUDE.md</code> "Nothing may touch the real database".</p>
+<p><strong>Why it helps:</strong> removes the most damaging agent mistake from the list of possibilities.</p></div>
+
+<div class="card"><h3>11. Skills and slash commands for repeatable rituals <span class="tag gen">generic</span></h3>
+<p><strong>Evidence:</strong> <code>.claude/commands/{verify,release,testing}.md</code>, <code>.claude/skills/build_project/SKILL.md</code> (log change &rarr; verify &rarr; sync docs &rarr; commit, "only when explicitly asked").</p>
+<p><strong>Why it helps:</strong> multi-step procedures become one invocation with a fixed order.</p></div>
+
+<div class="card"><h3>12. Honest-reporting contract <span class="tag gen">generic</span></h3>
+<p><strong>Practice:</strong> close each change by listing files touched, what was not verified, and anything unsure.</p>
+<p><strong>Evidence:</strong> <code>CLAUDE.md</code> "Report done honestly"; it forbids saying "works" on the strength of having written it.</p>
+<p><strong>Why it helps:</strong> keeps the human's trust calibrated. Note the tension in section 8.</p></div>
+
+<!-- 3 -->
+<h2 id="loops">3. Feedback loops</h2>
+<p class="take">The gates are thorough and ordered cheapest-first, but they are manual: there is no CI and no pre-commit hook, and <code>CLAUDE.md</code> forbids Claude from running them unasked.</p>
+<div class="tablewrap"><table>
+<tr><th>Stage</th><th>Command</th><th>What it checks</th></tr>
+<tr><td>Typecheck</td><td><code>npm run typecheck</code></td><td><code>tsc --noEmit</code>, strict, whole repo including scripts/ and e2e/</td></tr>
+<tr><td>Lint</td><td><code>npm run lint</code></td><td>ESLint 9 with next core-web-vitals + typescript, plus lib import restriction</td></tr>
+<tr><td>Boundary</td><td><code>npm run check:lib-boundary</code></td><td>Regex scan of <code>src/lib</code> for react/next imports</td></tr>
+<tr><td>Unit</td><td><code>npm test</code></td><td>Vitest, <code>src/**/*.test.ts</code> only; e2e and <code>.verify/</code> excluded</td></tr>
+<tr><td>Migrations</td><td><code>npm run db:migrate:dry-run</code></td><td>Applies pending migrations to a copy of the dev DB</td></tr>
+<tr><td>Preflight / DB prep</td><td><code>verify:preflight</code>, <code>verify:prepare-db</code></td><td>Env safety check, smoke DB in <code>.verify/</code></td></tr>
+<tr><td>Browser</td><td><code>npm run test:e2e</code></td><td>Playwright route sweep: no 4xx/5xx, no React console error, no dev overlay (<code>e2e/smoke.spec.ts</code>)</td></tr>
+<tr><td>All</td><td><code>npm run verify</code></td><td>Clears <code>.next</code> first, then chains everything above</td></tr>
+</table></div>
+<p><strong>Notable design choices.</strong> The smoke test discovers module routes from the nav at runtime so new modules are covered automatically. <code>verify</code> clears <code>.next</code> first because stale dev route types break <code>tsc</code>. Tests are colocated and fast because they hit fakes, not the network or a browser. Test files exist only for <code>src/lib</code> (<code>vitest.config.ts</code> includes <code>.test.ts</code>, not <code>.tsx</code>).</p>
+<p><strong>Missing:</strong> <code>.github/</code> and <code>.husky/</code> do not exist. Nothing runs automatically on commit or push.</p>
+
+<!-- 4 -->
+<h2 id="structure">4. Structure and architecture</h2>
+<p class="take">Dependencies point one way: app, cli and components depend on lib; lib depends on nothing framework-shaped.</p>
+<div class="tablewrap"><table>
+<tr><th>Path</th><th>Purpose</th></tr>
+<tr><td><code>src/lib/&lt;domain&gt;/</code></td><td>Types, zod schema, use-cases, ports, repository, <code>index.ts</code>, colocated tests (98 domains)</td></tr>
+<tr><td><code>src/lib/shared/</code></td><td>Cross-cutting pure helpers: date, money, csv, encryption, password</td></tr>
+<tr><td><code>src/lib/wiring.ts</code></td><td>Composition root (513 lines) that builds real repositories</td></tr>
+<tr><td><code>src/app/</code></td><td>Next routes, server actions, route handlers. Presentation only</td></tr>
+<tr><td><code>src/cli/</code></td><td>One thin adapter per command plus <code>parse-flags.ts</code>, routed by <code>index.ts</code></td></tr>
+<tr><td><code>src/components/</code></td><td>Reusable UI, props in and events out, registered in <code>components.md</code></td></tr>
+<tr><td><code>migrations/</code></td><td>Numbered <code>.sql</code> + <code>.md</code> pairs</td></tr>
+<tr><td><code>scripts/</code></td><td>Migrate, dry-run, boundary check, NAS publish and backup</td></tr>
+<tr><td><code>e2e/</code></td><td>Playwright smoke sweep and auth setup</td></tr>
+<tr><td><code>.claude/</code></td><td>Slash commands and skills</td></tr>
+<tr><td>repo root <code>*.md</code></td><td>Agent docs: ARCHITECTURE, modules, components, design, coding-guide, CLI_registry, lessons_learned</td></tr>
+</table></div>
+
+<h3>Adding a feature, walked through with a real example (Household &rarr; Recipes)</h3>
+<ol>
+<li><strong>Prefix and migration:</strong> pick <code>hsh_</code> from <code>coding-guide.md</code>; add <code>migrations/0118_*.sql</code> and its <code>.md</code>.</li>
+<li><strong>Library:</strong> in <code>src/lib/household/</code> add <code>types.ts</code> (<code>RecipeSummary</code>, <code>Recipe</code>), <code>schema.ts</code> (zod), <code>ports.ts</code> (interface), <code>repository.ts</code> (SQLite), <code>household.ts</code> (use-cases), export through <code>index.ts</code>.</li>
+<li><strong>Tests:</strong> <code>household.test.ts</code> with a fake repo; <code>repository.test.ts</code> against real SQLite.</li>
+<li><strong>Wire:</strong> register the repository in <code>src/lib/wiring.ts</code>.</li>
+<li><strong>Action:</strong> <code>household-actions.ts</code> with <code>requireModuleAccess("household")</code> on line one, zod-validate, call lib.</li>
+<li><strong>View:</strong> <code>household-recipes-view.tsx</code> under <code>src/app/(protected)/modules/[slug]/</code>; reuse registered components.</li>
+<li><strong>Registration:</strong> declare <code>sections</code>, add to <code>module-sections.ts</code>, add to <code>DEFAULT_MODULES</code> and <code>modules.md</code>.</li>
+<li><strong>CLI (optional):</strong> add <code>src/cli/recipes.ts</code>; list it in <code>CLI_registry.md</code>.</li>
+</ol>
+<p class="guess">GUESS: the step order is reconstructed from docs and file layout, not from one commit.</p>
+
+<!-- 5 -->
+<h2 id="conventions">5. Conventions</h2>
+<p class="take">Conventions are written as rules with reasons, and the reasons are what stop an agent from "fixing" them.</p>
+<div class="tablewrap"><table>
+<tr><th>Area</th><th>Convention</th><th>Source</th></tr>
+<tr><td>Naming</td><td>Kebab-case files; domain folders singular; tables get a 3-letter module prefix; prefixes are permanent and retired ones are never reused</td><td><code>coding-guide.md</code></td></tr>
+<tr><td>Imports</td><td>Alias <code>@/*</code>; other modules import from <code>lib/&lt;domain&gt;</code> (index), not internals</td><td><code>tsconfig.json</code>, <code>ARCHITECTURE.md</code></td></tr>
+<tr><td>Validation</td><td>zod schema at every boundary; schema is the single source of shapes</td><td><code>ARCHITECTURE.md</code></td></tr>
+<tr><td>Errors</td><td>Server actions return <code>{ ok, error }</code> objects; guards throw (<code>"You must be signed in."</code>); CLI sets <code>process.exitCode = 1</code></td><td><code>lessons_learned.md</code>, <code>require-access.ts</code>, <code>src/cli/todo.ts</code></td></tr>
+<tr><td>Logging</td><td>Persistent System Log table surfaced in admin; debug logs go through it</td><td>commit <code>e6b7fda</code>, <code>src/lib/system-log</code></td></tr>
+<tr><td>Config</td><td><code>MYHOMEBASE_DB</code> env var with a repo-local fallback; <code>.env.example</code> committed</td><td><code>scripts/migrate.ts</code>, <code>CLI_registry.md</code></td></tr>
+<tr><td>Dependencies</td><td>Pinned exact for the two that matter (react, better-sqlite3); caret elsewhere; paid/metered APIs need permission</td><td><code>package.json</code>, <code>CLAUDE.md</code></td></tr>
+<tr><td>Styling</td><td>Theme tokens, not literal colours; one 1024px breakpoint, <code>max-lg:</code> variants first</td><td><code>design.md</code>, <code>CLAUDE.md</code></td></tr>
+</table></div>
+<h3>Canonical files to read first</h3>
+<ul>
+<li><code>src/lib/household/</code> (<code>ports.ts</code>, <code>household.ts</code>, <code>household.test.ts</code>): the full lib pattern.</li>
+<li><code>src/app/(protected)/require-access.ts</code>: how a security rule is written and justified.</li>
+<li><code>src/cli/todo.ts</code>: a thin CLI adapter with usage in the doc comment.</li>
+<li><code>src/components/_component-template.tsx</code>: props-in/events-out component with variants and <code>className</code> passthrough.</li>
+<li><code>migrations/0001_create_modules.{sql,md}</code>: the migration pair.</li>
+</ul>
+
+<!-- 6 -->
+<h2 id="docs">6. Documentation and agent guidance</h2>
+<p class="take">Docs are written for the agent first: imperative, task-triggered, and explicit about the traps. There is no README and no ADR folder.</p>
+<ul>
+<li><strong>CLAUDE.md</strong> (~1,500 words): the router plus the always-on rules and standing traps.</li>
+<li><strong>ARCHITECTURE.md</strong> (~2,800 words): the contract, including "if a request conflicts, stop and flag it".</li>
+<li><strong>Registries</strong>: <code>modules.md</code> (36k words), <code>components.md</code> (59k), <code>CLI_registry.md</code> (31k). Large, but consulted on demand.</li>
+<li><strong>Decisions as prose in the guides</strong>, not ADRs: <code>coding-guide.md</code> explains why <code>pho_</code> and <code>tol_</code> were chosen over <code>alb_</code> and <code>sql_</code>.</li>
+<li><strong>Comments explain "why"</strong>: <code>scripts/check-lib-boundary.mjs</code>, <code>eslint.config.mjs</code> (why <code>dist-nas/**</code> is ignored), <code>vitest.config.ts</code>.</li>
+<li><strong>Deliberately left out:</strong> a conventional README, ADR files, CI docs. <code>START_HERE.md</code> is kept but marked historical.</li>
+</ul>
+
+<!-- 7 -->
+<h2 id="workflow">7. Workflow and process</h2>
+<p class="take">Trunk-based, one developer, release by ritual rather than by pipeline.</p>
+<ul>
+<li><strong>Branching:</strong> everything on <code>main</code> (git status shows branch <code>main</code>; 222 commits).</li>
+<li><strong>Commit style:</strong> descriptive, feature-led, no Conventional Commits. Prefixes recur informally ("Journal:", "Stocks:", "Add"). Only 3 subjects start with "fix". Commits bundle several features.</li>
+<li><strong>Changelog:</strong> <code>CHANGE_HISTORY.md</code>, newest first, tagged <code>[Added]</code>/<code>[Changed]</code>/<code>[Fixed]</code>; Admin → About counts the tags.</li>
+<li><strong>Release:</strong> <code>/build_project</code> (log, verify, sync docs, commit) and <code>/release</code> (back up prod DB, sync docs, commit, push); <code>npm run publish:nas</code> builds the NAS package.</li>
+<li><strong>Automation:</strong> many <code>.bat</code>/<code>.ps1</code> wrappers at the root (<code>REBUILD_PUBLISH_NAS.bat</code>, <code>START_DEV.bat</code>, <code>full_test.bat</code>).</li>
+<li><strong>PR/review:</strong> none visible. <span class="guess">GUESS: solo project, so no review process was needed.</span></li>
+</ul>
+
+<!-- 8 -->
+<h2 id="risks">8. Weak spots and risks (do not copy)</h2>
+<p class="take">The biggest gap is that excellent gates are never automatic.</p>
+<div class="risk"><strong>No CI, no hooks.</strong> <code>.github/</code> and <code>.husky/</code> are absent. Every gate depends on a human remembering to run it.</div>
+<div class="risk"><strong>"Never run gates unless asked."</strong> <code>CLAUDE.md</code> bans verification by Claude because the suite is slow and the DB is on a NAS. The cause (slow suite, risky DB) is the real problem; the rule treats a symptom and moves all verification to the human.</div>
+<div class="risk"><strong>Doc volume.</strong> ~300k words of markdown at the root. <code>CHANGE_HISTORY.md</code> alone is ~82k words and <code>components.md</code> ~59k. Registries this size drift; docs even disagree with code (<code>CLI_registry.md</code> says 64 commands, <code>src/cli</code> holds 77 files, <span class="guess">GUESS: some are helpers, not commands</span>).</div>
+<div class="risk"><strong>Dead code kept as "cheap revert".</strong> <code>ModuleRail</code> and <code>TreeNav</code> have no call sites; <code>CLAUDE.md</code> has to warn the agent about them. Delete dead code and let git be the revert.</div>
+<div class="risk"><strong>Binary and deploy artifacts in the repo.</strong> Git history shows <code>NAS_DIST.zip</code> committed then removed (a1794d6, 4416795); <code>dist-nas/</code> and many root <code>.bat</code> files add noise. Windows-only automation limits portability.</div>
+<div class="risk"><strong>Untested presentation layer.</strong> Vitest only collects <code>src/**/*.test.ts</code>; no component tests. The Playwright sweep catches crashes, not wrong behaviour.</div>
+<div class="risk"><strong>Large singletons.</strong> <code>src/lib/wiring.ts</code> is 513 lines and grows with every domain; <code>scripts/migrate.ts</code> carries a legacy-rename table that exists only for history.</div>
+<div class="risk"><strong>Personal data guards rely on .gitignore comments.</strong> Real statements and rosters are kept out by ignore rules only.</div>
+
+<!-- 9 -->
+<h2 id="blueprint">9. Reusable blueprint</h2>
+<p class="take">Copy the enforcement and the routing, not the volume. Start with a 100-line CLAUDE.md and three docs.</p>
+<div class="tablewrap"><table>
+<tr><th>Must have</th><th>Nice to have</th><th>Domain-specific: do not copy</th></tr>
+<tr>
+<td><ul>
+<li>Framework-free <code>lib/</code> + lint rule + boundary script</li>
+<li>CLAUDE.md that routes by task</li>
+<li>ARCHITECTURE.md with one hard rule</li>
+<li>zod validation at every boundary</li>
+<li>Ports + fakes + colocated tests</li>
+<li>Numbered migrations with <code>.md</code> twin</li>
+<li>Authorise-first actions</li>
+<li>One <code>verify</code> script, cheapest first</li>
+<li><strong>CI that runs it on push</strong> (missing here)</li>
+<li>Smoke e2e that discovers routes</li>
+<li>Safety rail against touching prod data</li>
+</ul></td>
+<td><ul>
+<li>Plan-then-wait approval gate</li>
+<li>lessons_learned.md</li>
+<li>Component registry and template</li>
+<li>CLI peer front-end</li>
+<li>Skills for release and verify</li>
+<li>Changelog with tags</li>
+<li>Pre-commit hook running typecheck + boundary</li>
+<li>Honest-reporting contract</li>
+</ul></td>
+<td><ul>
+<li>Module slugs, table prefixes, icon-slot system</li>
+<li>NAS / Synology publish scripts and .bat files</li>
+<li>Tree + two-tier navigation and floating-layer rules</li>
+<li>Per-module detail docs (journal, expense, etc.)</li>
+<li>Theme, texture and color-token specifics</li>
+<li>"Never run gates" rule</li>
+</ul></td>
+</tr></table></div>
+
+<h3>Proposed skeleton</h3>
+<pre><button class="copy">Copy</button><code>my-project/
+  CLAUDE.md                  # router + always-on rules (&lt;150 lines)
+  docs/
+    ARCHITECTURE.md          # layering contract, one hard rule
+    coding-guide.md          # naming, migrations, errors
+    lessons_learned.md       # traps, newest first
+    modules.md               # registry (only if you have modules)
+  .claude/
+    commands/verify.md
+    skills/release/SKILL.md
+  .github/workflows/ci.yml   # runs `npm run verify`
+  migrations/                # NNNN_name.sql + NNNN_name.md
+  scripts/
+    check-lib-boundary.mjs
+    migrate.ts
+    verify-preflight.mjs     # refuses unsafe DB path
+  e2e/smoke.spec.ts          # route sweep
+  src/
+    lib/                     # pure TS, tests colocated
+      &lt;domain&gt;/{types,schema,ports,repository,&lt;domain&gt;,index}.ts
+      shared/
+      wiring.ts
+    app/                     # presents only
+    cli/                     # presents only
+    components/              # reusable UI + _component-template.tsx
+  eslint.config.mjs          # includes lib import restriction
+  vitest.config.ts</code></pre>
+
+<h3>Draft CLAUDE.md template</h3>
+<pre><button class="copy">Copy</button><code># Project conventions
+
+Strict layering: **all logic lives in `src/lib/`; `src/app/` and `src/cli/` only present.**
+
+## Read the right doc before writing code
+- Before scaffolding or changing logic: read `docs/ARCHITECTURE.md`.
+- Before schema changes: read `docs/coding-guide.md`.
+- Before building UI: read `docs/components.md`; reuse what fits.
+- Before adding a {{MODULE_OR_FEATURE_UNIT}}: read `docs/modules.md`.
+
+## Plan before building
+For any new feature or multi-file change, present: files to create/modify,
+migration, third-party services ({{free or paid?}}), open questions. Then wait for approval.
+Exempt: typos, renames, single-file fixes.
+
+## Always-on rules
+- `src/lib/` never imports `react` or `next`. Enforced by lint + `npm run check:lib-boundary`.
+- Every server action authorises on its first line: {{GUARD_FUNCTIONS}}.
+- Validate boundary input with the domain's zod schema.
+- New lib logic ships with a colocated `*.test.ts` (success + failure paths).
+- Every use-case must be callable from {{WEB}} and {{CLI_OR_JOB}}.
+- Never touch {{PRODUCTION_DATA_STORE}}; scripts must use {{ENV_VAR}} and refuse unsafe paths.
+
+## Verification
+- Run `npm run verify` before reporting done ({{typecheck, lint, boundary, unit, e2e}}).
+- CI runs the same command on every push.
+- Report: files changed, what was NOT verified, anything unsure.
+
+## Standing traps
+- {{Trap 1: symptom -> cause -> rule}}
+- See `docs/lessons_learned.md`.
+
+## Stack
+{{FRAMEWORK}} + {{LANGUAGE}}. Path alias `@/* -> src/*`.</code></pre>
+
+<h2 id="summary">Top 5 insights</h2>
+<ol class="sum">
+<li><strong>Enforce one architectural rule mechanically.</strong> The <code>src/lib</code> framework-free boundary is checked by lint and a script, so layering survives hundreds of AI-written changes.</li>
+<li><strong>Keep CLAUDE.md a router, not an encyclopedia.</strong> Task-triggered "read X before Y" lines keep context small while deep docs stay available.</li>
+<li><strong>Make placement a lookup.</strong> Registries and naming rules (table prefixes, module slugs, component list) remove judgment calls an agent would get wrong.</li>
+<li><strong>Write down failures as rules.</strong> <code>lessons_learned.md</code> and the standing traps turn costly sessions into durable guidance.</li>
+<li><strong>Automate the gates; don't copy the manual-only approach.</strong> Verification is thorough but depends on a human; a new project should put the same chain in CI and a hook.</li>
+</ol>
+<p style="color:var(--mute);font-size:13px;margin-top:2em">Not verified: I did not run any gate, test, or the app; statistics come from file listings, <code>wc</code> and <code>git log</code>. Command and test claims describe configuration, not observed results.</p>
+</main>
+</div>
+<script>
+document.querySelectorAll('.copy').forEach(function(b){b.addEventListener('click',function(){var t=b.parentElement.querySelector('code').innerText;if(navigator.clipboard){navigator.clipboard.writeText(t).then(function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1200)})}})});
+document.getElementById('theme').addEventListener('click',function(){var r=document.documentElement,d=r.getAttribute('data-theme')==='dark'||(!r.getAttribute('data-theme')&&matchMedia('(prefers-color-scheme:dark)').matches);r.setAttribute('data-theme',d?'light':'dark')});
+</script>
+</body>
+</html>
