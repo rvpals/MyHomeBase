@@ -78,22 +78,42 @@ those in a sentence and get on with it.
   ship a new screen without saying how it behaves narrow.
 - Don't gold-plate a one-off: write the simple version and say so in one line.
 
-## Report done honestly — don't run the gates
-**Never run a quality gate unless Min explicitly asks.** That means no `tsc`/typecheck,
-no `eslint`/lint, no `vitest`/unit tests, no migration dry-run, no `/verify`, no
-`npm run verify`, and no Playwright or any other browser/e2e run — **ever**, including
-"just to check before reporting". Don't offer one either; if a gate would help, finish
-the work and say so in one line.
+## Run the gates — ask first, run cheaply, report honestly
+**When the work is finished, ask before running any gate:** *"Do you want me to start running
+the gates?"* Name the gates you would run (e.g. "typecheck, lint, lib-boundary and the
+`household` tests") so the answer is informed. Ask once per change, not per gate. Use the
+AskUserQuestion tool with Yes / No options when it is available, otherwise a plain one-line
+question, then stop and wait.
 
-Min runs the gates and tests the UI himself. The gates still exist (`/verify`,
-`npm run verify`, `./.claude/commands/verify.md`) — they are **his** to invoke, not
-something to reach for unprompted.
+- **Yes:** run them as described below.
+- **No, or no answer:** run nothing, and say in the report which gates would have covered
+  the change and that none were run.
+- **Never run a gate unprompted**, and don't ask mid-task. Exempt: a user who has already
+  said "run the gates" or "/verify" for this change — don't ask again.
 
-This rule overrides any instinct to "verify before reporting done", and it overrides
-the rest of this file. It exists because running them unasked has repeatedly burned
-minutes on a machine where the suite is slow and the real database lives on a NAS.
+Once approved, keep token use low. The earlier blanket ban existed to cut token usage, not
+because gates are unsafe, so the fix is to trim what you show, not to skip them.
 
-**Instead, report honestly.** Close a change by naming:
+- **Cheapest first, stop at the first failure.** Order: `npm run typecheck`, `npm run lint`,
+  `npm run check:lib-boundary`, `npm test`, `npm run db:migrate:dry-run`, then the browser smoke.
+- **Run only what the change can affect.** Lib-only edit: the affected test file
+  (`npx vitest run src/lib/<domain>`), typecheck, lib-boundary. Add lint when TSX changed.
+  Run the dry-run only when `migrations/` changed. Run the Playwright smoke only when routes,
+  UI or navigation changed. Run the full `npm run verify` once, at the end, for multi-file work.
+- **Show only failures.** Pipe through `tail -40` or `grep`; never paste full green output.
+  Report one line per gate: pass/fail and the failing `file:line`.
+- **On red, fix and re-run from that stage.** Don't re-run a green gate if nothing it
+  covers changed.
+- **The browser smoke is slow** (clears `.next`, boots its own server on 3100, preflight needs
+  3000 and 3100 free). Don't run it for a change it can't see, and stop if the preflight
+  reports a busy port rather than killing the user's dev server.
+- **Never point a gate, script or query at the real database.** The `.verify/` copy rules
+  below still apply to every run.
+
+Min still tests the UI by eye; a green smoke run does not replace that. Say so when a
+change is visual.
+
+**Report honestly.** Close a change by naming:
 1. **Every file** created or modified, by path.
 2. **What you did not verify** — say it plainly rather than implying it works.
 3. **Anything you're unsure landed**, especially a wiring step with no visible output.
@@ -112,7 +132,7 @@ the relevant code:
   naming a file that no longer exists. `verify` and `build` both clear `.next` first now.
 - **Nothing may touch the real database.** The live DB is on the NAS
   (`//NAS_DS223/app/myhomebase/data/`); `C:\webapp` and the repo's `data/` are stale
-  copies and are never the live state. When Min runs a gate, its copies live in
+  copies and are never the live state. When a gate runs, its copies live in
   `.verify/` and the copy step aborts if `MYHOMEBASE_DB` is unset or points inside
   the repo's `data/`. Never point a script, a query or a migration at the real file.
 - **Before restyling a component, prove where it renders.** `grep -rn "<ComponentName"
