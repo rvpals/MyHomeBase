@@ -30,19 +30,27 @@ theme and wrong in the others. The shipped themes are **Signal Deck** (default),
 **Ember Ledger**, **Aurora Deck**, **BMS** (Bristol Myers Squibb brand purple on charcoal
 gray), **Midnight Slate** (blue-slate with an ice-blue accent) and **Copper Vault**
 (near-black with a copper accent) — all dark — plus two light themes, **Daybreak** (rose
-on warm paper) and **Sea Glass** (deep teal on cool off-white).
+on warm paper) and **Sea Glass** (deep teal on cool off-white) — and **Glass**
+(migration 0170), a translucent theme: blurred frosted surfaces over ambient orbs.
 
 **Themes are data, not code** (migration 0076). They live in `sys_color_themes`, and an
-admin can build, edit, duplicate and delete them on that screen — including the eight
-built-ins, which the migration seeds as ordinary editable rows. Two consequences for
+admin can build, edit, duplicate and delete them on that screen — including the
+built-ins, which the migrations seed as ordinary editable rows. Two consequences for
 anyone writing components:
 
-- **You cannot enumerate the themes at build time.** There may be a ninth, or a
-  built-in may have been recoloured. Never special-case a theme by id, and never assume a
+- **You cannot enumerate the themes at build time.** There may be another, or a
+  built-in may have been recoloured. Never special-case a theme by id in a component, and never assume a
   particular token *value* — only its role in the table above.
 - `COLOR_THEMES` in `src/lib/settings/themes.ts` still exists, but its job is now narrow:
-  it is the **reset baseline** for the eight built-ins and the last-resort fallback when
+  it is the **reset baseline** for the built-ins and the last-resort fallback when
   no row matches. Editing it changes what "Reset" restores, not what the app renders.
+
+**The one exception is Glass, and it lives in CSS, not components.** Its row holds opaque
+fallback colours (the table only accepts `#RRGGBB`), while the translucency, `backdrop-filter`
+blur, luminous edges and orbs are a `[data-color-theme="glass"]` block in `globals.css`.
+`layout.tsx` writes the active theme's id onto `<html>` as `data-color-theme` for exactly
+this. The id `glass` is load-bearing — don't rename it. A new surface class that should frost
+under Glass needs adding to that block's selector lists; a component never checks the id.
 
 A user-built theme still has to reuse an existing `FontKey` — the seven faces are loaded
 by `localFont` calls in `src/app/layout.tsx`, so the builder offers exactly those
@@ -680,6 +688,24 @@ physical size on paper.
 The caller triggers printing itself (`window.print()`), so a reusable component
 takes an `onPrint` callback rather than reaching for the browser API. See
 `JournalViewer` and `/modules/[slug]/entries/[id]`.
+
+## Toasts — transient feedback after a save, delete or failure
+
+A server action that succeeds or fails should say so. Use the toast helpers in
+`src/components/toast-notify.ts` (`notifyResult`, `notifySuccess`, `notifyWarning`,
+`notifyError`) from the client handler that awaited the action; `ToastProvider` in the root
+layout draws them. Never import `sonner` directly or draw your own transient banner.
+
+- **Colours and font are tokens** (`--paper-raised`, `--ink`, `--line`, `font-family: inherit`),
+  corners match `Modal` (`rounded-xl`). Deliberately no Sonner `richColors` — it would override
+  the theme with fixed green and red.
+- **Placement clears the bottom chrome.** Bottom-right on desktop, full width on a phone, both
+  offset by `--section-trigger-height` + `--music-player-height` + the safe-area inset. That is
+  why a toast is not a fifth floating surface: it is transient and dismisses itself.
+- **Wording:** success names the thing ("Exam saved", not "Saved"); failure is "Failed to <verb>:
+  <reason>". Success lasts 3s, warning and error 5s.
+- **Alongside, not instead.** Keep the inline error and `BusyOverlay`; toasts are for the quick
+  confirmation. Not for polling, navigation or read-only calls.
 
 ## Page width
 

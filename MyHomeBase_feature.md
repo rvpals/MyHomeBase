@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (210 commits, 2026-07-12 to 2026-11-01) and `CHANGE_HISTORY.md`.
+project's git history (229 commits, 2026-07-12 to 2026-11-13) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -43,8 +43,10 @@ The shell, the chrome and the services every module sits on.
 
 ### Appearance
 
-- **Colour themes as data** — several built in, a builder for your own (which warns
+- **Colour themes as data** — nine built in (including **Glass**, a frosted translucent theme), a builder for your own (which warns
   before you make text unreadable), and random theme generation.
+- **Toast feedback** — a brief themed popup confirms saves, deletes and failures (Attendance,
+  Documents, Exam, Gallery albums), sitting clear of the section bar and music player.
 - **Icon sets**, uploadable module icons, and uploaded icons for category/tag taxonomies.
   Icons that mark a *place* go through registered slots, so an upload survives a redesign.
 - **A library of background textures**, scoped app-wide or per module.
