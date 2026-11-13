@@ -131,7 +131,7 @@ export function DocumentsInstructions({ section }: { section: DocumentsSection }
         </p>
         <p>
           <strong className="text-ink">Disable</strong> a template you are done with for now
-          — a closed claim, last year's taxes. It drops out of the New Document picker but
+          — a closed claim, last year&apos;s taxes. It drops out of the New Document picker but
           stays here, with its values, ready to enable again.
         </p>
       </div>
