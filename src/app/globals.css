@@ -4942,3 +4942,51 @@ html[data-color-theme="glass"] {
     backdrop-filter: blur(8px) saturate(1.2);
   }
 }
+
+/* Route-transition skeletons (loading.tsx files). `.skeleton` is a raised
+   block with a faint brass sweep; `.loading-spinner` reuses nav-pending-spin. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background-color: color-mix(in srgb, var(--paper-raised) 90%, var(--ink));
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--brass) 5%, transparent),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.loading-spinner {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  border: 3px solid var(--line);
+  border-top-color: var(--brass, #6c8aff);
+  animation: nav-pending-spin 700ms linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after,
+  .loading-spinner {
+    animation: none;
+  }
+}
