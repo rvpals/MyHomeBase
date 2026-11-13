@@ -4850,3 +4850,95 @@ html[data-shell="tree"][data-viewport="compact"] .nav-progress-track {
 .clip-tint-slate {
   --clip-tint-hue: #475569;
 }
+
+/* ==========================================================================
+   Glass theme (id "glass", set on <html> by layout.tsx as data-color-theme).
+   The theme row stores opaque hex fallbacks; the translucent values live here
+   because the theme engine only accepts 6-digit hex. Everything is scoped to
+   the attribute, so no other theme changes.
+   ========================================================================== */
+/* html[...] outranks the inline :root block from layout.tsx regardless of order. */
+html[data-color-theme="glass"] {
+  --paper: rgba(15, 17, 23, 0.6);
+  --paper-raised: rgba(30, 34, 46, 0.65);
+  --line: rgba(255, 255, 255, 0.08);
+  --muted: rgba(139, 144, 165, 0.8);
+  --brass-soft: rgba(108, 138, 255, 0.15);
+  /* Flat, thinnest borders: bevels fight translucency. */
+  --chrome-outline-width: 1px;
+  --chrome-divider-width: 1px;
+  --line-width: 1px;
+}
+
+/* Translucent paper over a white canvas would wash out, so the canvas is solid
+   and the body lets the orbs (below) show through. */
+html[data-color-theme="glass"] {
+  background: #0f1117;
+}
+[data-color-theme="glass"] body {
+  background: transparent;
+}
+
+/* Ambient orbs: fixed, behind everything, never intercept input or scroll. */
+[data-color-theme="glass"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(600px circle at 15% 15%, rgba(108, 138, 255, 0.08), transparent),
+    radial-gradient(500px circle at 85% 80%, rgba(167, 139, 250, 0.06), transparent),
+    radial-gradient(800px circle at 50% 50%, rgba(52, 211, 153, 0.04), transparent);
+}
+
+[data-color-theme="glass"] .card-raised,
+[data-color-theme="glass"] .card-embossed,
+[data-color-theme="glass"] .panel-inset,
+[data-color-theme="glass"] .dialog-frame,
+[data-color-theme="glass"] .shell-slab-raised,
+[data-color-theme="glass"] .shell-tree,
+[data-color-theme="glass"] .shell-panel,
+[data-color-theme="glass"] .shell-rail {
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  backdrop-filter: blur(16px) saturate(1.2);
+}
+
+[data-color-theme="glass"] .card-raised {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+[data-color-theme="glass"] .card-embossed {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 8px 32px rgba(0, 0, 0, 0.4);
+}
+[data-color-theme="glass"] .panel-inset {
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+/* Surfaces that sit over other content need to stay legible: more opaque. */
+[data-color-theme="glass"] .dialog-frame,
+[data-color-theme="glass"] .dialog-frame-floating,
+[data-color-theme="glass"] .music-player-pinned,
+[data-color-theme="glass"] .music-player-puck,
+[data-color-theme="glass"] .floating-puck {
+  background: rgba(20, 23, 31, 0.9);
+}
+
+/* Blur is expensive on phones; keep the look, halve the cost. */
+@media (max-width: 1023px) {
+  [data-color-theme="glass"] .card-raised,
+  [data-color-theme="glass"] .card-embossed,
+  [data-color-theme="glass"] .panel-inset,
+  [data-color-theme="glass"] .dialog-frame,
+  [data-color-theme="glass"] .shell-slab-raised,
+  [data-color-theme="glass"] .shell-tree,
+  [data-color-theme="glass"] .shell-panel,
+  [data-color-theme="glass"] .shell-rail {
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
+    backdrop-filter: blur(8px) saturate(1.2);
+  }
+}

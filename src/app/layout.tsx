@@ -328,6 +328,9 @@ export default async function RootLayout({
       // and the tree are the worst surfaces on which to restyle themselves one
       // frame after hydration. globals.css selects on this attribute.
       data-chrome-style={chromeStyle}
+      // The active theme's id, so a theme with CSS beyond the nine tokens (Glass:
+      // blur, orbs, luminous edges) can scope it in globals.css.
+      data-color-theme={theme.id}
       className={`${spaceGrotesk.variable} ${sora.variable} ${familjenGrotesk.variable} ${manrope.variable} ${inter.variable} ${plexMono.variable} ${jetbrainsMono.variable} ${greatVibes.variable} ${dancingScript.variable} ${caveat.variable} ${kalam.variable} ${parisienne.variable} ${pinyonScript.variable} h-full antialiased`}
     >
       <head>

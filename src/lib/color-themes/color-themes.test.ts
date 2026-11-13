@@ -389,3 +389,21 @@ describe("generateColorThemes", () => {
     expect(repo.rows.size).toBe(0);
   });
 });
+
+describe("glass built-in", () => {
+  it("is defined in code with hex tokens the schema accepts", () => {
+    const glass = COLOR_THEMES.find((t) => t.id === "glass");
+    expect(glass).toBeDefined();
+    expect(glass!.tokens.paper).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    expect(glass!.tokens.fonts.body).toBe("inter");
+  });
+
+  it("resolves from the code list when the table is unmigrated", () => {
+    const repo = {
+      isMigrated: () => false,
+      list: () => [],
+      get: () => undefined,
+    } as unknown as ColorThemeRepository;
+    expect(resolveActiveTheme(repo, "glass").id).toBe("glass");
+  });
+});

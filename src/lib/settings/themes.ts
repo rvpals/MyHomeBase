@@ -230,6 +230,27 @@ export const COLOR_THEMES: ColorTheme[] = [
       fonts: { display: "space-grotesk", body: "manrope", mono: "ibm-plex-mono" },
     },
   },
+  // Glassmorphism. Tokens are opaque hex because the theme engine only accepts 6-digit
+  // hex (zod + the table's CHECKs); these are the FALLBACKS. The translucent rgba values,
+  // backdrop blur, luminous edges and ambient orbs live in globals.css under
+  // `[data-color-theme="glass"]`, which layout.tsx sets from this id. Don't rename the id.
+  {
+    id: "glass",
+    name: "Glass",
+    description: "Translucent surfaces, soft luminous edges and ambient color orbs.",
+    tokens: {
+      paper: "#0F1117",
+      paperRaised: "#1E222E",
+      ink: "#E1E4ED",
+      line: "#2A2E3A",
+      muted: "#8B90A5",
+      mutedInverse: "#5A5F73",
+      brass: "#6C8AFF",
+      brassDark: "#4A6AE0",
+      brassSoft: "#1B2342",
+      fonts: { display: "inter", body: "inter", mono: "jetbrains-mono" },
+    },
+  },
 ];
 
 export const DEFAULT_COLOR_THEME_ID = "signal-deck";
