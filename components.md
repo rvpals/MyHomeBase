@@ -3637,6 +3637,7 @@ Time-series line chart, one or more series.
 - **Source:** [src/components/chart-line.tsx](src/components/chart-line.tsx)
 - **Import:** `import { ChartLine, type ChartLineSeries } from "@/components/chart-line";`
 - **Client component:** yes (wraps Recharts)
+- **Lazy-loaded:** yes. The import path above is a thin `next/dynamic` wrapper; the chart itself is [src/components/chart-line-chart.tsx](src/components/chart-line-chart.tsx), so Recharts (~1.4 MB) downloads only when a chart first renders. Import the wrapper, never the `-chart` file — a static import of the implementation puts Recharts back in the shared bundle for every page.
 - **Also accepts** every [shared chart display prop](#shared-chart-display-props).
 
 | Prop | Type | Notes |
@@ -3730,6 +3731,7 @@ fraction of the whole", and only up to 5 slices.
 - **Source:** [src/components/chart-bar.tsx](src/components/chart-bar.tsx)
 - **Import:** `import { ChartBar, type ChartBarItem } from "@/components/chart-bar";`
 - **Client component:** yes (wraps Recharts)
+- **Lazy-loaded:** yes. The import path above is a thin `next/dynamic` wrapper; the chart itself is [src/components/chart-bar-chart.tsx](src/components/chart-bar-chart.tsx), so Recharts (~1.4 MB) downloads only when a chart first renders. Import the wrapper, never the `-chart` file — a static import of the implementation puts Recharts back in the shared bundle for every page.
 - **Also accepts** every [shared chart display prop](#shared-chart-display-props).
 
 | Prop | Type | Notes |
@@ -3884,6 +3886,7 @@ A donut showing each category's **share of a whole**, read at a glance.
 - **Source:** [src/components/chart-pie.tsx](src/components/chart-pie.tsx)
 - **Import:** `import { ChartPie } from "@/components/chart-pie";`
 - **Client component:** yes (wraps Recharts)
+- **Lazy-loaded:** yes. The import path above is a thin `next/dynamic` wrapper; the chart itself is [src/components/chart-pie-chart.tsx](src/components/chart-pie-chart.tsx), so Recharts (~1.4 MB) downloads only when a chart first renders. Import the wrapper, never the `-chart` file — a static import of the implementation puts Recharts back in the shared bundle for every page.
 - **Does _not_ take the shared chart display props** — see why below.
 
 | Prop | Type | Notes |
@@ -3967,6 +3970,7 @@ do.
 - **Source:** [src/components/chart-xy.tsx](src/components/chart-xy.tsx)
 - **Import:** `import { ChartXY, type ChartType } from "@/components/chart-xy";`
 - **Client component:** yes (wraps Recharts; memoized)
+- **Lazy-loaded:** yes. The import path above is a thin `next/dynamic` wrapper; the chart itself is [src/components/chart-xy-chart.tsx](src/components/chart-xy-chart.tsx), so Recharts (~1.4 MB) downloads only when a chart first renders. Import the wrapper, never the `-chart` file — a static import of the implementation puts Recharts back in the shared bundle for every page.
 - **Also accepts** every [shared chart display prop](#shared-chart-display-props).
 
 | Prop | Type | Notes |
@@ -4042,6 +4046,7 @@ is — a candle chart costs a reader more attention, so it should be a choice, n
 - **Source:** [src/components/chart-candle.tsx](src/components/chart-candle.tsx)
 - **Import:** `import { ChartCandle, type ChartCandlePoint } from "@/components/chart-candle";`
 - **Client component:** yes (wraps Recharts)
+- **Lazy-loaded:** yes. The import path above is a thin `next/dynamic` wrapper; the chart itself is [src/components/chart-candle-chart.tsx](src/components/chart-candle-chart.tsx), so Recharts (~1.4 MB) downloads only when a chart first renders. Import the wrapper, never the `-chart` file — a static import of the implementation puts Recharts back in the shared bundle for every page.
 - **Also accepts** every [shared chart display prop](#shared-chart-display-props).
 
 | Prop | Type | Notes |
