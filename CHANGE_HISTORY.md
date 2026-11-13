@@ -1,5 +1,49 @@
 # Change History
 
+## 2026-11-13 11:30 — Toast notifications; Glass theme; lazy-loaded charts; route loading skeletons
+
+**One migration: 0170 (Glass theme seed, data only).** **New package: `sonner`.** A **republish is required**.
+Release commit order: toasts, Glass theme, charts, loading skeletons, a one-line escape fix, then these notes.
+
+**No gates were run for the release itself** (this release step runs none). The toast work was built and
+linted once on request: `npm run build` succeeded; full-repo lint reported the same pre-existing errors with
+and without it, and the files touched had 0 errors. **None of it has been seen on screen.** The Glass theme,
+chart renames and loading files predate this session and carry no verification.
+
+### A. Toast notifications (Sonner)
+
+Saves, deletes and failures now pop a brief toast instead of passing silently. Existing inline errors and
+`BusyOverlay` are untouched; toasts are added alongside.
+
+- `toast-provider.tsx` (new) mounted in `layout.tsx`; styled with theme tokens, bottom-right, lifted by
+  `--section-trigger-height` + `--music-player-height` (CSS `calc()` offset; not confirmed to render on screen).
+- `toast-notify.ts` (new): `notifyResult`, `notifySuccess`, `notifyWarning`, `notifyError`. Success 3 s, warning/error 5 s.
+- Wired into the Attendance, Documents, Exam, Gallery albums/favourites/magic and Journal metadata-transfer views.
+  No `useServerAction` hook (call sites too varied). Admin screens, CSV/SQLite browsers, the music player and
+  polling fetches were skipped. `photo-viewer` was not inspected.
+- `npm install sonner` needed `--legacy-peer-deps` (existing vitest/`@types/node` peer conflict); this also
+  rewrote part of `package-lock.json`.
+
+### B. Glass theme (migration 0170)
+
+A ninth built-in theme, id `glass` (the id is load-bearing: `layout.tsx` sets it as `data-color-theme` and
+`globals.css` scopes the blur/orb styling on it). The row holds opaque fallback tokens; translucent surfaces live
+in CSS. Files: `migrations/0170_seed_glass_theme.sql/.md`, `themes.ts`, `color-themes.test.ts`, `globals.css`, `layout.tsx`.
+Needs 0170 applied on the NAS.
+
+### C. Charts load lazily
+
+`chart-{bar,line,pie,xy,candle}.tsx` are now thin `next/dynamic` wrappers over `chart-*-chart.tsx`, so Recharts
+is fetched only when a chart first renders. Import the wrapper, never the `-chart` file (`components.md` updated).
+
+### D. Route loading skeletons
+
+New `loading.tsx` at `src/app`, `(protected)` and `(protected)/admin`, plus `.skeleton`/`.loading-spinner` CSS.
+
+### E. Escape fix
+
+`documents-instructions.tsx`: `last year's` -> `last year&apos;s` (react/no-unescaped-entities).
+
 ## 2026-11-11 12:35 — Journal Time field blank by default; NAS publish works through the proxy; small-icu date fix
 
 **No migrations.** No tables added or altered. A **republish is required**; no new package.

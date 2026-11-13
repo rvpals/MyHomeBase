@@ -146,6 +146,24 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-13 — Release (Toast notifications, Glass theme, lazy charts, loading skeletons)
+
+Risky: Glass theme needs migration 0170 applied on the NAS. Toast position needs checking on a phone with the
+section bar and a track playing.
+
+- [ ] **1.** Toasts: Attendance - save a register; a "saved" toast appears and fades after ~3 s
+- [ ] **2.** Toasts: Attendance - delete a student/class; a "deleted" toast appears, and a refused delete shows a red error toast
+- [ ] **3.** Toasts: Documents - save/file a document, move to bin, restore, empty the bin each toast
+- [ ] **4.** Toasts: Documents - save with an attachment that fails shows the warning toast
+- [ ] **5.** Toasts: Exam - save, create and delete an exam; saving that discards answers shows a warning naming them
+- [ ] **6.** Toasts: Gallery - create/rename/delete an album; a failed export or download shows an error toast
+- [ ] **7.** Toasts: desktop - toast sits bottom-right clear of the music player; phone - above the section bar and player
+- [ ] **8.** Toasts: colours, font and corners follow the active theme (try a dark and a light theme)
+- [ ] **9.** Glass theme: pick it in the theme list; blurred translucent cards and ambient orbs show; other themes unchanged
+- [ ] **10.** Charts: a line, bar, pie, XY and candle chart still draw, after a brief load on first view
+- [ ] **11.** Loading: navigating between modules briefly shows the skeleton/spinner, and the first app load shows the spinner
+- [ ] **12.** Documents: Instructions text shows "last year's" correctly
+
 ## 2026-11-11 — Release (Journal Time field blank by default, NAS publish through the proxy, small-icu date fix)
 
 **No migrations.** Republish required. Risky: the double-click on the Time field is untested in a real browser. The date fix only shows on the NAS (its Node has en-US locale data only), so check it there, not on the dev box.
