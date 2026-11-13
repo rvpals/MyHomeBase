@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { notifyError } from "@/components/toast-notify";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { PhotoViewer, type ViewerPhoto } from "@/components/photo-viewer";
@@ -438,6 +439,8 @@ export function MagicListView({
       if (!response.ok) {
         const body = await response.json().catch(() => undefined);
         setError(body?.error ?? "Couldn't build that download.");
+
+        notifyError("build that download", body?.error);
         return;
       }
 
@@ -462,6 +465,8 @@ export function MagicListView({
       );
     } catch {
       setError("Couldn't export those photos.");
+
+      notifyError("export those photos");
     } finally {
       setIsBusy(false);
     }

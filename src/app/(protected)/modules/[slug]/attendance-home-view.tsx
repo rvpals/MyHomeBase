@@ -27,6 +27,7 @@ import { memo, useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AttendanceActionIcon } from "@/components/attendance-action-icon";
 import { Button } from "@/components/button";
+import { notifyResult } from "@/components/toast-notify";
 import { Comments } from "@/components/comments";
 import { Modal } from "@/components/modal";
 import {
@@ -357,6 +358,11 @@ export function RegisterPanel({
         entries,
       });
 
+      notifyResult(
+        result,
+        sheet.session ? "Attendance updated" : "Attendance saved",
+        "save attendance",
+      );
       if (result.ok) {
         setMessage(
           `${sheet.session ? "Updated" : "Saved"}${

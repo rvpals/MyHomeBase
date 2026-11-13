@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BulkConfirm } from "@/components/bulk-confirm";
 import { Button } from "@/components/button";
+import { notifyResult } from "@/components/toast-notify";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { TaxonomyChipRow } from "@/components/taxonomy-icon";
 // From the leaf module, NOT the barrel: this is a client component, and
@@ -56,6 +57,7 @@ export function DocumentsRecycleView({ documents }: DocumentsRecycleViewProps) {
     setError(undefined);
     startTransition(async () => {
       const result = await restoreDocumentsAction(rows.map((row) => row.recycledId));
+      notifyResult(result, "Documents restored", "restore the documents");
       if (!result.ok) {
         setError(result.error ?? "Could not restore those documents.");
         return;
@@ -72,6 +74,7 @@ export function DocumentsRecycleView({ documents }: DocumentsRecycleViewProps) {
     setError(undefined);
     startTransition(async () => {
       const result = await purgeRecycledDocumentsAction(rows.map((row) => row.recycledId));
+      notifyResult(result, "Documents permanently deleted", "delete the documents");
       if (!result.ok) {
         setError(result.error ?? "Could not remove those documents.");
         return;
@@ -87,6 +90,7 @@ export function DocumentsRecycleView({ documents }: DocumentsRecycleViewProps) {
     setError(undefined);
     startTransition(async () => {
       const result = await emptyDocumentsBinAction();
+      notifyResult(result, "Bin emptied", "empty the bin");
       if (!result.ok) {
         setError(result.error ?? "Could not empty the bin.");
         return;

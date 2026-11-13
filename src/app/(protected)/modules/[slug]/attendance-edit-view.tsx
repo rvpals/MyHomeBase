@@ -24,6 +24,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { notifyResult } from "@/components/toast-notify";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import {
   CLASS_WEEKDAY_LABELS,
@@ -294,6 +295,7 @@ function RegisterSelectionActions({
         sessions.map((session) => session.recordId),
       );
 
+      notifyResult(result, "Attendance registers deleted", "delete the attendance registers");
       if (!result.ok) {
         setError(result.error);
         return;

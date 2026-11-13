@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { AppVersionWatch } from "@/components/app-version-watch";
 import { IconOverrideProvider } from "@/components/icon-override-context";
 import { IconSetProvider } from "@/components/icon-set-context";
+import { ToastProvider } from "@/components/toast-provider";
 import { ViewportCorrector } from "@/components/viewport-corrector";
 import { ViewportProvider } from "@/components/viewport-context";
 import { getAppVersion } from "@/lib/app-version";
@@ -375,6 +376,7 @@ export default async function RootLayout({
               <ViewportCorrector current={viewport} pinned={viewportPinned} />
               <AppVersionWatch bootBuildId={buildId} />
               {children}
+              <ToastProvider />
             </ViewportProvider>
           </IconOverrideProvider>
         </IconSetProvider>

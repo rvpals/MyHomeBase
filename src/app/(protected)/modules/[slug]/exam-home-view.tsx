@@ -13,6 +13,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/button";
+import { notifyResult } from "@/components/toast-notify";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
 import type { ExamSummary } from "@/lib/exam";
@@ -49,6 +50,7 @@ export function ExamHomeView({ exams }: { exams: ExamSummary[] }) {
     setError(undefined);
     startTransition(async () => {
       const result = await deleteExamAction(exam.id);
+      notifyResult(result, "Exam deleted", "delete the exam");
       if (!result.ok) {
         setError(result.error ?? "Failed to delete the exam.");
         return;

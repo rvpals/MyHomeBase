@@ -15,6 +15,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { Button } from "@/components/button";
+import { notifyError, notifyResult, notifySuccess, notifyWarning } from "@/components/toast-notify";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import {
   CHOICE_SETS,
@@ -220,6 +221,7 @@ export function ExamMakerView({
     startTransition(async () => {
       if (isEditing) {
         const result = await updateExamAction({ ...input, id: loaded.exam.id });
+        if (!result.ok) notifyError("save the exam", result.error);
         if (!result.ok) {
           setError(result.error ?? "Failed to save the exam.");
           return;
@@ -238,11 +240,14 @@ export function ExamMakerView({
           );
         }
         setNotice(costs.length > 0 ? `Saved — ${costs.join(", and ")}.` : "Saved.");
+        if (costs.length > 0) notifyWarning(`Exam saved — ${costs.join(", and ")}`);
+        else notifySuccess("Exam saved");
         router.refresh();
         return;
       }
 
       const result = await createExamAction(input);
+      notifyResult(result, "Exam created", "create the exam");
       if (!result.ok) {
         setError(result.error ?? "Failed to create the exam.");
         return;
@@ -265,6 +270,7 @@ export function ExamMakerView({
           correctChoice,
         })),
       });
+      notifyResult(result, "Answer key saved", "save the answer key");
       if (!result.ok) {
         setError(result.error ?? "Failed to save the answer key.");
         return;

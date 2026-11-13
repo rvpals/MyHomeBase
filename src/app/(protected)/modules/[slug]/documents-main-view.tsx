@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BulkConfirm } from "@/components/bulk-confirm";
 import { Button } from "@/components/button";
+import { notifyError, notifyResult, notifySuccess } from "@/components/toast-notify";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import {
   DownloadAllGlyph,
@@ -169,8 +170,10 @@ export function DocumentsMainView({
       const result = await extractDocumentTextAction(row.id, true);
       if (!result.ok) {
         setError(result.error ?? "That document's text could not be read.");
+        notifyError("read the document text", result.error);
         return;
       }
+      notifySuccess("Document text read");
       setOcrResult({ row, result });
       // The badge is server-rendered from `textState`, so a run that recovered text
       // has to re-fetch the row or the mark stays stale until the next navigation.
@@ -184,6 +187,7 @@ export function DocumentsMainView({
       // A thrown action means the request itself failed — a dropped connection, or a
       // server that restarted mid-extraction. The reader gets a sentence, not a stack.
       setError("The text extraction did not finish. Check the server and try again.");
+      notifyError("read the document text", "the request did not finish");
     } finally {
       setOcrBusy(undefined);
     }
@@ -214,6 +218,7 @@ export function DocumentsMainView({
     setError(undefined);
     startTransition(async () => {
       const result = await deleteDocumentAction(id);
+      notifyResult(result, "Document moved to the bin", "delete the document");
       if (!result.ok) {
         setError(result.error ?? "Could not delete that document.");
         return;
@@ -228,6 +233,7 @@ export function DocumentsMainView({
     setError(undefined);
     startTransition(async () => {
       const result = await bulkRecycleAction(rows.map((row) => row.id));
+      notifyResult(result, "Documents moved to the bin", "delete the documents");
       if (!result.ok) {
         setError(result.error ?? "Could not delete those documents.");
         return;
@@ -255,6 +261,7 @@ export function DocumentsMainView({
         mode,
         names,
       });
+      notifyResult(result, "Documents updated", "update the documents");
       if (!result.ok) {
         setError(result.error ?? "Could not apply that change.");
         return;

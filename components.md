@@ -53,6 +53,7 @@ pattern instead of inventing one.
 | [`DataGridCompact2`](#datagridcompact2) | `DataGrid`'s other compact form — one record per tab. Via `compactLayout="record"`, **not called directly** | [src/components/data-grid-compact-2.tsx](src/components/data-grid-compact-2.tsx) | yes |
 | [`BlobCell`](#blobcell) | A BLOB cell in a grid — its type/size plus Save, and Preview if it is an image | [src/components/blob-cell.tsx](src/components/blob-cell.tsx) | yes |
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
+| [`ToastProvider` / `toast-notify`](#toast) | **Transient feedback after a save, delete or failure** — a themed Sonner toast | [src/components/toast-provider.tsx](src/components/toast-provider.tsx), [src/components/toast-notify.ts](src/components/toast-notify.ts) | yes |
 | [`BulkConfirm`](#bulkconfirm) | **Confirming a bulk action on a ticked selection** — count, caveat, Cancel/confirm | [src/components/bulk-confirm.tsx](src/components/bulk-confirm.tsx) | yes |
 | [`FullscreenStage`](#fullscreenstage) | **A real fullscreen display** — chromeless black stage via the Fullscreen API | [src/components/fullscreen-stage.tsx](src/components/fullscreen-stage.tsx) | yes |
 | [`FloatingLayer`](#floatinglayer) | **A component that floats over the page** — puck in a corner, window card when opened | [src/components/floating-layer.tsx](src/components/floating-layer.tsx) | yes |
@@ -264,6 +265,18 @@ switch. **Every** clickable action uses this — do not hand-roll a `<button cla
 stays a fixed semantic red across every color theme. Respects `prefers-reduced-motion`.
 
 ---
+
+## Toast
+
+**Quick, non-blocking feedback.** `ToastProvider` (mounted once in the root layout) renders Sonner's `<Toaster />` in theme tokens, `bottom-right` on desktop and lifted above the section bar and music player (`--section-trigger-height`, `--music-player-height`). Fire toasts only through `src/components/toast-notify.ts`.
+
+- **Client component:** yes. Server actions cannot toast — call the helpers in the client handler that awaited them.
+- `notifyResult(result, "Exam deleted", "delete the exam")` — toasts an `{ ok, error?, message? }` action result (uses `result.message` when present) and returns whether it succeeded. Use a specific noun in the success text.
+- `notifySuccess(text)`, `notifyWarning(text)` (partial success), `notifyError("save the exam", error?)` → "Failed to save the exam: …".
+- Success lasts 3s; warnings and errors 5s.
+- Add a toast **alongside** the existing inline error / `BusyOverlay`, never instead of it. Not for polling, refreshes, navigation or read-only calls.
+- Not a `useServerAction` hook on purpose: call sites pass FormData, several args, or optimistic state, so a generic hook fit almost none.
+
 
 ## BusyOverlay
 

@@ -4,6 +4,7 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/button";
+import { notifyError, notifyResult } from "@/components/toast-notify";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
@@ -75,6 +76,7 @@ export function AttendanceRostersView({
 
     startTransition(async () => {
       const result = await studentRecordAction(student.id);
+      if (!(result.ok && result.record)) notifyError("load the student record", result.error);
       if (result.ok && result.record) setRecord(result.record);
       else setRecordError(result.error ?? "Failed to load the student record.");
     });
@@ -90,6 +92,7 @@ export function AttendanceRostersView({
     setError(undefined);
     startTransition(async () => {
       const result = await deleteStudentAction(student.id);
+      notifyResult(result, "Student deleted", "delete the student");
       if (!result.ok) setError(result.error);
     });
   }
@@ -260,6 +263,7 @@ function RosterSelectionActions({
         students.map((student) => student.id),
       );
 
+      notifyResult(result, "Students added to class", "add students to the class");
       if (!result.ok) {
         setError(result.error);
         return;
@@ -287,6 +291,7 @@ function RosterSelectionActions({
 
     startTransition(async () => {
       const result = await deleteStudentsAction(students.map((student) => student.id));
+      notifyResult(result, "Students deleted", "delete the students");
 
       if (!result.ok) {
         setError(result.error);
@@ -362,6 +367,7 @@ function StudentForm({
 
     startTransition(async () => {
       const result = await onSubmit(values);
+      notifyResult(result, "Student saved", "save the student");
       if (result.ok) {
         if (resetOnSuccess) setValues(EMPTY_FORM);
         onSuccess?.();

@@ -4,6 +4,7 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/button";
+import { notifyResult } from "@/components/toast-notify";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
@@ -69,6 +70,7 @@ export function AttendanceClassesView({
     setError(undefined);
     startTransition(async () => {
       const result = await deleteClassAction(item.id);
+      notifyResult(result, "Class deleted", "delete the class");
       if (!result.ok) setError(result.error);
     });
   }
@@ -227,6 +229,7 @@ function ClassRosterPanel({
 
     startTransition(async () => {
       const result = await enrollStudentsAction(attendanceClass.id, [...selectedIds]);
+      notifyResult(result, "Students added to class", "add students to the class");
       if (result.ok) {
         setMessage(`Added ${result.addedCount}.`);
         setSelectedIds(new Set());
@@ -240,6 +243,7 @@ function ClassRosterPanel({
     setError(undefined);
     startTransition(async () => {
       const result = await removeStudentFromClassAction(attendanceClass.id, studentId);
+      notifyResult(result, "Student removed from class", "remove the student from the class");
       if (!result.ok) setError(result.error);
     });
   }
@@ -367,6 +371,7 @@ function ClassForm({
 
     startTransition(async () => {
       const result = await onSubmit(values);
+      notifyResult(result, "Class saved", "save the class");
       if (result.ok) {
         if (resetOnSuccess) setValues(EMPTY_CLASS_FORM);
         onSuccess?.();

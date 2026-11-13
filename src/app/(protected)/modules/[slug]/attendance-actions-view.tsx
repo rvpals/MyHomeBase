@@ -26,6 +26,7 @@ import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
+import { notifyResult } from "@/components/toast-notify";
 import {
   ATTENDANCE_ACTION_ICONS,
   ATTENDANCE_IMAGE_MIME_TYPES,
@@ -59,6 +60,7 @@ export function AttendanceActionsView({ actions }: { actions: StudentAction[] })
     setMessage(undefined);
     startTransition(async () => {
       const result = await deleteStudentActionAction(row.id);
+      notifyResult(result, "Student action deleted", "delete the student action");
       // A refusal here is expected rather than exceptional — the action has been
       // recorded, and the message says to retire it instead.
       if (!result.ok) setError(result.error);
@@ -71,6 +73,11 @@ export function AttendanceActionsView({ actions }: { actions: StudentAction[] })
     setMessage(undefined);
     startTransition(async () => {
       const result = await setStudentActionActiveAction(row.id, isActive);
+      notifyResult(
+        result,
+        isActive ? "Student action marked in use" : "Student action retired",
+        "update the student action",
+      );
       if (!result.ok) setError(result.error);
       else setMessage(`"${row.name}" is now ${isActive ? "in use" : "retired"}.`);
     });
@@ -267,6 +274,7 @@ function ActionForm({
         isActive,
       });
 
+      notifyResult(result, "Student action saved", "save the student action");
       if (!result.ok) {
         setError(result.error);
         return;
@@ -426,6 +434,7 @@ function ActionIconUpload({ action }: { action: StudentAction }) {
     try {
       const base64Data = await readFileAsBase64(file);
       const result = await setStudentActionIconAction(action.id, file.type, base64Data);
+      notifyResult(result, "Icon uploaded", "upload the icon");
       if (!result.ok) setError(result.error);
       else router.refresh();
     } finally {
@@ -438,6 +447,7 @@ function ActionIconUpload({ action }: { action: StudentAction }) {
     setIsBusy(true);
     try {
       const result = await clearStudentActionIconAction(action.id);
+      notifyResult(result, "Icon removed", "remove the icon");
       if (!result.ok) setError(result.error);
       else router.refresh();
     } finally {

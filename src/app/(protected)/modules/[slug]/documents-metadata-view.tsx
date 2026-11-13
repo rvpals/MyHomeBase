@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { notifyResult } from "@/components/toast-notify";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { FileDropzone } from "@/components/file-dropzone";
 import { TaxonomyIcon } from "@/components/taxonomy-icon";
@@ -129,6 +130,7 @@ function TaxonomyList({
     setError(undefined);
     startTransition(async () => {
       const result = await work();
+      notifyResult(result, `${kind[0].toUpperCase()}${kind.slice(1)} saved`, `save that ${kind}`);
       if (!result.ok) {
         setError(result.error ?? `Could not save that ${kind}.`);
         return;

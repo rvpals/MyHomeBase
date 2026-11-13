@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
+import { notifyError, notifyResult, notifySuccess, notifyWarning } from "@/components/toast-notify";
 import { BusyOverlay } from "@/components/busy-overlay";
 import { FileUploaderZone, type AttachedFile } from "@/components/file-uploader-zone";
 import { TokenPicker } from "@/components/token-picker";
@@ -222,6 +223,7 @@ export function DocumentsEditorView({
             setError(
               `The document was saved, but these files were not attached — ${failures.join("; ")}`,
             );
+            notifyWarning("Document saved, but some files were not attached");
             router.refresh();
             return;
           }
@@ -233,17 +235,20 @@ export function DocumentsEditorView({
             setBusyMessage(undefined);
             setPending([]);
             setDuplicateNotice(duplicates);
+            notifySuccess(isEditing ? "Document saved" : "Document filed");
             router.refresh();
             return;
           }
         }
 
+        notifySuccess(isEditing ? "Document saved" : "Document filed");
         setBusyMessage(undefined);
         router.push("/modules/documents");
         router.refresh();
       } catch (caught) {
         setBusyMessage(undefined);
         setError(caught instanceof Error ? caught.message : "Something went wrong.");
+        notifyError(isEditing ? "save the document" : "file the document", caught);
       }
     });
   }
@@ -264,6 +269,7 @@ export function DocumentsEditorView({
     setError(undefined);
     startTransition(async () => {
       const result = await removeAttachmentAction(attachmentId, true);
+      notifyResult(result, "Attachment removed", "remove the attachment");
       if (!result.ok) {
         setError(result.error ?? "Could not remove that attachment.");
         return;

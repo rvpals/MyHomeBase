@@ -18,6 +18,7 @@
 // Gallery module's "Favorite photos" section, and the old route is gone.
 
 import { useCallback, useMemo, useState } from "react";
+import { notifyError } from "@/components/toast-notify";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { BusyOverlay } from "@/components/busy-overlay";
@@ -173,6 +174,8 @@ export function FavPhotosList({
         await refresh();
       } catch {
         setError("Couldn't save the note.");
+
+        notifyError("save the note");
       }
     },
     [refresh],
@@ -220,6 +223,8 @@ export function FavPhotosList({
         await refresh();
       } catch {
         setError("Couldn't remove those favourites.");
+
+        notifyError("remove those favourites");
       } finally {
         setIsBulkBusy(false);
       }
@@ -258,6 +263,8 @@ export function FavPhotosList({
         // as JSON with a message meant to be shown.
         const body = await response.json().catch(() => undefined);
         setError(body?.error ?? "Couldn't build that download.");
+
+        notifyError("build that download", body?.error);
         return;
       }
 
@@ -287,6 +294,8 @@ export function FavPhotosList({
       );
     } catch {
       setError("Couldn't download those photos.");
+
+      notifyError("download those photos");
     } finally {
       setIsBulkBusy(false);
     }

@@ -18,6 +18,7 @@
 // with `max-lg:` variants, so the desktop classes provably cannot regress.
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { notifyError, notifySuccess } from "@/components/toast-notify";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import { PhotoViewer } from "@/components/photo-viewer";
@@ -208,9 +209,12 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
         }
         setIsCreating(false);
         setNotice(`Created “${result.value.name}”.`);
+        notifySuccess("Album created");
         await refreshAlbums();
       } catch {
         setFormError("Couldn't create that album.");
+
+        notifyError("create that album");
       } finally {
         setIsBusy(false);
       }
@@ -230,11 +234,14 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
           return;
         }
         setEditing(undefined);
+        notifySuccess("Album saved");
         await refreshAlbums();
         // Keep the open album's header in step when it is the one being renamed.
         if (openAlbum?.id === editing.id) await refreshOpenAlbum(editing.id);
       } catch {
         setFormError("Couldn't save that album.");
+
+        notifyError("save that album");
       } finally {
         setIsBusy(false);
       }
@@ -269,6 +276,7 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
           return;
         }
         setNotice(`Deleted “${album.name}”.`);
+        notifySuccess("Album deleted");
         if (openAlbum?.id === album.id) {
           setOpenAlbum(undefined);
           setSelected(new Set());
@@ -276,6 +284,8 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
         await refreshAlbums();
       } catch {
         setError("Couldn't delete that album.");
+
+        notifyError("delete that album");
       } finally {
         setIsBusy(false);
       }
@@ -299,6 +309,8 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
       setOpenAlbum(album);
     } catch {
       setError("Couldn't open that album.");
+
+      notifyError("open that album");
     } finally {
       setIsBusy(false);
     }
@@ -331,6 +343,8 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
       await refreshAlbums();
     } catch {
       setError("Couldn't remove those photos.");
+
+      notifyError("remove those photos");
     } finally {
       setIsBusy(false);
     }
@@ -362,6 +376,8 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
         if (!response.ok) {
           const body = await response.json().catch(() => undefined);
           setError(body?.error ?? "Couldn't build that download.");
+
+          notifyError("build that download", body?.error);
           return;
         }
 
@@ -390,6 +406,8 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
         );
       } catch {
         setError("Couldn't export those photos.");
+
+        notifyError("export those photos");
       } finally {
         setIsBusy(false);
       }

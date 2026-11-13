@@ -16,6 +16,7 @@
 // Route-local rather than registered: nothing outside My Journal renders these.
 
 import { useCallback, useState } from "react";
+import { notifyError } from "@/components/toast-notify";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { FileDropzone } from "@/components/file-dropzone";
@@ -68,11 +69,15 @@ export function JournalMetadataBackupButton() {
       const response = await fetch(EXPORT_URL);
       if (!response.ok) {
         setError("Couldn't build that backup.");
+
+        notifyError("build that backup");
         return;
       }
       await saveResponseAsFile(response, "journal-metadata.json");
     } catch {
       setError("Couldn't build that backup.");
+
+      notifyError("build that backup");
     } finally {
       setIsBusy(false);
     }
