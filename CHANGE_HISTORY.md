@@ -1,5 +1,40 @@
 # Change History
 
+## 2026-11-13 20:47 — Journal: Calendar popover and header polish, Statistics "Locked" tile fix
+
+**No migration, no new package.** A **republish is required** (three TSX files).
+
+**No gates were run** — not for the change and not for this release step. The auto-mode classifier denied
+`npm run typecheck` and `npx tsc --noEmit`, and nothing was retried. **None of it has been seen on screen.**
+Each change was traced through the source (tab keys, lock scopes, filter aliases, call sites), not exercised.
+
+### A. Journal > Calendar: "Jump to a date" popover no longer truncated
+
+The panel was anchored `absolute right-0`, but its button sits at the *left* end of the toolbar beside "Today", so
+the 288px box grew leftwards off the screen edge. Now `left-0`. Compact keeps its fixed full-width panel, now with
+explicit `max-lg:left-3 max-lg:right-3` (the old `inset-x-3` + `right-auto` pair only existed to cancel `right-0`).
+`journal-calendar-view.tsx`.
+
+### B. Journal > Calendar: weekday header (SUN, MON, ...) casts a drop shadow
+
+The strip takes `.nav-raised-top` (design.md's registered class for a top-pinned bar) plus `relative z-10`, which is
+what lets the cast show over the day cells that paint after it. No new shadow style. `journal-calendar-view.tsx`.
+
+### C. Journal > Calendar: heading row removed
+
+The shared title + description + divider is no longer drawn on the Calendar section; the toolbar already shows the
+period and entry count. Gated by `hidesHeading` in `journal-section.tsx`, and the body drops its `mt-6` with it.
+`JOURNAL_SECTION_INFO.calendar` is untouched because the nav tree, compact bar and breadcrumb read it.
+
+### D. Journal > Home screen: "Total Locked Entries" tile now lists the locked entries
+
+The tile linked to `?filter=locked = yes` with no tab, so it opened Unlocked Entries, whose server-side lock scope
+is "unlocked" — the filter and the tab contradicted each other and matched nothing. Added `tab=main` (All Entries).
+`journal-view.tsx`.
+
+**Known and not changed:** the "Pinned" link in the same file has the same shape (`?filter=pinned = yes`, no tab), so
+an entry that is both pinned and locked is missing from its list.
+
 ## 2026-11-13 11:30 — Toast notifications; Glass theme; lazy-loaded charts; route loading skeletons
 
 **One migration: 0170 (Glass theme seed, data only).** **New package: `sonner`.** A **republish is required**.

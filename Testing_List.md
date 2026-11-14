@@ -146,6 +146,16 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-13 — Release (Journal Calendar polish, Locked-entries tile fix)
+
+Needs no migration. Items 1–3 are on Journal > Calendar; check each on a phone width as well as a desktop.
+
+- [ ] **1.** Journal > Calendar: click the "Jump to a date" button — the box opens fully on screen (rightwards from the button), nothing cut off at the left edge
+- [ ] **2.** Journal > Calendar (phone width): the Jump box spans the screen with a small margin each side
+- [ ] **3.** Journal > Calendar: the SUN–SAT header strip casts a visible soft shadow onto the first week; it reads on a light theme and a dark one
+- [ ] **4.** Journal > Calendar: no "Calendar" title or "See your journal entries on a calendar." line above the toolbar, and the grid isn't pushed oddly close to or far from the top; other Journal sections still show their title
+- [ ] **5.** Journal > Home screen: click "Total Locked Entries" — it opens All Entries showing the locked entries, not an empty list; the row count matches the tile number
+
 ## 2026-11-13 — Release (Toast notifications, Glass theme, lazy charts, loading skeletons)
 
 Risky: Glass theme needs migration 0170 applied on the NAS. Toast position needs checking on a phone with the

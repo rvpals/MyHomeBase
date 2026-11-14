@@ -590,6 +590,13 @@ export async function JournalSection({
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
   const info = JOURNAL_SECTION_INFO[section] ?? JOURNAL_SECTION_INFO.main;
+
+  // The Calendar section renders no heading row. Its own toolbar already states
+  // the period and the entry count directly above the grid, and the breadcrumb
+  // names the section, so the shared row only repeated that and pushed the grid
+  // down. The registry entry stays as it is: `label` and `description` still
+  // feed the nav tree, the compact bar and the breadcrumb.
+  const hidesHeading = section === "calendar";
   const currentUser = await requireUser();
 
   return (
@@ -606,7 +613,7 @@ export async function JournalSection({
           open/closed state, and the card is its own section now. */}
       {section === "main" ? (
         <JournalHomeHeader label={info.label} description={info.description} />
-      ) : (
+      ) : hidesHeading ? null : (
         // Title on the left, the section's own action on the right. Wraps and
         // goes full-width under 1024px, so the button drops below the
         // description rather than squeezing the heading. Sections with no
@@ -622,7 +629,7 @@ export async function JournalSection({
           <div className="mt-3 h-px w-full bg-line" />
         </>
       )}
-      <div className="mt-6">
+      <div className={hidesHeading ? undefined : "mt-6"}>
         <SectionBody
           section={section}
           isAdmin={isAdmin}

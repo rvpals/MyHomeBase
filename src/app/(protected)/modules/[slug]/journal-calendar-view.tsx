@@ -638,7 +638,7 @@ function JumpControl({
       {isOpen ? (
         <div
           id="journal-calendar-jump"
-          className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-line bg-paper-raised p-4 card-raised max-lg:fixed max-lg:inset-x-3 max-lg:right-auto max-lg:w-auto"
+          className="absolute left-0 z-20 mt-2 w-72 rounded-xl border border-line bg-paper-raised p-4 card-raised max-lg:fixed max-lg:left-3 max-lg:right-3 max-lg:w-auto"
         >
           <label
             htmlFor="journal-jump-date"
@@ -758,7 +758,14 @@ function MonthGrid({
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-line">
-      <div className="grid grid-cols-7 border-b border-line bg-paper-raised">
+      {/* The weekday strip reads as a bar pinned above the grid, so it takes
+          `.nav-raised-top` — design.md's registered class for a top-pinned bar
+          casting down over content — rather than a hand-rolled shadow.
+          `relative z-10` is what makes the cast visible: the day cells come
+          later in the DOM and paint their own backgrounds over an earlier
+          sibling's shadow otherwise. The wrapper's `overflow-hidden` doesn't
+          clip it, because the cast falls inward onto the grid. */}
+      <div className="relative z-10 grid grid-cols-7 border-b border-line bg-paper-raised nav-raised-top">
         {WEEKDAY_LABELS.map((label) => (
           <div
             key={label}

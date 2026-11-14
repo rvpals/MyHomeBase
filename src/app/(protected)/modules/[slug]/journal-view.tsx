@@ -653,7 +653,11 @@ export function JournalView({
             // `locked = yes` is the filter grammar's own spelling (filter-query.ts
             // maps `locked` → `isLocked`), so this is the same link the reader
             // could have typed into the Entries filter box themselves.
-            href={`/modules/journal/entries?filter=${encodeURIComponent("locked = yes")}`}
+            // `tab=main` is load-bearing: without it the Entries screen opens on
+            // Unlocked Entries, whose lockScope is "unlocked", and `locked = yes`
+            // then contradicts the tab's own condition and matches nothing. All
+            // Entries is the only grid tab that can show a locked row.
+            href={`/modules/journal/entries?tab=main&filter=${encodeURIComponent("locked = yes")}`}
             title="Show every locked entry"
           />
           <StatTile
