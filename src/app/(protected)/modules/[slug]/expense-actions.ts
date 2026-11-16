@@ -17,12 +17,16 @@ import {
 import {
   EXPENSE_SETTING_KEYS,
   excludedCategoriesSchema,
+  buildExpensesOnDateView,
   bulkEditTransactions,
   clearAccountImage,
   clearCategoryIcon,
   clearVendorIcon,
   autoPopulateVendorIcon,
   countUnprocessed,
+  listAccounts,
+  listTransactions,
+  resolveExpenseDateWindow,
   createAccount,
   createRule,
   createTransaction,
@@ -62,6 +66,7 @@ import {
   type VendorIconFetchResult,
   type RuleActionField,
   type SaveTransactionInput,
+  type ExpensesOnDateView,
 } from "@/lib/expense";
 import { runExpenseAutoImport } from "@/lib/expense/auto-import-runner";
 import { getModuleBySlug } from "@/lib/modules";
@@ -88,6 +93,51 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 async function currentUserId(): Promise<number | undefined> {
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   return getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo)?.id;
+}
+
+// --- expenses around a date -------------------------------------------------
+
+export interface ExpensesOnDateResult extends ActionResult {
+  /** Present only when `ok`. */
+  view?: ExpensesOnDateView;
+}
+
+/**
+ * What was spent in a window around one date, across every card.
+ *
+ * The only action in this file written for callers *outside* the Expense module:
+ * the Journal's entry viewer and its calendar both open `DayExpensesDialog` over
+ * their own screen rather than navigating away, so they need the rows without a
+ * page load. It is still an Expense action and still authorises as one — an
+ * action is its own POST endpoint, so the Journal hiding the button for a reader
+ * without the Expense module protects nothing on its own.
+ *
+ * Read-only, so no `revalidatePath`: nothing here invalidates a cached page.
+ *
+ * The date is filtered in SQL (`fromDate`/`toDate` on `TransactionFilter`) rather
+ * than by reading the table and narrowing in memory — a journal entry from 2019
+ * should cost one indexed range scan, not every row the household has ever spent.
+ */
+export async function expensesOnDateAction(
+  date: string,
+  days?: number,
+): Promise<ExpensesOnDateResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    // Throws on a date it can't read, which `toErrorResult` turns into the
+    // dialog's error line rather than a 500.
+    const dateWindow = resolveExpenseDateWindow(date, days);
+    const transactions = listTransactions(deps.expenseRepo, {
+      fromDate: dateWindow.from,
+      toDate: dateWindow.to,
+    });
+    return {
+      ok: true,
+      view: buildExpensesOnDateView(transactions, listAccounts(deps.expenseRepo), dateWindow),
+    };
+  } catch (error) {
+    return toErrorResult(error, "Failed to read the expenses for that date.");
+  }
 }
 
 // --- accounts ---------------------------------------------------------------

@@ -113,6 +113,16 @@ export const TREE_ICON_NAMES = [
   // module's own description, so the second consumer is already on the roadmap.
   "recipe",
   "receipt",
+  // The "expenses around this date" buttons the Journal's entry viewer and its
+  // calendar draw — a dollar sign in a coin.
+  //
+  // Deliberately NOT `wallet`: that is a MODULE icon concept (Expense's own), and
+  // these slots resolve against this list, so naming it would render nothing at
+  // all. Also not `receipt`, which Household's HSA paperwork already wears two
+  // navs away — a till slip says "the paper that proves it", and these buttons
+  // say "the money itself", which is the distinction a reader needs when the
+  // glyph sits beside a journal entry rather than inside a filing screen.
+  "money",
   // The "launch module" button on the home screen's cards — opens the module the card's
   // numbers belong to, at its landing page. A button, so it is in `ALWAYS_CLASSIC` and
   // no icon slot points at it.

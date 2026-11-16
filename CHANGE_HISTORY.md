@@ -1,5 +1,40 @@
 # Change History
 
+## 2026-11-16 09:07 — Expenses around a date: Expense `?date=` landing, and `$` buttons in the Journal
+
+**No migration, no new package.** A **republish is required**.
+
+**Gates run, partially.** `typecheck` passed. `lint` reports 35 errors, all in files this change does not touch
+(React-compiler rules in `collapsible-card`, `nav-tree`, `personal-toolbar`, etc.); the files changed here are lint-clean.
+`check:lib-boundary` passed. **The Vitest suite could not run at all in this environment** — every test file, including
+untouched ones, fails at import with `Cannot read properties of undefined (reading 'config')` (vitest 5.0.1 / vite 8.3.4 /
+node 24). So the new tests (`expenses-on-date.test.ts`, the `shiftIsoDate` cases) **have never been executed**. The browser
+smoke was not run. **None of it has been seen on screen.**
+
+### A. Expense > Transactions: `?date=` opens a day dialog over the list
+
+`/modules/expense/transactions?date=2026-11-16` opens `DayExpensesDialog` over the Transactions screen: every card,
+a ±1 day window by default (`?days=` widens it, clamped 0–31), one row per transaction with its own date, a total, and a
+note that refunds count down. Closing it strips `?date=`/`?days=` with `router.replace` and keeps `?groupBy=`/`?group=`.
+A date the library refuses shows an error line in the dialog rather than a 500. `expenseDateHref(date, days?)` in
+`expense-sections.ts` is the one place other modules build this URL.
+
+### B. Journal: `$` button on the entry viewer and on the calendar's open-day panel
+
+Both open the same dialog **in place** (the reader stays in the Journal) through a new `expensesOnDateAction`, which
+authorises with `requireModuleAccess("expense")` and filters by date in SQL. The button is hidden for a reader without the
+Expense module. Entry viewer: new `onOpenExpenses` prop on `JournalViewer`, right of the calendar shoe. Calendar: icon
+button beside **New entry** / **Close**. The dialog's footer has **Open in Expense**.
+
+### C. Library and icons
+
+- `src/lib/expense/expenses-on-date.ts` (+ test): `resolveExpenseDateWindow`, `transactionsInDateWindow`,
+  `buildExpensesOnDateView` — pure.
+- `src/lib/shared/date.ts`: `shiftIsoDate` (calendar arithmetic via `setDate`, DST-safe) with tests.
+- New `money` tree-icon concept (hand-drawn `$` in a coin; themed sets fall back to it) and two slots,
+  `journal_entry_expenses` and `journal_calendar_day_expenses`. Slot ids are permanent once uploads exist.
+- Shared component `DayExpensesDialog` registered in `components.md`; route-local wrapper `journal-day-expenses.tsx`.
+
 ## 2026-11-13 20:47 — Journal: Calendar popover and header polish, Statistics "Locked" tile fix
 
 **No migration, no new package.** A **republish is required** (three TSX files).

@@ -109,6 +109,22 @@ export function parseIsoDateLocal(isoDate: string): Date {
 }
 
 /**
+ * `isoDate` moved by whole days — negative goes back, positive forward.
+ *
+ * Day arithmetic through `Date.setDate`, not by adding milliseconds: a day is
+ * not always 86,400,000ms. On a spring-forward date in a DST timezone it is 23
+ * hours, so "+1 day" done by millisecond arithmetic lands at 23:00 on the *same*
+ * calendar day and `toIsoDateLocal` then hands back the date you started from.
+ * `setDate` is calendar arithmetic and rolls the month and the year itself.
+ */
+export function shiftIsoDate(isoDate: string, days: number): string {
+  if (!Number.isInteger(days)) throw new Error(`Expected a whole number of days, got ${days}.`);
+  const date = parseIsoDateLocal(isoDate);
+  date.setDate(date.getDate() + days);
+  return toIsoDateLocal(date);
+}
+
+/**
  * The Monday of the week containing `isoDate`. Monday rather than Sunday because
  * a trading week is Monday-to-Friday — a Sunday-start week would split Friday's
  * session from the four days it belongs with.

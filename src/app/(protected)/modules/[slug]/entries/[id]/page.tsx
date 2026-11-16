@@ -12,6 +12,12 @@ import { journalTaxonomyIconUrlsByName } from "../../journal-shared";
 import { PAGE_CONTAINER } from "../../../../page-container";
 
 const JOURNAL_MODULE_SLUG = "journal";
+/**
+ * The Expense module, looked up only to decide whether to draw the viewer's $
+ * button. Matched by full slug, never by prefix — the same rule the server
+ * actions follow.
+ */
+const EXPENSE_MODULE_SLUG = "expense";
 
 export default async function JournalEntryPage({
   params,
@@ -43,6 +49,15 @@ export default async function JournalEntryPage({
   const categories = listCategories(deps.journalRepo);
   const tags = listTags(deps.journalRepo);
 
+  // Whether to offer the "expenses around this date" button. A second module's
+  // grant, so it is checked separately from the journal one above — plenty of
+  // readers have one and not the other. The real guard is inside
+  // `expensesOnDateAction`; this only decides whether the control is drawn.
+  const expenseModule = getModuleBySlug(deps.moduleRepo, EXPENSE_MODULE_SLUG);
+  const canSeeExpense =
+    expenseModule !== undefined &&
+    userHasModuleAccess(currentUser, expenseModule.id, deps.userRepo);
+
   // Plain objects across the client boundary — JournalViewer is a client
   // component and can't be handed a Map.
   const categoryIcons = Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories));
@@ -67,6 +82,7 @@ export default async function JournalEntryPage({
             (row) => row.name,
           )}
           locationTagOptions={listLocationTags(deps.sysLocationRepo).map((row) => row.name)}
+          canSeeExpense={canSeeExpense}
         />
       </div>
     </JournalShell>

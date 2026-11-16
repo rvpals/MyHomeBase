@@ -55,6 +55,7 @@ pattern instead of inventing one.
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`ToastProvider` / `toast-notify`](#toast) | **Transient feedback after a save, delete or failure** — a themed Sonner toast | [src/components/toast-provider.tsx](src/components/toast-provider.tsx), [src/components/toast-notify.ts](src/components/toast-notify.ts) | yes |
 | [`BulkConfirm`](#bulkconfirm) | **Confirming a bulk action on a ticked selection** — count, caveat, Cancel/confirm | [src/components/bulk-confirm.tsx](src/components/bulk-confirm.tsx) | yes |
+| [`DayExpensesDialog`](#dayexpensesdialog) | **What was spent around one date**, across every card — the Journal's `$` buttons and Expense's `?date=` landing | [src/components/day-expenses-dialog.tsx](src/components/day-expenses-dialog.tsx) | yes |
 | [`FullscreenStage`](#fullscreenstage) | **A real fullscreen display** — chromeless black stage via the Fullscreen API | [src/components/fullscreen-stage.tsx](src/components/fullscreen-stage.tsx) | yes |
 | [`FloatingLayer`](#floatinglayer) | **A component that floats over the page** — puck in a corner, window card when opened | [src/components/floating-layer.tsx](src/components/floating-layer.tsx) | yes |
 | [`ClockFace`](#clockface) | The clock itself — digital or analog, with date/weekday/weather toggles | [src/components/clock-face.tsx](src/components/clock-face.tsx) | yes |
@@ -918,6 +919,56 @@ mis-read, and a full dialog for it would be heavier than the decision warrants.
 
 **Below 1024px:** nothing of its own. `Modal`'s default `md` is `w-full max-w-lg`, which
 fits a 390px screen, and the footer's two buttons sit in `Modal`'s own action row.
+
+## DayExpensesDialog
+
+**What was spent around one date, across every card.** A `Modal size="lg"` holding one
+row per transaction — its own date, the vendor, the card and category beneath it, and the
+amount — with a total underneath.
+
+Expense-specific but registered because three screens in two modules open it: the Journal's
+entry viewer, the Journal's calendar day panel, and the Expense module's own Transactions
+screen when it arrives with `?date=`.
+
+- **Source:** [src/components/day-expenses-dialog.tsx](src/components/day-expenses-dialog.tsx)
+- **Import:** `import { DayExpensesDialog } from "@/components/day-expenses-dialog";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `date` | `string` | The day the reader asked about, `YYYY-MM-DD`. **Separate from `view.window.date`** so the heading is right before the rows arrive — a dialog that opens with a blank title reads as broken rather than busy. |
+| `view?` | `ExpensesOnDateView` (type from `@/lib/expense`) | The finished view model from `buildExpensesOnDateView`. Undefined while loading, or after a failure. |
+| `isLoading?` | `boolean` | True while the caller's fetch is in flight. |
+| `error?` | `string` | Shown instead of the rows. Takes precedence over `view`. |
+| `openInExpenseHref?` | `string` | Adds an **Open in Expense** footer button. Build it with `expenseDateHref`, never by hand. Omit it for a caller already inside the Expense module — the screen behind the dialog is where that link would go. |
+| `onClose` | `() => void` | Escape, the overlay, the ✕ and the Close button. |
+| `className?` | `string` | |
+
+**It does not fetch**, the same rule every component here follows. The Journal's two callers
+go through [journal-day-expenses.tsx](src/app/(protected)/modules/[slug]/journal-day-expenses.tsx),
+a route-local wrapper that runs `expensesOnDateAction` and hands the result down; the Expense
+Transactions screen builds the view from rows it already holds, so it costs no second read.
+
+**Used by:** the Journal entry viewer
+[entry-screen.tsx](src/app/(protected)/modules/[slug]/entries/[id]/entry-screen.tsx), the
+Journal calendar's day panel
+[journal-calendar-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-view.tsx),
+and the Expense Transactions screen
+[expense-transactions-view.tsx](src/app/(protected)/modules/[slug]/expense-transactions-view.tsx).
+
+**The window is wider than the asked-for day.** `resolveExpenseDateWindow` defaults to ±1
+day, because a card transaction and the day it was lived rarely line up — a Sunday-evening
+purchase often carries Monday's date. That is why each row prints its own date and why the
+sub-heading names the span and the row count: a reader who opened one day and sees three
+dates would otherwise read the list as wrong.
+
+**All cards, always.** There is no account filter — the card is a column, not a facet. A row
+whose account has since been deleted keeps its place with a blank card name rather than
+being dropped, so the list and the total can't disagree.
+
+**Below 1024px:** the vendor block takes the full row and the amount drops beneath it
+(`max-lg:flex-wrap` + `max-lg:basis-full`); the date column and the desktop layout are
+untouched. `Modal`'s `lg` already fits a 390px screen.
 
 ## Modal
 
@@ -4395,6 +4446,7 @@ print/export view share it.
 | `onOpenClips?` | `() => void` | Opens the caller's clips modal — [`EntryClipsDialog`](src/app/(protected)/modules/[slug]/clips-entry-clips-dialog.tsx) is the one to use. Without it the button is not drawn at all, since there would be nowhere to go. |
 | `categoryHref?` / `tagHref?` | `(name: string) => string \| undefined` | Makes each category/tag clickable — both the header icon and the Misc Info chip link to whatever the caller returns (in the journal, a pre-filtered Entries list). Same arrangement as `previousHref`: the caller owns the URL. Return `undefined` for a name that can't be linked, and that one stays a plain label. Omit the prop and none of them are links. |
 | `photosSlot?` | `ReactNode` | Rendered between Content and Misc Info, inside a `no-print` wrapper. A **slot, not photo props** — the viewer stays free of any filesystem or archive types, and the caller supplies whatever card it likes. The journal entry screen passes its "Pictures of this date" card here. Omit it and the viewer is unchanged. |
+| `onOpenExpenses?` | `() => void` | Adds a `$` button immediately right of the calendar icon — what was spent around this entry's date. **A callback, not an href**, unlike `calendarHref` beside it: the dialog opens *over* the entry rather than navigating to the Expense module, so the reader doesn't lose the entry they were reading to glance at a total. The caller runs the action and owns the dialog ([`DayExpensesDialog`](#dayexpensesdialog) is the one to use, via [journal-day-expenses.tsx](src/app/(protected)/modules/[slug]/journal-day-expenses.tsx)). Without it the button is not drawn, which is what a caller passes for a reader who has not been granted the Expense module. |
 | `calendarHref?` | `string` | Adds a running-shoe icon immediately right of the date that links to the journal Calendar opened on this entry's date — the caller builds `?anchor=`/`?date=` so the grid lands on the right month with the day selected. Same arrangement as `previousHref`: the caller owns the URL. Omit to hide the icon. |
 | `isBusy?` | `boolean` | Disables the actions while the caller works. |
 | `className?` | `string` | |

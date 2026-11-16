@@ -19,6 +19,7 @@ import { journalEntriesFilterHref } from "../../journal-shared";
 // fetch. `src/lib/journal` still knows nothing about clips — see migration 0155.
 import { listClipsForEntryAction } from "../../clips-actions";
 import { EntryClipsDialog } from "../../clips-entry-clips-dialog";
+import { JournalDayExpenses } from "../../journal-day-expenses";
 import { JournalEntryEditForm } from "./entry-edit-form";
 import { JournalPhotosCard } from "./journal-photos-card";
 
@@ -86,6 +87,7 @@ export function JournalEntryScreen({
   tagOptions,
   locationCategoryOptions = [],
   locationTagOptions = [],
+  canSeeExpense = false,
 }: {
   entry: JournalEntry;
   neighbors: JournalEntryNeighbors;
@@ -98,6 +100,16 @@ export function JournalEntryScreen({
   /** The saved-location library's taxonomy, for the edit form's location picker. */
   locationCategoryOptions?: string[];
   locationTagOptions?: string[];
+  /**
+   * Whether this reader has been granted the Expense module. False hides the $
+   * button, since the action behind it would refuse them anyway and a control
+   * that always fails is worse than no control.
+   *
+   * Decided on the server (the page has the user); the guard that matters is
+   * `requireModuleAccess` inside `expensesOnDateAction`, not this flag — an
+   * action is its own POST endpoint, so hiding a button protects nothing.
+   */
+  canSeeExpense?: boolean;
 }) {
   const router = useRouter();
   const [isBusy, setIsBusy] = useState(false);
@@ -111,6 +123,10 @@ export function JournalEntryScreen({
   // and may not fetch.
   const [clipCount, setClipCount] = useState(0);
   const [isClipsOpen, setIsClipsOpen] = useState(false);
+  // Whether the "expenses around this date" dialog is open. Only the flag lives
+  // here — `JournalDayExpenses` reads the rows when it mounts, the same split
+  // the clips dialog uses.
+  const [isExpensesOpen, setIsExpensesOpen] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
   // Re-read whenever the edit form closes as well as on mount, because the edit
@@ -383,6 +399,9 @@ export function JournalEntryScreen({
           onToggleLock={handleToggleLock}
           onDelete={handleDelete}
           calendarHref={calendarHref}
+          // Omitted entirely for a reader without the Expense module, which is
+          // how JournalViewer decides not to draw the button at all.
+          onOpenExpenses={canSeeExpense ? () => setIsExpensesOpen(true) : undefined}
           previousHref={previousHref}
           previousDate={neighbors.previous?.date}
           nextHref={nextHref}
@@ -540,6 +559,10 @@ export function JournalEntryScreen({
           unlock is for the *entry* and has nothing to do with it. */}
       {isClipsOpen && (
         <EntryClipsDialog entryId={entry.id} onClose={() => setIsClipsOpen(false)} />
+      )}
+
+      {isExpensesOpen && (
+        <JournalDayExpenses date={entry.date} onClose={() => setIsExpensesOpen(false)} />
       )}
     </div>
   );

@@ -22,7 +22,9 @@ import { Comments } from "@/components/comments";
 import { JournalViewer } from "@/components/journal-viewer";
 import { Modal } from "@/components/modal";
 import { PhotoOfTheDayButton } from "@/components/photo-of-the-day";
+import { SlotIcon } from "@/components/slot-icon";
 import { useIsCompact } from "@/components/viewport-context";
+import { getIconSlot } from "@/lib/icons";
 import {
   CALENDAR_CELL_TITLE_LIMIT,
   CALENDAR_CELL_TITLE_LIMIT_COMPACT,
@@ -48,6 +50,7 @@ import {
   type JournalEntry,
 } from "@/lib/journal";
 import { adjacentEntryDateAction, recycleJournalEntryAction } from "./journal-actions";
+import { JournalDayExpenses } from "./journal-day-expenses";
 import { JournalPhotosHost } from "./journal-photos-host";
 import { TaxonomyChipRow } from "@/components/taxonomy-icon";
 import { TreeIcon } from "@/components/tree-icons";
@@ -65,6 +68,10 @@ type PhotoRequest = { kind: "day"; date: string } | { kind: "range"; from: strin
 /** Remembers the reader's Jump format between visits — a habit, not domain data. */
 const JUMP_FORMAT_STORAGE_KEY = "myhomebase:journal-calendar-jump-format";
 
+// The $ on the open day's panel. Resolved once at module scope — `getIconSlot`
+// is a lookup over a frozen table, not a hook.
+const DAY_EXPENSES_SLOT = getIconSlot("journal_calendar_day_expenses")!;
+
 export interface JournalCalendarViewProps {
   scope: JournalCalendarScope;
   /** Any day inside the period being shown, "YYYY-MM-DD". */
@@ -78,6 +85,12 @@ export interface JournalCalendarViewProps {
   /** Category/tag name → icon URL, for the viewer dialog. */
   categoryIcons: Record<string, string>;
   tagIcons: Record<string, string>;
+  /**
+   * Whether this reader has been granted the Expense module. False hides the
+   * open day's $ button. Decided on the server by `JournalCalendarPanel`; the
+   * guard that matters is `requireModuleAccess` inside the action behind it.
+   */
+  canSeeExpense?: boolean;
 }
 
 export function JournalCalendarView({
@@ -88,6 +101,7 @@ export function JournalCalendarView({
   entries,
   categoryIcons,
   tagIcons,
+  canSeeExpense = false,
 }: JournalCalendarViewProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -98,6 +112,14 @@ export function JournalCalendarView({
   const [openEntryId, setOpenEntryId] = useState<number | undefined>(undefined);
   /** Which photos the Photo of the Day dialog is showing, if it is open. */
   const [photoRequest, setPhotoRequest] = useState<PhotoRequest | undefined>(undefined);
+  /**
+   * Which day the expenses dialog is showing, if it is open.
+   *
+   * The date rather than a boolean, so the dialog cannot outlive the day it was
+   * opened from: closing the day panel clears it, and a reader who opens a
+   * different day gets a dialog keyed to that day rather than a stale total.
+   */
+  const [expensesDate, setExpensesDate] = useState<string | undefined>(undefined);
   /**
    * Which direction has already been found to have nothing left, so its button
    * can go dead rather than re-asking on every press. Cleared by any navigation,
@@ -273,7 +295,24 @@ export function JournalCalendarView({
           categoryIcons={categoryIcons}
           tagIcons={tagIcons}
           onOpenEntry={setOpenEntryId}
-          onClose={() => navigate({ date: null })}
+          onClose={() => {
+            // The dialog belongs to the open day, so closing the day closes it
+            // too — otherwise it would hang over a calendar with nothing selected.
+            setExpensesDate(undefined);
+            navigate({ date: null });
+          }}
+          onOpenExpenses={canSeeExpense ? () => setExpensesDate(selectedDate) : undefined}
+        />
+      ) : null}
+
+      {expensesDate ? (
+        // Keyed by the day, for the reason the photo dialog above is: pressing a
+        // different day's button while one is open must remount rather than
+        // leave the first day's figures under a new heading.
+        <JournalDayExpenses
+          key={expensesDate}
+          date={expensesDate}
+          onClose={() => setExpensesDate(undefined)}
         />
       ) : null}
 
@@ -1035,6 +1074,7 @@ function DayEntriesPanel({
   tagIcons,
   onOpenEntry,
   onClose,
+  onOpenExpenses,
 }: {
   date: string;
   entries: JournalEntry[];
@@ -1042,6 +1082,8 @@ function DayEntriesPanel({
   tagIcons: Record<string, string>;
   onOpenEntry: (id: number) => void;
   onClose: () => void;
+  /** Omit to hide the $ button — a reader without the Expense module. */
+  onOpenExpenses?: () => void;
 }) {
   const router = useRouter();
   /** The row whose Delete was pressed, if the confirmation is open. */
@@ -1101,6 +1143,20 @@ function DayEntriesPanel({
           >
             New entry
           </Button>
+          {/* What was spent around this day, as a dialog over the calendar —
+              the reader keeps the month they were reading. Icon-only to sit
+              beside two text buttons without widening the header on a phone. */}
+          {onOpenExpenses && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onOpenExpenses}
+              title="Expenses around this date"
+              ariaLabel="Expenses around this date"
+            >
+              <SlotIcon slot={DAY_EXPENSES_SLOT} className="h-4 w-4" />
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={onClose} ariaLabel="Close this day">
             Close
           </Button>

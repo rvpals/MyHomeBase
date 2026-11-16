@@ -5,6 +5,7 @@ import {
   formatCalendarAge,
   formatDurationShort,
   parseIsoDateLocal,
+  shiftIsoDate,
   startOfMonthIso,
   startOfWeekIso,
   startOfYearIso,
@@ -161,6 +162,42 @@ describe("parseIsoDateLocal", () => {
   it("rejects a well-formed but impossible date instead of rolling it forward", () => {
     expect(() => parseIsoDateLocal("2026-02-31")).toThrow();
     expect(() => parseIsoDateLocal("2026-13-01")).toThrow();
+  });
+});
+
+describe("shiftIsoDate", () => {
+  it("moves forward and back by whole days", () => {
+    expect(shiftIsoDate("2026-11-16", 1)).toBe("2026-11-17");
+    expect(shiftIsoDate("2026-11-16", -1)).toBe("2026-11-15");
+    expect(shiftIsoDate("2026-11-16", 0)).toBe("2026-11-16");
+  });
+
+  it("rolls over a month boundary in both directions", () => {
+    expect(shiftIsoDate("2026-11-30", 1)).toBe("2026-12-01");
+    expect(shiftIsoDate("2026-11-01", -1)).toBe("2026-10-31");
+  });
+
+  it("rolls over a year boundary", () => {
+    expect(shiftIsoDate("2026-12-31", 1)).toBe("2027-01-01");
+    expect(shiftIsoDate("2027-01-01", -1)).toBe("2026-12-31");
+  });
+
+  it("handles a leap day", () => {
+    // 2028 is a leap year; 2027 is not.
+    expect(shiftIsoDate("2028-02-28", 1)).toBe("2028-02-29");
+    expect(shiftIsoDate("2027-02-28", 1)).toBe("2027-03-01");
+  });
+
+  it("rejects a malformed date", () => {
+    expect(() => shiftIsoDate("16/11/2026", 1)).toThrow(/YYYY-MM-DD/);
+  });
+
+  it("rejects a well-formed but impossible date", () => {
+    expect(() => shiftIsoDate("2026-02-31", 1)).toThrow(/not a real date/);
+  });
+
+  it("rejects a fractional day count", () => {
+    expect(() => shiftIsoDate("2026-11-16", 1.5)).toThrow(/whole number of days/);
   });
 });
 

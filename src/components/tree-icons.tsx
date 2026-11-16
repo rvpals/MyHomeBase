@@ -891,6 +891,29 @@ const Receipt: IconComponent = (props) => (
   </svg>
 );
 
+/* A coin seen face-on with a dollar sign struck into it.
+
+   The "expenses around this date" buttons in the Journal — the entry viewer's header
+   and the calendar's open-day panel.
+
+   The CIRCLE is what makes it work at this size. A bare "$" is a glyph from the type
+   stream, not a mark: beside the running-shoe button it reads as a stray character
+   rather than a control, and it has no silhouette to recognise at a glance. Struck
+   into a coin it becomes a disc like every other icon in the row.
+
+   The S is drawn as one stroke, not a letterform, and the stem crosses it top and
+   bottom with a little overhang either end — at 16px a stem that stops flush with the
+   curve disappears into it and the coin reads as a plain circle. */
+const Money: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <circle cx="12" cy="12" r="8.5" />
+    {/* The S, top curve then bottom curve, as one path. */}
+    <path d="M14.4 9.1a2.4 2.4 0 0 0-2.4-1.3c-1.4 0-2.4.8-2.4 1.9s.9 1.6 2.4 1.9 2.4.8 2.4 1.9-1 1.9-2.4 1.9a2.4 2.4 0 0 1-2.4-1.3" />
+    {/* The stem, overhanging the curve at both ends. */}
+    <line x1="12" y1="6.1" x2="12" y2="17.9" />
+  </svg>
+);
+
 const TREE_ICONS = {
   flash: Flash,
   note: Note,
@@ -951,6 +974,7 @@ const TREE_ICONS = {
   map: FoldedMap,
   recipe: ChefHat,
   receipt: Receipt,
+  money: Money,
   rocket: RocketLaunch,
   lock: Lock,
   copy: Copy,

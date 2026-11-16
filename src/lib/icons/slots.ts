@@ -664,6 +664,36 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  // The two buttons that open the Expense module's day window from inside the
+  // Journal. Places, not row actions: each one goes somewhere — another module's
+  // reading of the same date — which is why they take slots where the Delete and
+  // Print buttons beside them do not.
+  //
+  // Two slots rather than one shared "expenses" slot, although both draw the same
+  // glyph and open the same dialog. A slot is a *position*, not a concept: these
+  // sit on different screens, and collapsing them would mean an admin could not
+  // mark the calendar's button without also marking the viewer's.
+  //
+  // Both label the same way on purpose — it is the `where` that tells the two rows
+  // apart in the admin list, exactly as the Journal section slots do.
+  {
+    id: "journal_entry_expenses",
+    label: "Expenses on this date",
+    group: "Journal sections",
+    where: "Journal → entry viewer → the $ button beside the entry's date.",
+    defaultConcept: "money",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_calendar_day_expenses",
+    label: "Expenses on this date",
+    group: "Journal sections",
+    where: "Journal → Calendar → the open day's panel header → the $ button.",
+    defaultConcept: "money",
+    wired: true,
+    namespace: "tree",
+  },
   // --- Journal reports (migration 0132) -----------------------------------
   //
   // A group of their own rather than more "Journal cards" entries: these mark

@@ -146,6 +146,22 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-16 — Release (Expenses around a date)
+
+Needs no migration. Never seen on screen, and the unit tests have never run (Vitest is broken here) — test the icon, the dialog and the phone layout first. Items 1–2 need a user with Expense access; item 6 needs one without.
+
+- [ ] **1.** Expense: open `/modules/expense/transactions?date=<a date with spending>` — a dialog opens over the list showing that day and the day either side, all cards, with a total
+- [ ] **2.** Expense: close that dialog — it goes away, the full Transactions list is behind it, and `?date=` is gone from the address bar
+- [ ] **3.** Journal entry screen: a `$` coin button sits right of the date/calendar icon; click it — the dialog opens over the entry, with "Open in Expense" in the footer
+- [ ] **4.** Journal > Calendar: click a day — the day panel header has a `$` button beside New entry; click it — the dialog shows that day's spending; closing the day panel also closes it
+- [ ] **5.** Dialog on a day with no spending says nothing was spent; on a day with a refund the total is lower than the charges
+- [ ] **6.** A user without the Expense module sees no `$` button on either Journal screen
+- [ ] **7.** Phone width: the dialog rows stack (amount under the vendor) and nothing overflows; the `$` buttons don't push the date row off-screen
+- [ ] **8.** Expense: a hand-mangled `?date=garbage` shows a "not a date" message in the dialog, not an error page
+- [ ] **9.** Admin > icon slots: "Expenses on this date" appears twice (entry viewer, Calendar day panel)
+
+---
+
 ## 2026-11-13 — Release (Journal Calendar polish, Locked-entries tile fix)
 
 Needs no migration. Items 1–3 are on Journal > Calendar; check each on a phone width as well as a desktop.

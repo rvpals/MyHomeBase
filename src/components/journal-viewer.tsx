@@ -35,6 +35,10 @@ const CLONE_ACTION_SLOT = getIconSlot("journal_clone_action")!;
 // Migration 0155. The paperclip on the "N clips" button — the same slot the
 // entries grid marks an entry with, so one glyph means "clips" everywhere.
 const CLIP_SLOT = getIconSlot("clips_linked_badge")!;
+// The $ beside the date — what was spent around this entry's day. A slot, unlike
+// the running shoe next to it, because it points at another module's reading of
+// the same date; the shoe predates the slot registry.
+const EXPENSES_SLOT = getIconSlot("journal_entry_expenses")!;
 
 export interface JournalViewerProps {
   entry: JournalEntry;
@@ -140,6 +144,21 @@ export interface JournalViewerProps {
    * knowledge, the same way `previousHref` does.
    */
   calendarHref?: string;
+  /**
+   * Opens the caller's "expenses around this date" dialog —
+   * [`DayExpensesDialog`](src/components/day-expenses-dialog.tsx) is the one to
+   * use. Draws a $ button immediately right of the calendar icon.
+   *
+   * A callback, not an href, unlike `calendarHref` beside it: the dialog opens
+   * **over** the entry rather than navigating to the Expense module, so the
+   * reader does not lose the entry they were reading to glance at a total. The
+   * caller runs the server action and owns the dialog.
+   *
+   * Omit it and the button is not drawn at all — which is what a caller passes
+   * for a reader who has not been granted the Expense module. Same rule as
+   * `onOpenClips`: without a handler there is nowhere to go.
+   */
+  onOpenExpenses?: () => void;
   /** Disables the actions while the caller is working. */
   isBusy?: boolean;
   /** Caller-supplied classes, merged last so they win. */
@@ -342,6 +361,7 @@ export function JournalViewer({
   tagHref,
   photosSlot,
   calendarHref,
+  onOpenExpenses,
   isBusy = false,
   className = "",
 }: JournalViewerProps) {
@@ -401,6 +421,20 @@ export function JournalViewer({
               className="no-print shrink-0"
             >
               <RunningShoeIcon className="h-5 w-5" />
+            </Button>
+          )}
+          {onOpenExpenses && (
+            <Button
+              onClick={onOpenExpenses}
+              size="sm"
+              title="Expenses around this date"
+              ariaLabel="Expenses around this date"
+              // `no-print` for the reason the calendar button carries it: a
+              // printed entry is a page, and a control that opens a dialog is
+              // nothing on paper.
+              className="no-print shrink-0"
+            >
+              <SlotIcon slot={EXPENSES_SLOT} className="h-5 w-5" />
             </Button>
           )}
           {entry.isPinned && (

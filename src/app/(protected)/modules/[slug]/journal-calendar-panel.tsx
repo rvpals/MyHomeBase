@@ -19,8 +19,15 @@ import {
 } from "@/lib/journal";
 import { todayIsoLocal } from "@/lib/shared/date";
 import { deps } from "@/lib/wiring";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { getModuleBySlug } from "@/lib/modules";
+import { userHasModuleAccess } from "@/lib/user";
 import { JournalCalendarView } from "./journal-calendar-view";
 import { journalTaxonomyIconUrlsByName } from "./journal-shared";
+
+/** Matched by full slug, never by prefix — the same rule the actions follow. */
+const EXPENSE_MODULE_SLUG = "expense";
 
 export interface JournalCalendarPanelProps {
   /** Raw ?scope= — anything unrecognized falls back to the month view. */
@@ -33,7 +40,10 @@ export interface JournalCalendarPanelProps {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export function JournalCalendarPanel({
+// `async` because deciding whether to draw the day panel's $ button means
+// reading the session cookie, which `next/headers` only exposes as a promise —
+// the same reason `ExpenseShell` is async. Everything else here stays sync.
+export async function JournalCalendarPanel({
   scope: rawScope,
   anchor: rawAnchor,
   selectedDate: rawSelectedDate,
@@ -72,6 +82,18 @@ export function JournalCalendarPanel({
   const categories = listCategories(deps.journalRepo);
   const tags = listTags(deps.journalRepo);
 
+  // Whether the open day's panel offers the "expenses around this date" button.
+  // A separate grant from the journal one the route already checked — plenty of
+  // readers have one module and not the other. The real guard is inside
+  // `expensesOnDateAction`; this only decides whether the control is drawn.
+  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
+  const expenseModule = getModuleBySlug(deps.moduleRepo, EXPENSE_MODULE_SLUG);
+  const canSeeExpense =
+    currentUser !== undefined &&
+    expenseModule !== undefined &&
+    userHasModuleAccess(currentUser, expenseModule.id, deps.userRepo);
+
   return (
     <JournalCalendarView
       scope={scope}
@@ -81,6 +103,7 @@ export function JournalCalendarPanel({
       entries={entries}
       categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
       tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
+      canSeeExpense={canSeeExpense}
     />
   );
 }

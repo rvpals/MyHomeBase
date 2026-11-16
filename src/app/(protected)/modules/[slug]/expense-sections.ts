@@ -89,3 +89,24 @@ export function expenseGroupHref(groupBy: string, groupKey: string): string {
   const params = new URLSearchParams({ groupBy, group: groupKey });
   return `${expenseSectionHref("transactions")}?${params.toString()}`;
 }
+
+/**
+ * A link to the Transactions section landing with the day dialog already open —
+ * what the Journal's entry viewer and calendar link through to, and what the
+ * dialog's own "Open in Expense" footer button points at.
+ *
+ * The one place this URL is built. Other modules call it rather than assembling
+ * `?date=` themselves, for the reason `expenseGroupHref` exists: a hand-built
+ * string in another module's folder is a link that goes quietly dead the next
+ * time this section's params change, with nothing to grep for.
+ *
+ * `?date=` is the app-wide param meaning "the day this screen is showing" — the
+ * same one the Journal calendar and the Classroom attendance report read, not a
+ * second name for the same idea. `?days=` is omitted when it matches the
+ * module's default, so the common link stays short.
+ */
+export function expenseDateHref(date: string, days?: number): string {
+  const params = new URLSearchParams({ date });
+  if (days !== undefined) params.set("days", String(days));
+  return `${expenseSectionHref("transactions")}?${params.toString()}`;
+}

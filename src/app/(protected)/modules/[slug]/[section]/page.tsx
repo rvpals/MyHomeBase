@@ -68,6 +68,7 @@ function renderSection(
   filterQuery: string | undefined,
   requestedClassId: number | undefined,
   requestedDate: string | undefined,
+  requestedDateWindowDays: number | undefined,
   requestedFormat: string | undefined,
   calendarScope: string | undefined,
   calendarAnchor: string | undefined,
@@ -117,6 +118,11 @@ function renderSection(
         prefillRulePattern={prefillRulePattern}
         requestedGroupBy={requestedGroupBy}
         requestedGroupKey={requestedGroupKey}
+        // The same ?date= the Journal calendar and the Classroom report read —
+        // "the day this screen is showing". Here it opens the day dialog over
+        // the Transactions list, which is how the Journal's $ buttons link in.
+        requestedDate={requestedDate}
+        requestedDateWindowDays={requestedDateWindowDays}
       />
     );
   }
@@ -243,6 +249,9 @@ export default async function ModuleSectionPage({
     filter?: string | string[];
     classId?: string | string[];
     date?: string | string[];
+    // How many days either side of `?date=` the Expense day dialog covers. Its
+    // own default applies when absent, so the common link carries only `?date=`.
+    days?: string | string[];
     format?: string | string[];
     scope?: string | string[];
     anchor?: string | string[];
@@ -320,6 +329,7 @@ export default async function ModuleSectionPage({
     filter,
     classId,
     date,
+    days,
     format,
     scope,
     anchor,
@@ -350,6 +360,17 @@ export default async function ModuleSectionPage({
   const rawClassId = Array.isArray(classId) ? classId[0] : classId;
   const requestedClassId = Number(rawClassId) || undefined;
   const requestedDate = Array.isArray(date) ? date[0] : date;
+  // Same first-element rule. Parsed to a number here rather than left raw, since
+  // "not a number" is not a width any screen could interpret — it is simply
+  // absent, and the Expense module's own default then applies. A width that *is*
+  // a number but an absurd one stays: the library clamps it, so `?days=9999`
+  // shows a month rather than 404ing a link someone typed by hand.
+  const rawDateWindowDays = Array.isArray(days) ? days[0] : days;
+  const parsedDateWindowDays = Number(rawDateWindowDays);
+  const requestedDateWindowDays =
+    rawDateWindowDays !== undefined && Number.isFinite(parsedDateWindowDays)
+      ? parsedDateWindowDays
+      : undefined;
   // Which report shape to render. Left as a raw string here -- the section
   // validates it against ATTENDANCE_REPORT_FORMATS, so an unknown value falls
   // back to "brief" rather than 404ing a legitimate URL.
@@ -457,6 +478,7 @@ export default async function ModuleSectionPage({
     filterQuery,
     requestedClassId,
     requestedDate,
+    requestedDateWindowDays,
     requestedFormat,
     calendarScope,
     calendarAnchor,

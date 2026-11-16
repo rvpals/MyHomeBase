@@ -2,10 +2,11 @@
 
 import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
+import { DayExpensesDialog } from "@/components/day-expenses-dialog";
 import { IconSelect } from "@/components/icon-select";
 import { Modal } from "@/components/modal";
 import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";
@@ -13,9 +14,11 @@ import {
   TRANSACTION_GROUP_BYS,
   TRANSACTION_GROUP_BY_LABELS,
   TRANSACTION_STATUSES,
+  buildExpensesOnDateView,
   groupTransactions,
   isTransactionGroupBy,
   parseMoneyToCents,
+  resolveExpenseDateWindow,
   type AmountSignMode,
   type BulkTransactionEditInput,
   type CreditCardAccount,
@@ -624,6 +627,8 @@ export function ExpenseTransactionsView({
   vendors,
   requestedGroupBy,
   requestedGroupKey,
+  requestedDate,
+  requestedDateWindowDays,
 }: {
   transactions: ExpenseTransaction[];
   accounts: CreditCardAccount[];
@@ -636,8 +641,17 @@ export function ExpenseTransactionsView({
    */
   requestedGroupBy?: string;
   requestedGroupKey?: string;
+  /**
+   * From ?date= / ?days= — the cross-module entry point. Arriving with a date
+   * opens the day dialog over this screen; closing it strips the params and
+   * leaves the reader on the full list, which is the whole reason this lands
+   * here rather than on a screen of its own.
+   */
+  requestedDate?: string;
+  requestedDateWindowDays?: number;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [editing, setEditing] = useState<ExpenseTransaction | undefined>(undefined);
   // The form card is *controlled* rather than left to its own `defaultOpen`.
   // `defaultOpen` seeds `useState` once at mount, so a later `setEditing(row)`
@@ -682,9 +696,53 @@ export function ExpenseTransactionsView({
     { rows: ExpenseTransaction[]; clearSelection: () => void } | undefined
   >(undefined);
   const [isBulkBusy, setIsBulkBusy] = useState(false);
+  // Whether the day dialog is showing. Seeded from ?date= and then owned here,
+  // so closing it is instant rather than a round trip — the URL is tidied in the
+  // same handler, but the dialog does not wait for the navigation to finish.
+  const [isDayDialogOpen, setIsDayDialogOpen] = useState(requestedDate !== undefined);
   // What the last bulk operation did — a selection can be cleared and the rows
   // re-sorted by the refresh, so "12 updated" is the only visible confirmation.
   const [bulkResult, setBulkResult] = useState<string | undefined>(undefined);
+
+  // The day dialog's view model, built from the rows this screen already holds
+  // rather than through `expensesOnDateAction`. The action exists for the Journal,
+  // which has no transactions in hand; here a second read would fetch a subset of
+  // a list that is already in memory.
+  //
+  // `undefined` covers both "no ?date=" and "a date the library refuses". A
+  // hand-mangled link shows the dialog's empty state over a perfectly usable
+  // Transactions screen, which beats a 500 on a URL anyone can edit.
+  const dayExpenses = useMemo(() => {
+    if (requestedDate === undefined) return undefined;
+    try {
+      // `dateWindow`, not `window`: this is a client component.
+      const dateWindow = resolveExpenseDateWindow(requestedDate, requestedDateWindowDays);
+      return buildExpensesOnDateView(transactions, accounts, dateWindow);
+    } catch {
+      return undefined;
+    }
+  }, [requestedDate, requestedDateWindowDays, transactions, accounts]);
+
+  /**
+   * Closes the day dialog and takes ?date=/?days= out of the address bar.
+   *
+   * `replace`, not `push`: the dialog was part of arriving here, so Back should
+   * return the reader to the Journal they came from, not reopen what they just
+   * dismissed. Other params (?groupBy=, ?group=) are preserved — a link can
+   * carry both, and dropping the grouping would silently reset the screen behind.
+   */
+  function closeDayDialog() {
+    setIsDayDialogOpen(false);
+    // Through the hook rather than `location.search`: this component renders on
+    // the server first, where there is no `location` to read.
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("date");
+    params.delete("days");
+    const query = params.toString();
+    router.replace(`${expenseSectionHref("transactions")}${query ? `?${query}` : ""}`, {
+      scroll: false,
+    });
+  }
 
   const accountName = (id: number) => accounts.find((account) => account.id === id)?.name ?? "—";
   // A row carries only the category *name*, so the grid looks its icon up here
@@ -1111,6 +1169,21 @@ export function ExpenseTransactionsView({
             setBulkEdit(undefined);
             router.refresh();
           }}
+        />
+      )}
+
+      {/* The cross-module landing: arriving at ?date= opens this over the list.
+          No "Open in Expense" link — the reader is already in Expense, and the
+          screen behind the dialog is the one that link would go to. */}
+      {isDayDialogOpen && requestedDate !== undefined && (
+        <DayExpensesDialog
+          date={requestedDate}
+          view={dayExpenses}
+          // Nothing is fetched here, so a missing view is never "still loading" —
+          // it is a date the library refused. Saying so beats a spinner that
+          // never resolves.
+          error={dayExpenses === undefined ? `"${requestedDate}" is not a date.` : undefined}
+          onClose={closeDayDialog}
         />
       )}
     </div>

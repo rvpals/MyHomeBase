@@ -187,6 +187,16 @@ export {
 } from "./month-breakdown";
 export { excludeCategoriesFromStats, excludeCategoryTotals } from "./statistics";
 export {
+  DEFAULT_EXPENSE_DATE_WINDOW_DAYS,
+  MAX_EXPENSE_DATE_WINDOW_DAYS,
+  buildExpensesOnDateView,
+  resolveExpenseDateWindow,
+  transactionsInDateWindow,
+  type DayExpenseRow,
+  type ExpenseDateWindow,
+  type ExpensesOnDateView,
+} from "./expenses-on-date";
+export {
   EXPENSE_SETTING_KEYS,
   DEFAULT_AUTO_IMPORT_INTERVAL_MINUTES,
   resolveExpenseSettings,

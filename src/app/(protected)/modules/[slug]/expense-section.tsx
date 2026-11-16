@@ -55,6 +55,8 @@ function SectionBody({
   prefillRulePattern,
   requestedGroupBy,
   requestedGroupKey,
+  requestedDate,
+  requestedDateWindowDays,
 }: {
   section: ExpenseSection;
   prefillRuleName?: string;
@@ -62,6 +64,8 @@ function SectionBody({
   prefillRulePattern?: string;
   requestedGroupBy?: string;
   requestedGroupKey?: string;
+  requestedDate?: string;
+  requestedDateWindowDays?: number;
 }) {
   switch (section) {
     case "main": {
@@ -104,6 +108,8 @@ function SectionBody({
           vendors={listVendors(deps.expenseRepo)}
           requestedGroupBy={requestedGroupBy}
           requestedGroupKey={requestedGroupKey}
+          requestedDate={requestedDate}
+          requestedDateWindowDays={requestedDateWindowDays}
         />
       );
 
@@ -187,6 +193,8 @@ export async function ExpenseSection({
   prefillRulePattern,
   requestedGroupBy,
   requestedGroupKey,
+  requestedDate,
+  requestedDateWindowDays,
 }: {
   section: ExpenseSection;
   /**
@@ -202,6 +210,18 @@ export async function ExpenseSection({
    */
   requestedGroupBy?: string;
   requestedGroupKey?: string;
+  /**
+   * From ?date= / ?days= — opens the Transactions screen with the day dialog
+   * already showing what was spent around that date, across every card. This is
+   * the entry point other modules link to; the Journal's entry viewer and
+   * calendar build it with `expenseDateHref`.
+   *
+   * Left raw, like ?groupBy=: the view resolves the window with the library's
+   * own function and shows the dialog's error line on a date it can't read, so a
+   * stale or hand-mangled link lands on the Transactions screen rather than 404ing.
+   */
+  requestedDate?: string;
+  requestedDateWindowDays?: number;
 }) {
   // Defensive: an unknown section would otherwise crash on info.label. The route
   // already validates, so this only catches a future caller getting it wrong.
@@ -236,6 +256,8 @@ export async function ExpenseSection({
           prefillRulePattern={prefillRulePattern}
           requestedGroupBy={requestedGroupBy}
           requestedGroupKey={requestedGroupKey}
+          requestedDate={requestedDate}
+          requestedDateWindowDays={requestedDateWindowDays}
         />
       </div>
     </ExpenseShell>
