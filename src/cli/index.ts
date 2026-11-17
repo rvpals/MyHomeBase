@@ -52,6 +52,7 @@ import { watchListsCommand } from "./watch-lists";
 import { runDataBackupCommand } from "./run-data-backup";
 import { runHelloWorldCommand } from "./run-hello-world";
 import { runScheduledRefreshCommand } from "./run-scheduled-refresh";
+import { setPasswordCommand } from "./set-password";
 import { setStartupMessageCommand } from "./set-startup-message";
 import { browseCsvCommand } from "./browse-csv";
 import { browseSqliteCommand } from "./browse-sqlite";
@@ -80,6 +81,7 @@ type Command = (args: string[]) => Promise<void> | void;
 
 const commands: Record<string, Command> = {
   "create-user": createUserCommand,
+  "set-password": setPasswordCommand,
   "list-users": listUsersCommand,
   "refresh-positions": refreshPositionsCommand,
   "ticker-monitors": tickerMonitorsCommand,

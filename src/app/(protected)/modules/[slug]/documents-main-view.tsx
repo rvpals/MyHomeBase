@@ -485,12 +485,23 @@ export function DocumentsMainView({
       header: "Files",
       value: (row) => row.attachmentCount,
       hint: "How many files are attached, and what they come to in total.",
+      // The count is a tinted pill (design.md's `brassSoft` chip role, the same one the
+      // grid's own record-count badge wears) so it reads at a glance down the column; the
+      // total size stays muted beside it, supporting detail rather than a second figure
+      // competing with the count. Zero keeps the plain em dash — a pill reading "0"
+      // would draw the eye to exactly the rows that have nothing in them.
       render: (row) =>
         row.attachmentCount === 0 ? (
           <span className="text-muted">—</span>
         ) : (
-          <span className="text-ink">
-            {row.attachmentCount} · {formatBytes(row.totalBytes)}
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span
+              className="rounded-full bg-brass-soft px-2 py-0.5 text-xs font-semibold tabular-nums text-brass-dark"
+              title={`${row.attachmentCount} file(s)`}
+            >
+              {row.attachmentCount}
+            </span>
+            <span className="text-muted">{formatBytes(row.totalBytes)}</span>
           </span>
         ),
     },

@@ -146,6 +146,24 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-16 — Release (Account scripts, Documents file-count pill)
+
+Needs no migration. Nothing here has been seen on screen and no gate was run. **Items 1–6 write to a real database** — check the `Database:` line each script prints before you answer any prompt, and point it at a dev copy, never the NAS. Item 7 is a dev-server script; items 8–10 need a republish.
+
+- [ ] **1.** `.\update_password.bat` — it prints the database path, asks for a username and a password twice, then reports `Password updated for "<name>" (id N).`
+- [ ] **2.** Sign in as that user with the new password — it works, and the old password no longer does
+- [ ] **3.** `.\create_user.bat` — prompts for username, full name and role, creates the account; it then appears in Admin > User Management
+- [ ] **4.** `.\update_password.bat` with a username that doesn't exist — says so and stops, rather than printing a stack trace
+- [ ] **5.** Both scripts refuse a password under 8 characters, before anything is written
+- [ ] **6.** `.\update_password.bat` with two passwords that don't match — says they don't match and changes nothing
+- [ ] **7.** `START_DEV.bat` — prints `Loading environment from .env.dev`, and the app reads the database that file names; `START_DEV.bat 3000 .env` loads the other file instead
+- [ ] **8.** Document Library > Home: the Files column shows the file count in a coloured pill with the total size in muted text beside it
+- [ ] **9.** Document Library > Home: a document with no files still shows a plain dash, not a pill reading "0"
+- [ ] **10.** Document Library > Home at phone width: the pill and the size sit in the stacked card and wrap instead of overflowing it
+- [ ] **11.** Switch to a light theme (Daybreak or Sea Glass) — the pill is still legible, not pale text on a pale fill
+
+---
+
 ## 2026-11-16 — Release (Expenses around a date)
 
 Needs no migration. Never seen on screen, and the unit tests have never run (Vitest is broken here) — test the icon, the dialog and the phone layout first. Items 1–2 need a user with Expense access; item 6 needs one without.

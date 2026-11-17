@@ -1,5 +1,67 @@
 # Change History
 
+## 2026-11-16 19:10 — Account management from the command line, and a file-count pill in Documents
+
+**No migration, no new package.** A **republish is required** for the Documents change; the
+account scripts are developer tools and never ship to the NAS.
+
+**No gates were run** — not for the change and not for this release step. Typecheck, lint and
+the browser smoke were offered and declined. **None of it has been seen on screen.** The CLI
+work arrived uncommitted from an earlier session with no record that it was ever executed, so
+`set-password` has never been proven to run end to end. What *is* verified is that
+`setUserPassword` exists and is exported (`src/lib/user/user.ts:177`) and that the command is
+registered in the dispatch table — both read from the source, not exercised.
+
+### A. `set-password` — reset a password without the admin screen
+
+New CLI command, the 65th in `CLI_registry.md`. Looks the account up by username, so no id is
+needed, and there is no old-password check: this is an admin-side reset, not a self-service
+change. Calls `setUserPassword(user.id, input, deps.userRepo)` — the same library function
+Admin → User Management calls, so neither validation nor hashing is duplicated. Exits 2 when
+the username doesn't exist, 1 on a validation failure. `src/cli/set-password.ts`, registered in
+`src/cli/index.ts`.
+
+### B. `create_user.bat` and `update_password.bat` — the two cases the admin screen can't cover
+
+A freshly migrated development database with no account in it yet, and a dev password you've
+forgotten and so can't sign in to change. Both prompt interactively, read the password without
+echoing it (PowerShell `Read-Host -AsSecureString`, falling back to a visible prompt if that
+isn't available), and refuse anything under 8 characters before the CLI is invoked.
+`update_password.bat` asks twice and compares the two, because a typo in a field you can't see
+would otherwise lock the account out.
+
+**Which database they write to is the thing to get right.** Both load an env file from the repo
+root — `.env.dev` by default, or whichever file you name as the first argument — and print the
+resolved `MYHOMEBASE_DB` before prompting for anything. With it unset they fall back to
+`.\data\myhomebase.db`, the stale local copy. Neither can be run against the NAS: a publish
+ships `migrate.cjs` and three bundles, not the CLI, and writing to a WAL-mode database over SMB
+while the server holds it open invites exactly the corruption the backup rules exist to prevent.
+Documented in `ADMIN_MANUAL.md` → *Managing user accounts*.
+
+### C. `START_DEV.bat` takes an env file
+
+Second optional argument, `.env.dev` by default. Its `KEY=VALUE` lines (`#` starts a comment)
+are exported into the process before npm starts, so a real environment variable beats any
+`.env`/`.env.local` Next.js would load itself. This is what lets the two account scripts above
+write to the same database the dev server reads.
+
+### D. Documents → Home: the file count is a pill
+
+The Files column rendered `3 · 1.2 MB` as one run of plain ink text. The count is now a tinted
+pill — `bg-brass-soft` / `text-brass-dark`, design.md's `brassSoft` chip role, the same
+treatment `DataGrid`'s own record-count badge already wears — with the total size muted beside
+it, so the figure reads at a glance down the column instead of competing with its own units.
+`tabular-nums` keeps the digits aligned. Zero attachments keeps the plain em dash: a pill
+reading "0" would draw the eye to exactly the rows that have nothing in them. Narrow screens
+reuse the same `render` through `DataGridCompact`, and the wrapper wraps rather than overflowing
+the card. `documents-main-view.tsx` only — no new component, no new token, nothing for
+`components.md` to record.
+
+### E. `.env.example`: `RENTCAST_API_KEY` removed
+
+The property-lookup / watch-list feature it fed is gone — `grep -ri rentcast src/` returns
+nothing. The key was documenting a third-party signup step for an API the app no longer calls.
+
 ## 2026-11-16 09:07 — Expenses around a date: Expense `?date=` landing, and `$` buttons in the Journal
 
 **No migration, no new package.** A **republish is required**.

@@ -241,6 +241,9 @@ are standalone `.bat` files with no PowerShell counterpart.
 | `REBUILD_FOR_NAS.bat` | Build-only half of `REBUILD_PUBLISH_NAS.bat` — produces the aarch64 package locally in `dist-nas\` |
 | `COPY_TO_NAS.bat` | Copy-only half — mirrors a local `dist-nas\` build to the NAS, writes `deploy.trigger` |
 
+Two more scripts — `create_user.bat` and `update_password.bat` — manage accounts
+rather than builds; they have their own section below.
+
 ### `full_test.bat` — the whole quality gate
 
 Runs the stages from `.claude/commands/verify.md`: clear `.next` → typecheck →
@@ -296,6 +299,52 @@ trade for a dependency bump or a config tweak, and the wrong one for a release
 worth describing: the *why* behind a change isn't recoverable from the diff
 later. Use `/release` when the release deserves a written entry. It also doesn't
 run any gates — run `full_test.bat` first.
+
+## Managing user accounts
+
+The app has the proper tool for this: **Admin → User Management** creates
+accounts, resets passwords and grants module access, inside the running app and
+against whatever database that app is using. Use it for anything on a live
+install. The two scripts below cover what it can't — a freshly migrated
+development database with no account in it yet, and a dev password you've
+forgotten and so can't sign in to change.
+
+| File | What it does |
+|---|---|
+| `create_user.bat` | Prompts for username, full name and role, then a password; creates the account |
+| `update_password.bat` | Prompts for a username and a new password, typed twice; replaces that account's password |
+
+Both are thin wrappers over the `create-user` and `set-password` CLI commands,
+which do the real work in `src/lib/user` — the same functions the admin screen
+calls. The password is read without echoing to the screen, and anything under 8
+characters is refused before the CLI is invoked, matching the minimum the app
+itself enforces. `update_password.bat` asks for the new password twice and
+compares the two, because a typo in a field you can't see would otherwise lock
+the account out.
+
+```
+.\create_user.bat                 # prompts, using .env.dev
+.\update_password.bat             # same
+.\update_password.bat .env        # or name a different env file
+```
+
+**Which database they write to is the thing to get right.** They load an env file
+from the repo root — `.env.dev` by default, or whichever file you name as the
+first argument — and then act on whatever `MYHOMEBASE_DB` that file sets, exactly
+as `START_DEV.bat` does. With `MYHOMEBASE_DB` unset they fall back to
+`.\data\myhomebase.db`, the stale local copy. Each run prints the database it is
+about to use before it prompts for anything; read that line before you answer.
+
+**Neither can be run on the NAS.** A publish ships `migrate.cjs` and three other
+bundles, not the CLI, so there is no `set-password` there to run. Pointing
+`MYHOMEBASE_DB` at the NAS data folder over SMB is not the workaround: the app
+holds that database open in WAL mode, and writing to it from a second machine
+while the server is running risks exactly the corruption the backup rules in this
+manual exist to prevent. Use Admin → User Management instead.
+
+Exit codes, should you want to script them: 0 success, 1 bad input, 2 means the
+username already exists (`create_user.bat`) or doesn't exist
+(`update_password.bat`).
 
 ## What a publish never overwrites
 

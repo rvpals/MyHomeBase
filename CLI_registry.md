@@ -2,7 +2,7 @@
 
 Reference for driving MyHomeBase from a terminal.
 
-**Part 1** documents the 64 commands that work today.
+**Part 1** documents the 65 commands that work today.
 **Part 2** is the full inventory of library use-cases — what a command *could* call.
 **Part 3** summarises the coverage gap.
 
@@ -39,6 +39,7 @@ alongside its row here.
 |---|---|---|
 | [`list-users`](#list-users) | read | no |
 | [`create-user`](#create-user) | write | no |
+| [`set-password`](#set-password) | write | no |
 | [`list-csv-analytics`](#list-csv-analytics) | read | no |
 | [`create-csv-analytics-entry`](#create-csv-analytics-entry) | write (creates a table) | no |
 | [`delete-csv-analytics-entry`](#delete-csv-analytics-entry) | write (drops a table) | no |
@@ -163,6 +164,31 @@ Missing flags become `""` and fail zod validation rather than prompting.
 **Output** — `Created user "jane" (id 4, role admin).`
 **Exit** — 0 on success; 1 with the validation or `DuplicateUsernameError` message on stderr.
 Source: [src/cli/create-user.ts](src/cli/create-user.ts)
+
+---
+
+## `set-password`
+
+Replaces an existing user's password with a freshly hashed one.
+
+```
+npm run cli -- set-password --username jane --password newsecret123
+```
+
+**Input**
+
+| Flag | Type | Required | Notes |
+|---|---|---|---|
+| `--username` | string | yes | the account to change; must already exist |
+| `--password` | string | yes | min 8 characters |
+
+Looks the user up by username, so no id is needed. There is no old-password
+check — this is an admin-side reset, not a self-service change.
+
+**Calls** — `setUserPassword(user.id, input, deps.userRepo)`, validated by `setPasswordSchema`.
+**Output** — `Password updated for "jane" (id 4).`
+**Exit** — 0 on success; 2 with `User "jane" does not exist.` on stderr; 1 with the validation message.
+Source: [src/cli/set-password.ts](src/cli/set-password.ts)
 
 ---
 
