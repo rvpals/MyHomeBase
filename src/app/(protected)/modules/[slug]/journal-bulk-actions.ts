@@ -1,18 +1,23 @@
 "use server";
 
-// The bulk actions behind the Entries screen's tick-boxes, shared by **both**
-// tabs — Main and Log.
+// The bulk actions behind the Entries screen's tick-boxes, shared by **every**
+// tab — All Entries, Unlocked, Substantial, Log and Search Results.
 //
-// A file of their own rather than an addition to journal-log-actions.ts: these
-// are used from two views, and parking them in the Log tab's action file would
-// make the Main tab import "log actions" to edit a written entry. The Log tab's
-// own `deleteLogEntriesAction` stays where it is — it returns the Log list
-// specifically, which these don't.
+// A file of their own rather than an addition to journal-actions.ts: these are
+// the writes, and keeping them apart is what makes the authorisation on each
+// one easy to audit.
+//
+// There used to be a second set in journal-log-actions.ts, because the Log tab
+// was its own section with its own grid and its own delete. That tab is now the
+// same component as the rest (see journal-entries-view.tsx), so the second set
+// is gone and these are the only bulk writes on the screen — which is what
+// makes Lock, Unlock and Encrypt available on every tab rather than three of
+// them.
 //
 // Each action re-reads the rows after writing and hands the caller a fresh list,
 // so a view re-renders from server truth rather than patching its own copy. The
-// two lists a caller might want differ (Main is filtered, Log is not), so the
-// caller says which one it wants back via `scope`.
+// lists a caller might want differ in which conditions apply, so the caller says
+// which tab is asking via `scope`.
 
 import { revalidatePath } from "next/cache";
 import {
@@ -24,7 +29,6 @@ import {
   describeBulkLockResult,
   findEntries,
   getEntry,
-  listLogEntries,
   mergeEntryDraft,
   recycleEntries,
   searchEntries,
@@ -50,25 +54,27 @@ const ENTRIES_LIMIT = 500;
 /**
  * Which list the caller wants handed back after the write.
  *
- * The All Entries tab re-queries its current filter (so a row edited out of the
- * filter disappears, which is the honest result); the Log tab re-reads the Log
- * list; the Unlocked Entries tab re-queries its filter **with the lock condition
- * re-applied**, so a row that was just locked from that tab leaves the list.
+ * Every tab re-queries its own filter with its own conditions re-applied, so a
+ * row the write pushed out of the tab leaves the list — which is the honest
+ * result. The All Entries tab re-queries the filter alone; Unlocked adds the
+ * lock condition back, so a row just locked from that tab disappears; Log adds
+ * the Log condition back, so a row bulk-edited out of the Log category
+ * disappears from it.
  *
  * The Substantial Entries tab works the same way with the **body-length
  * condition re-applied**: a bulk edit that trims a body below the word count
  * drops the row from the list it hands back, which is the same honesty as a row
  * edited out of a filter.
  *
- * `"unlocked"` and `"substantial"` are each their own arm rather than flags on
- * `"main"` so the existing `scope.tab === "log"` test and every present caller
- * stay untouched.
+ * Each tab is its own arm rather than a set of flags on `"main"`: the arms are
+ * what `refresh()` below reads to decide which conditions to re-apply, and a
+ * tab that forgets to name itself would be handed back another tab's rows.
  */
 export type BulkRefreshScope =
   | { tab: "main"; filter: JournalFilter }
   | { tab: "unlocked"; filter: JournalFilter }
   | { tab: "substantial"; filter: JournalFilter }
-  | { tab: "log" }
+  | { tab: "log"; filter: JournalFilter }
   | { tab: "search"; term: string };
 
 export interface BulkActionResult {
@@ -85,20 +91,19 @@ function toErrorResult(error: unknown, fallback: string): BulkActionResult {
 }
 
 function refresh(scope: BulkRefreshScope): JournalEntry[] {
-  if (scope.tab === "log") return listLogEntries(deps.journalRepo, ENTRIES_LIMIT);
   if (scope.tab === "search") return searchEntries(deps.journalRepo, scope.term, ENTRIES_LIMIT);
-  // `"all"` for the Log scope — all three grid tabs show every entry, logged
-  // activities included. The lock and body-length scopes are what separate
-  // them, and both are re-applied here rather than assumed unchanged: Lock on
-  // the Unlocked tab, and an edit that shortens a body on the Substantial tab,
-  // each write rows that no longer belong in the list being handed back.
+  // One read for the other four tabs, with each tab's own condition re-applied
+  // rather than assumed unchanged. Lock on the Unlocked tab, an edit that
+  // shortens a body on the Substantial tab, and an edit that drops the Log
+  // category on the Log tab each write rows that no longer belong in the list
+  // being handed back.
   //
-  // Same three scopes findJournalEntriesAction applies, so the refreshed list
-  // matches what a filter change would have produced.
+  // The same three scopes findJournalEntriesAction applies, in the same order,
+  // so a refreshed list matches what a filter change would have produced.
   return findEntries(
     deps.journalRepo,
     withLockedCondition(
-      withLogCondition(scope.filter, "all"),
+      withLogCondition(scope.filter, scope.tab === "log" ? "only" : "all"),
       scope.tab === "unlocked" ? "unlocked" : "all",
     ),
     ENTRIES_LIMIT,

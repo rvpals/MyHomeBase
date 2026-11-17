@@ -1,24 +1,32 @@
 "use client";
 
-// The My Journal "Entries" browser, in four tabs:
+// The My Journal "Entries" browser, in four tabs — **one component, four row
+// sets**:
 //
-//   **Unlocked Entries** — a saved-filter dropdown, the selected filter's
-//   criteria shown back as readable text, and the matching entries below,
-//   narrowed to entries that aren't locked. First because it is the everyday
-//   view: the entries you can still edit.
+//   **Unlocked Entries** — the everyday view: the entries you can still edit.
+//   First, and the tab the screen opens on — named explicitly in
+//   `defaultActiveKey` rather than inherited from tab order.
 //   **Substantial Entries** — the same screen, narrowed to entries whose body
 //   runs to more than ten words. Encrypted entries never appear: a sealed body
 //   can't be measured. See src/lib/journal/body-length.ts.
-//   **All Entries**      — the same again with no narrowing at all. Every
-//   entry, locked and logged activities included. Last of the three grids
-//   because it is the widest net rather than the usual starting point, and no
-//   longer the tab the screen opens on — that is Unlocked Entries, named
-//   explicitly in `defaultActiveKey` rather than inherited from tab order.
-//   `?tab=main` still comes straight here.
-//   **Log**              — the logged activities on their own. This was its own
-//   section at /modules/journal/log until they became tabs of one screen;
-//   `JournalLogView` moved here unchanged, which is why the Log tab still has
-//   its own grid, bulk delete and viewer modal rather than sharing the others'.
+//   **All Entries** — the same again with no narrowing at all. Every entry,
+//   locked and logged activities included. `?tab=main` comes straight here.
+//   **Log** — the logged activities on their own.
+//
+// All four are the **same `EntriesTab`**, differing only in a triple of scopes
+// (`lockScope` / `bodyScope` / `logScope`). That is load-bearing, not tidiness:
+// it is what gives them one column set, one grid storage key, one set of bulk
+// actions, one Filtering card, and one row click — which opens the full entry
+// screen, the only place an entry can be edited.
+//
+// It was not always so. The Log tab was its own section at /modules/journal/log
+// and was moved in here whole as `JournalLogView`, which left it with its own
+// columns, its own storage key, bulk actions missing Lock/Unlock/Encrypt, and a
+// read-only viewer modal with no way through to the editor. Three
+// implementations of "a grid of journal entries" drifted apart exactly as you
+// would expect them to. **If you are about to give one tab its own columns, its
+// own storage key or its own action bar, that is the trap — add a scope, not a
+// second component.**
 //
 // Which entries belong to which tab is decided on the server (see
 // journal-entries-panel.tsx), re-decided on every filter change by
@@ -29,9 +37,15 @@
 // the matching subset of the first 500 rather than the first 500 matching.
 //
 // The four overlap rather than partitioning the journal: All Entries is
-// everything (scope `"all"`), Unlocked is the unlocked subset of it,
+// everything (log scope `"all"`), Unlocked is the unlocked subset of it,
 // Substantial is the long-bodied subset of it, and Log is the Log-only view,
-// which contains locked, unlocked, long and short entries alike.
+// which contains locked, unlocked, long and short entries alike. The saved
+// filter in the Filtering card narrows all four, Log included.
+//
+// A fifth tab, **Search Results**, appears only with `?search=`. It is still its
+// own component (`SearchTab`) because its rows come from a term rather than from
+// a filter, but it reads the same `COLUMNS`, shares the same grid storage key
+// and offers the same bulk actions.
 //
 // Route-local. The filter tree, its SQL compilation and its English description
 // all live in src/lib/journal/filters.ts — this file only presents them.
@@ -40,6 +54,7 @@ import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { Comments } from "@/components/comments";
 import { BulkConfirm } from "@/components/bulk-confirm";
 import { BusyOverlay } from "@/components/busy-overlay";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
@@ -54,7 +69,6 @@ import {
   // The threshold is read from lib rather than written as "10" in the copy, so
   // the sentence can't drift from the condition the SQL actually applies.
   SUBSTANTIAL_MIN_WORDS,
-  countBodyWords,
   describeFilter,
   displayEntryTitle,
   emptyFilter,
@@ -62,6 +76,7 @@ import {
   type JournalEntry,
   type JournalFilter,
   type JournalLockScope,
+  type JournalLogScope,
   type SavedJournalFilter,
 } from "@/lib/journal";
 import {
@@ -85,7 +100,6 @@ import { EntryClipsDialog } from "./clips-entry-clips-dialog";
 import { JournalEntriesBulkEdit } from "./journal-entries-bulk-edit";
 import { JournalEntriesBulkOverwrite } from "./journal-entries-bulk-overwrite";
 import { JournalFilterBuilder } from "./journal-filter-builder";
-import { JournalLogView } from "./journal-log-view";
 
 // Resolved once at module scope; the registry is static, so this is not I/O.
 const FILTERS_SLOT = getIconSlot("journal_card_entry_filters")!;
@@ -147,6 +161,16 @@ function withClipBadge(
   );
 }
 
+/**
+ * The one column set, shared by all four tabs and by Search Results.
+ *
+ * Deliberately not per-tab. Two of them used to have their own — the Substantial
+ * tab swapped Place for a Body Length column, the Log tab had a merged "When"
+ * plus Source and Note — and the result read as four different screens over the
+ * same table. A column that earns its place on one tab earns it on all of them,
+ * so add it here; `DataGrid` already lets a reader hide per grid what they don't
+ * want.
+ */
 const COLUMNS: DataGridColumn<JournalEntry>[] = [
   { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
   { key: "time", header: "Time", value: (entry) => entry.time, render: (entry) => entry.time },
@@ -183,24 +207,6 @@ const COLUMNS: DataGridColumn<JournalEntry>[] = [
   { key: "place", header: "Place", value: (entry) => entry.placeName, render: (entry) => entry.placeName },
 ];
 
-/**
- * The Substantial Entries tab's columns: the shared set with Place swapped for
- * Body Length.
- *
- * Its own list rather than a prop on `COLUMNS`, because the two differ in what
- * they are *for*. Place is dead weight on this tab — it is the one tab defined
- * by the body, and the entries it lists are prose, not places — while the word
- * count is meaningless on the other two, where short and empty entries are
- * exactly what you are often looking for.
- *
- * `COLUMNS` is left untouched on purpose: All Entries and Unlocked Entries
- * share it, so not touching it is what makes those two provably unchanged.
- *
- * Derived from `COLUMNS` rather than retyped so the Date/Time/Title/Categories/
- * Tags definitions — including the encrypted-title placeholder — stay defined
- * once. Anything added to the shared list appears here too, which is the right
- * default: this tab wants every column the others have except Place.
- */
 /** One row of a "Show SQL" re-run's arbitrary result set. */
 interface SqlResultRow {
   index: number;
@@ -211,22 +217,6 @@ interface SqlResultRow {
 function cellToText(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
-
-const SUBSTANTIAL_COLUMNS: DataGridColumn<JournalEntry>[] = [
-  ...COLUMNS.filter((column) => column.key !== "place"),
-  {
-    key: "bodyWords",
-    header: "Body Length",
-    // Counted in lib by the same arithmetic the filter's SQL uses, so the number
-    // in this cell can never contradict the condition that put the row here.
-    // Never below SUBSTANTIAL_MIN_WORDS + 1 on this tab, by definition.
-    value: (entry) => countBodyWords(entry.content),
-    render: (entry) => countBodyWords(entry.content).toLocaleString(),
-    // Right-aligned and tabular: a column of numbers compares down the column,
-    // not across, and proportional digits make unequal numbers look equal.
-    className: "text-right tabular-nums",
-  },
-];
 
 /** Sentinel for the dropdown's unfiltered option — "" is a real select value. */
 const ALL_ENTRIES = "";
@@ -258,6 +248,7 @@ export function JournalEntriesView({
   initialSql,
   initialUnlockedSql,
   initialSubstantialSql,
+  initialLogSql,
   canRunSql = false,
   initialFilters,
   categoryOptions,
@@ -274,8 +265,6 @@ export function JournalEntriesView({
   title,
   description,
   logEntries,
-  categoryIcons,
-  tagIcons,
   clipCounts = {},
 }: JournalEntriesViewProps) {
   const hasSearch = initialSearchQuery !== undefined && initialSearchQuery !== "";
@@ -313,6 +302,7 @@ export function JournalEntriesView({
       content: (
         <EntriesTab
           key="unlocked"
+          logScope="all"
           lockScope="unlocked"
           bodyScope="all"
           clipCounts={clipCounts}
@@ -339,6 +329,7 @@ export function JournalEntriesView({
       content: (
         <EntriesTab
           key="substantial"
+          logScope="all"
           lockScope="all"
           bodyScope="substantial"
           clipCounts={clipCounts}
@@ -365,6 +356,7 @@ export function JournalEntriesView({
       content: (
         <EntriesTab
           key="all"
+          logScope="all"
           lockScope="all"
           bodyScope="all"
           clipCounts={clipCounts}
@@ -394,10 +386,16 @@ export function JournalEntriesView({
         </span>
       ),
       content: (
-        <JournalLogView
-          entries={logEntries}
-          categoryIcons={categoryIcons}
-          tagIcons={tagIcons}
+        <EntriesTab
+          key="log"
+          logScope="only"
+          lockScope="all"
+          bodyScope="all"
+          clipCounts={clipCounts}
+          initialEntries={logEntries}
+          initialSql={initialLogSql}
+          canRunSql={canRunSql}
+          initialFilters={initialFilters}
           categoryOptions={categoryOptions}
           tagOptions={tagOptions}
           locationCategoryOptions={locationCategoryOptions}
@@ -405,6 +403,9 @@ export function JournalEntriesView({
           preferences={preferences}
           contentTextures={contentTextures}
           prefillTemplates={prefillTemplates}
+          initialFilterId={initialFilterId}
+          appliedQuery={appliedQuery}
+          queryError={queryError}
         />
       ),
     },
@@ -461,13 +462,14 @@ export interface JournalEntriesViewProps {
   initialSearchQuery?: string;
   /**
    * The statement each tab's first page came from, for the grid's "Show SQL"
-   * dialog. One per tab because the three differ in exactly the conditions the
+   * dialog. One per tab because the four differ in exactly the conditions the
    * dialog is there to show. `undefined` for a non-admin or a failed query, and
    * the button is then absent.
    */
   initialSql?: string;
   initialUnlockedSql?: string;
   initialSubstantialSql?: string;
+  initialLogSql?: string;
   /**
    * Whether to offer "Show SQL" at all. Admins only — presentation only, since
    * `runJournalSqlAction` re-checks the role before running anything.
@@ -508,22 +510,23 @@ export interface JournalEntriesViewProps {
   /**
    * Which tab to open on — "log", "main", "unlocked" or "substantial";
    * everything else lands on Unlocked Entries, the first tab. The Statistics
-   * card's "Total Log Entries" tile is what sets "log"; `?filter=` can't reach
-   * the Log tab, since it only ever narrows the three grid tabs.
+   * card's "Total Log Entries" tile is what sets "log". `?filter=` reaches every
+   * tab, Log included — all four share one Filtering card.
    */
   initialTab?: string;
   /** Overrides for the heading above the grid, when embedded outside the section. */
   title?: string;
   description?: string;
   /**
-   * The Log tab's rows — every entry carrying the Log category, read whole by
-   * the caller. Not filtered by the other tabs' dropdown: the Log tab is the old
-   * Log section, which never had one.
+   * The Log tab's first page — the same filter with the Log condition added, a
+   * read of its own for the same reason the unlocked and substantial lists are:
+   * every list is capped at 500 rows, so narrowing the All Entries page in the
+   * client would hide log entries that fell outside that cap.
+   *
+   * It used to be the whole unfiltered Log list, because the Log tab had no
+   * filter controls. It has them now, like every other tab.
    */
   logEntries: JournalEntry[];
-  /** Category/tag name → icon URL, for the Log tab's viewer modal. */
-  categoryIcons: Record<string, string>;
-  tagIcons: Record<string, string>;
   /**
    * Entry id → how many clips are attached to it (migration 0155), for the
    * paperclip on the Title cell. An id with none is absent rather than zero, so a
@@ -537,25 +540,29 @@ export interface JournalEntriesViewProps {
 }
 
 /**
- * The grid tabs — All Entries, Unlocked Entries and Substantial Entries: the
- * filter controls and the entries they narrow.
+ * **Every tab on this screen** — Unlocked, Substantial, All Entries and Log: the
+ * filter controls, the grid, and the bulk actions on the ticked rows.
  *
- * Split out of `JournalEntriesView` when the Log tab arrived so that all the
- * filter state — selection, the builder, the applied-query banner — stays owned
- * by the tab that uses it, rather than sitting a level up where the Log tab
- * would re-render on every change it has no interest in. Rendered once per grid
- * tab, so each keeps its own selection and its own ticked rows — which holds
- * **only** because each call site passes a distinct `key`. `Tabs` renders one
- * tab's content at one position, so without the key React would reuse a single
- * instance and every tab would show the first-mounted tab's rows.
+ * Split out of `JournalEntriesView` so that all the filter state — selection,
+ * the builder, the applied-query banner — stays owned by the tab using it,
+ * rather than sitting a level up where every tab would re-render on a change
+ * only one of them cares about. Rendered once per tab, so each keeps its own
+ * selection and its own ticked rows — which holds **only** because each call
+ * site passes a distinct `key`. `Tabs` renders one tab's content at one
+ * position, so without the key React would reuse a single instance and every
+ * tab would show the first-mounted tab's rows.
  *
- * `lockScope` and `bodyScope` are the *only* differences between the three
- * instances. Both are passed to the server on every re-query and every bulk
- * refresh rather than filtering rows here — see the note at the top of the file.
+ * `lockScope`, `bodyScope` and `logScope` are the *only* differences between the
+ * four instances. All three are passed to the server on every re-query and
+ * every bulk refresh rather than filtering rows here — see the note at the top
+ * of the file. Resist adding a fourth kind of difference: the reason this
+ * component exists is that the Log tab once was its own, and ended up with
+ * different columns, different bulk actions and no route to the editor.
  */
 function EntriesTab({
   lockScope,
   bodyScope,
+  logScope,
   clipCounts,
   initialEntries,
   initialSql,
@@ -576,17 +583,18 @@ function EntriesTab({
   | "title"
   | "description"
   | "logEntries"
-  | "categoryIcons"
-  | "tagIcons"
   | "initialUnlockedEntries"
   | "initialSubstantialEntries"
   | "initialUnlockedSql"
   | "initialSubstantialSql"
+  | "initialLogSql"
 > & {
   /** `"all"` for the All Entries tab, `"unlocked"` for Unlocked Entries. */
   lockScope: JournalLockScope;
   /** `"substantial"` for the Substantial Entries tab, `"all"` for the others. */
   bodyScope: JournalBodyScope;
+  /** `"only"` for the Log tab, `"all"` for the other three. */
+  logScope: JournalLogScope;
   /**
    * Clips attached per entry id, for the Title cell's paperclip. Absent ids have
    * none — the count query omits them rather than returning zeros.
@@ -672,21 +680,26 @@ function EntriesTab({
   });
 
   /**
-   * The adjective this tab's copy calls its rows by — "unlocked entries",
-   * "substantial entries", or plain "entries".
+   * The adjective this tab's copy calls its rows by — "log entries",
+   * "unlocked entries", "substantial entries", or plain "entries".
    *
    * One derived word rather than a boolean per scope: the count line, the
    * no-filter line, both empty states and the export filename all need the same
-   * noun, and with three tabs a nested ternary in each of them is how two of
-   * them end up disagreeing. `bodyScope` is checked first because only the
-   * Substantial tab sets it, and it never combines with `"unlocked"`.
+   * noun, and with four tabs a nested ternary in each of them is how two of them
+   * end up disagreeing. Each scope is tested in turn because no two of them ever
+   * combine — only the Log tab sets `logScope`, only the Substantial tab sets
+   * `bodyScope`, and only the Unlocked tab sets `lockScope`.
    */
   const rowNoun =
-    bodyScope === "substantial" ? "substantial" : lockScope === "unlocked" ? "unlocked" : "";
-  /** `"substantial "` / `"unlocked "` / `""` — the noun as a copy prefix. */
+    logScope === "only"
+      ? "log"
+      : bodyScope === "substantial"
+        ? "substantial"
+        : lockScope === "unlocked"
+          ? "unlocked"
+          : "";
+  /** `"log "` / `"substantial "` / `"unlocked "` / `""` — the copy prefix. */
   const nounPrefix = rowNoun === "" ? "" : `${rowNoun} `;
-  /** This tab's grid differs from the other two: its own columns and no eye. */
-  const isSubstantial = bodyScope === "substantial";
 
   const selected = filters.find((candidate) => String(candidate.id) === selectedId);
 
@@ -737,11 +750,12 @@ function EntriesTab({
       setIsLoading(true);
       setError(undefined);
       try {
-        // `"all"` for the Log scope — every grid tab shows every entry, logged
-        // activities included, so no Log condition is added. `lockScope` and
-        // `bodyScope` are what separate them, and all three are applied on the
-        // server; see findJournalEntriesAction.
-        const result = await findJournalEntriesAction(filter, "all", lockScope, bodyScope);
+        // All three scopes go to the server rather than being applied to the
+        // rows here. `logScope` is `"only"` on the Log tab and `"all"` on the
+        // other three — they show every entry, logged activities included, and
+        // `lockScope`/`bodyScope` are what separate those. See
+        // findJournalEntriesAction.
+        const result = await findJournalEntriesAction(filter, logScope, lockScope, bodyScope);
         if (!result.ok) {
           setError(result.error);
           // The rows on screen are still the previous filter's, so the stored
@@ -762,7 +776,7 @@ function EntriesTab({
         setIsLoading(false);
       }
     },
-    [lockScope, bodyScope],
+    [logScope, lockScope, bodyScope],
   );
 
   // Changing the dropdown is an event, not external state to synchronize, so the
@@ -810,11 +824,13 @@ function EntriesTab({
   function currentScope(): BulkRefreshScope {
     return {
       tab:
-        bodyScope === "substantial"
-          ? "substantial"
-          : lockScope === "unlocked"
-            ? "unlocked"
-            : "main",
+        logScope === "only"
+          ? "log"
+          : bodyScope === "substantial"
+            ? "substantial"
+            : lockScope === "unlocked"
+              ? "unlocked"
+              : "main",
       filter: selected?.filter ?? emptyFilter(),
     };
   }
@@ -1214,6 +1230,31 @@ function EntriesTab({
             entries are never listed here — a sealed body can&rsquo;t be measured.
           </p>
         )}
+        {/* What the Log tab is, kept from the section it used to be. Like the
+            line above, this explains the *rows*; the grid below is the same grid
+            every other tab draws. */}
+        {logScope === "only" && (
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <p className="text-xs text-muted">
+              Everything carrying the <span className="text-ink">Log</span> category — logged
+              activities rather than written entries, including everything Calendar Import
+              created. These are kept out of the home screen&rsquo;s Today in History card;
+              they still appear in All Entries, Calendar and search.
+            </p>
+            <Comments
+              title="About"
+              content={
+                "A log entry is a short record of something that happened — a practice, a lesson, " +
+                "an appointment — rather than something you sat down to write. Anything the " +
+                "Calendar Import creates lands here, and you can add one by hand by giving a new " +
+                "entry the Log category.\n\n" +
+                "Click a row to open it on its own screen, where it can be edited. Deleting " +
+                "moves entries to the recycle bin under Data Management, so a mis-ticked row " +
+                "is recoverable."
+              }
+            />
+          </div>
+        )}
         {/* A re-run's result replaces the entries grid rather than sitting beside
             it: its columns are whatever the edited query returned, so none of
             this tab's row actions (open, bulk edit, lock) mean anything against
@@ -1230,14 +1271,10 @@ function EntriesTab({
           />
         ) : (
           <DataGrid
-            // The Substantial tab swaps Place for Body Length; the other two keep
-            // the shared set untouched. Both get the clip badge on their Title
-            // column, which is what `withClipBadge` adds.
-            columns={withClipBadge(
-              isSubstantial ? SUBSTANTIAL_COLUMNS : COLUMNS,
-              clipCounts,
-              setClipsForEntry,
-            )}
+            // One column set for every tab — see the note on `COLUMNS`.
+            // `withClipBadge` adds the paperclip to the Title cell of any entry
+            // carrying clips.
+            columns={withClipBadge(COLUMNS, clipCounts, setClipsForEntry)}
             rows={entries}
             getRowKey={(entry) => entry.id}
             emptyMessage={
@@ -1249,20 +1286,12 @@ function EntriesTab({
             }
             enableExport
             exportFileName={rowNoun === "" ? "journal-entries" : `journal-${rowNoun}-entries`}
-            // One key for All Entries and Unlocked — same columns, same rows, so a
-            // width or order set on one should hold on the other. The Substantial
-            // tab gets its own: its column set differs (Place out, Body Length in),
-            // and a saved order/hidden list naming columns this tab doesn't have
-            // would restore a stale arrangement.
-            storageKey={
-              isSubstantial
-                ? "myhomebase:journal-substantial-entries-grid"
-                : "myhomebase:journal-entries-grid"
-            }
-            // No per-row record button on this tab: the row already opens on click
-            // and the modal's draw is the hidden columns, which this tab doesn't
-            // have. Left on elsewhere — removing it there is not what was asked.
-            enableRecordView={!isSubstantial}
+            // One key for every tab, and for Search Results: same columns, same
+            // rows, so a width, an order or a hidden column set on one holds on all
+            // of them. Three keys is what let the tabs look like three screens.
+            storageKey="myhomebase:journal-entries-grid"
+            // `enableRecordView` stays at its default (on) everywhere. The eye
+            // used to be switched off on Substantial and absent on Log.
             onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
             enableSelection
             renderSelectionActions={(selectedRows, clearSelection) => (

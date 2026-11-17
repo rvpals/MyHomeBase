@@ -576,19 +576,29 @@ Five choices worth knowing:
   only the calendar's other fields update. Untick it (CLI: `--replace`) for the old
   replace-the-whole-entry behaviour.
 
-**Entries** is three tabs. **Unlocked Entries** comes first — the filter dropdown and the
+**Entries** is four tabs. **Unlocked Entries** comes first — the filter dropdown and the
 entries it narrows, with a server-side `isLocked is false` condition (`withLockedCondition`,
-its own AND group so an OR-joined filter can't leak a locked row); **All Entries** is the
-same screen with no narrowing, and sits last of the grids while remaining the tab the
-screen opens on (`defaultActiveKey`, not tab order);
-**Log** lists every entry carrying the `Log` category — logged activities rather than
-written entries, which is where calendar imports land. The Log tab is one `DataGrid`
-with search, filters, CSV export and a bulk delete that moves rows to the **recycle
-bin** (0079) rather than destroying them; clicking a row opens the same `JournalViewer`
-the calendar and Correct tab use.
+its own AND group so an OR-joined filter can't leak a locked row); **Substantial Entries**
+narrows the same screen to bodies over ten words (`body-length.ts`, which also excludes
+encrypted entries — a sealed body can't be measured); **All Entries** is the same screen
+with no narrowing, and sits last of the grids; **Log** lists every entry carrying the
+`Log` category — logged activities rather than written entries, which is where calendar
+imports land. **Unlocked Entries** is the tab the screen opens on (`defaultActiveKey`,
+not tab order). A fifth, **Search Results**, appears only with `?search=`.
 
-Log was its own section until the two became tabs of one screen. Three choices worth
-knowing:
+**All four are the same component**, `EntriesTab`, rendered four times with a
+different `lockScope` / `bodyScope` / `logScope`. So they share one column set, one
+grid `storageKey`, one Filtering card, one set of bulk actions (edit, overwrite,
+lock, unlock, encrypt, merge, delete — delete moves rows to the **recycle bin**, 0079,
+rather than destroying them) and one row click, which opens
+`/modules/journal/entries/[id]`, the only place an entry can be edited.
+
+Log was its own section at `/modules/journal/log` until the tabs arrived, and was
+moved in whole as its own component. That left it with its own columns, its own
+storage key, bulk actions missing Lock/Unlock/Encrypt and a read-only viewer modal
+with no route to the editor — four grids that read as four screens over one table.
+Folding it into `EntriesTab` is what fixed that. **Adding a tab means adding a scope,
+not a second component.** Four choices worth knowing:
 
 - **The split is decided on the server, not in the browser.** `withLogCondition` ANDs
   "carries / does not carry Log" onto the reader's filter as a **separate group**, and

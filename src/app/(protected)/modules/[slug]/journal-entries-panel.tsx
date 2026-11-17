@@ -17,9 +17,13 @@
 // Four tabs, all read here: **All Entries** (every entry, which the filter above
 // narrows), **Unlocked Entries** (the same, minus the locked ones),
 // **Substantial Entries** (the same, minus the short and the encrypted) and
-// **Log** (the logged activities, unfiltered). A supplied
-// `filterName`/`filterQuery` applies to all three grid tabs — All Entries is the
-// one a deep link from the Top Tags/Categories cards lands on.
+// **Log** (the same, minus everything without the Log category). A supplied
+// `filterName`/`filterQuery` applies to **all four** — All Entries is the one a
+// deep link from the Top Tags/Categories cards lands on.
+//
+// Four reads rather than one list narrowed four ways: every list is capped at
+// ENTRIES_LIMIT, so narrowing the All Entries page here would give the subset
+// of the first 500 rather than the first 500 of the subset.
 
 import {
   describeFilter,
@@ -29,7 +33,6 @@ import {
   listCategories,
   listEnabledPrefillTemplates,
   listFilters,
-  listLogEntries,
   listTags,
   resolveJournalPreferences,
   searchEntries,
@@ -50,7 +53,6 @@ import { deps } from "@/lib/wiring";
 // categories/tags above.
 import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { JournalEntriesView } from "./journal-entries-view";
-import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 
 /** Matches ENTRIES_RESULT_LIMIT in journal-actions.ts, so the first render and a
  *  later filtered re-query are capped the same way. */
@@ -167,6 +169,15 @@ export function JournalEntriesPanel({
     ? []
     : findEntries(deps.journalRepo, scopedFilter, ENTRIES_LIMIT, "substantial");
 
+  // The Log tab's first page. It used to be `listLogEntries` — the whole
+  // unfiltered Log list — because that tab was the old /modules/journal/log
+  // section and had no filter controls of its own. It has the same Filtering
+  // card as every other tab now, so it reads the way they do: the reader's
+  // filter with the Log condition added, and a read of its own for the same
+  // capping reason as the two above.
+  const logFilter = withLogCondition(filter, "only");
+  const logEntries = queryError ? [] : findEntries(deps.journalRepo, logFilter, ENTRIES_LIMIT);
+
   // Each tab's statement, built from the same scoped filter its rows came from.
   //
   // Still built when `queryError` is set — that is the state someone is most
@@ -196,9 +207,8 @@ export function JournalEntriesPanel({
     ].join("\n");
   };
 
-  // The Log tab is the section that used to live at /modules/journal/log, moved
-  // in whole: the same unfiltered list, and the same two icon maps its viewer
-  // modal renders an entry's categories and tags with.
+  // The managed lists — the filter builder's pickers, the bulk-edit dialog's,
+  // and the Merge action's entry form.
   const categories = listCategories(deps.journalRepo);
   const tags = listTags(deps.journalRepo);
 
@@ -224,6 +234,7 @@ export function JournalEntriesPanel({
     ...entries,
     ...unlockedEntries,
     ...substantialEntries,
+    ...logEntries,
     ...searchEntryResults,
   ].map((entry) => entry.id);
   const clipCounts = countClipsForTargets(
@@ -249,6 +260,7 @@ export function JournalEntriesPanel({
       initialSql={sqlFor(scopedFilter)}
       initialUnlockedSql={sqlFor(unlockedFilter)}
       initialSubstantialSql={sqlFor(scopedFilter, "substantial")}
+      initialLogSql={sqlFor(logFilter)}
       canRunSql={canRunSql}
       initialFilters={savedFilters}
       categoryOptions={categories.map((category) => category.name)}
@@ -266,9 +278,7 @@ export function JournalEntriesPanel({
       initialTab={initialTab}
       title={title}
       description={description}
-      logEntries={listLogEntries(deps.journalRepo, ENTRIES_LIMIT)}
-      categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
-      tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
+      logEntries={logEntries}
       // A plain object rather than the Map: a client component's props have to be
       // serialisable across the server/client boundary, and a Map is not.
       clipCounts={Object.fromEntries(clipCounts)}

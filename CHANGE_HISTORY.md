@@ -1,5 +1,57 @@
 # Change History
 
+## 2026-11-17 07:54 — Journal Entries: all four tabs are now the same grid
+
+**No migration, no new package.** A **republish is required**.
+
+**No gate was run to a clean result, and none of it has been seen on screen.** A single
+`tsc --noEmit` ran part-way through and came back red with five syntax errors in the new Log
+blurb (a `
+
+` written as real newlines by my own patch script). Those were fixed and
+`tsc` was **not re-run**. Lint, unit tests, lib-boundary and the browser smoke were offered
+and declined. What *is* checked, by grep only: `JournalLogView` and `journal-log-actions.ts`
+had no JSX/import call site other than the Log tab, and nothing still imports either.
+
+### A. The Log tab is `EntriesTab`, like the other three
+
+The four tabs were three implementations. Unlocked, Substantial and All Entries were one
+`EntriesTab`; **Log** was `JournalLogView`, the old `/modules/journal/log` section moved in
+whole, so it drifted: its own columns (a merged *When*, plus *Source* and *Note*, and no
+encrypted badge or paperclip), its own grid storage key, a bulk bar **without Lock, Unlock or
+Encrypt**, and a row click that opened a read-only `JournalViewer` modal with no way through
+to the editor. Log now renders `EntriesTab` with a new `logScope="only"`, so all four share
+one column set, one bulk bar (Bulk edit, Bulk overwrite, Lock, Unlock, Encrypt, Merge, Delete),
+the Filtering card, Show SQL for admins, the record-view eye, and a row click that opens
+`/modules/journal/entries/[id]`. The saved filter now narrows Log too.
+
+### B. One column set, one storage key
+
+`SUBSTANTIAL_COLUMNS` is gone: Substantial lost its **Body Length** column and regains **Place**,
+and its record-view eye. Log lost **Source**, **Note** and **When** (Date and Time again). All
+tabs, and Search Results, use the one `myhomebase:journal-entries-grid` key, so a width or a
+hidden column set on one holds on all. **Log's saved column layout resets once** (its old key,
+`journal-log-grid`, is abandoned).
+
+### C. Server side
+
+`BulkRefreshScope`'s `log` arm gains a `filter`, and `refresh()` in `journal-bulk-actions.ts`
+now sends Log through the same `findEntries(withLockedCondition(withLogCondition(...)))` path
+as the rest, instead of `listLogEntries`. `journal-entries-panel.tsx` reads Log's first page the
+same way, adds `initialLogSql`, and includes Log rows in the `clipCounts` read. The category/tag
+icon maps it used to pass for the Log viewer modal are removed.
+
+### D. Deleted
+
+`journal-log-view.tsx` and `journal-log-actions.ts` (`deleteLogEntriesAction`,
+`loadLogEntriesAction` — the latter already had no caller). Log's "Delete checked" is now the
+shared Delete, with the locked-rows caveat in its confirm.
+
+### E. Docs
+
+`components.md` (DataGrid call sites, BusyOverlay call site) and `modules.md` (Entries is four
+tabs, all one component; a new tab means a new scope, not a second component).
+
 ## 2026-11-16 19:10 — Account management from the command line, and a file-count pill in Documents
 
 **No migration, no new package.** A **republish is required** for the Documents change; the

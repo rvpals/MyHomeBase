@@ -146,6 +146,30 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-17 — Release (Journal Entries: four identical tabs)
+
+Needs no migration; needs a republish. Nothing here has been seen on screen and no gate was run to a clean result — typecheck went red mid-change and was not re-run, so **if the app won't build, start with `journal-entries-view.tsx`**. Items 9–11 are the ones most likely to expose a wiring slip.
+
+- [ ] **1.** Journal > Entries: Unlocked, Substantial, All Entries and Log all show the same columns — Date, Time, Title, Categories, Tags, Place — with the same header styling
+- [ ] **2.** Tick rows on **Log**: the bar offers Bulk edit, Bulk overwrite, Lock, Unlock, Encrypt, Merge and Delete, the same set as Unlocked
+- [ ] **3.** Log: select a few entries and Unlock them — a confirm appears naming how many are already unlocked, then the result line reads correctly
+- [ ] **4.** Log: Lock, then Encrypt, a selection — the encrypt prompt asks for a password and the overlay shows while it works
+- [ ] **5.** Log: Delete a selection that includes a locked entry — the confirm warns it moves to the bin still locked, and the entries appear under Data Management > Recycled Entries
+- [ ] **6.** Click a row on **Log**: it opens `/modules/journal/entries/<id>`, the full editable screen, not a read-only popup
+- [ ] **7.** Click a row on **Substantial Entries**: same full entry screen as before
+- [ ] **8.** The eye button at the left of a row appears on Substantial and Log as well as the other two, and opens the record dialog
+- [ ] **9.** Log: pick a saved filter in the Filtering card — the list narrows to Log entries matching it, and the count line reads "log entries matching ..."
+- [ ] **10.** Log: an entry bulk-edited to drop its Log category disappears from the Log tab after the edit, and still shows in All Entries
+- [ ] **11.** Log: a Calendar-Import entry that has a clip shows the paperclip beside its title; an encrypted one shows the lock badge and the placeholder title
+- [ ] **12.** Substantial Entries now shows a **Place** column and no Body Length column; the "more than 10 words" note is still above it
+- [ ] **13.** Drag a column wider on Unlocked, then switch to Log — Log has the same width (one shared layout)
+- [ ] **14.** Log: the "Everything carrying the Log category" note and its About chip are still above the grid
+- [ ] **15.** As an admin, "Show SQL" appears on Log and shows the Log condition; as a non-admin it is absent
+- [ ] **16.** Search from the Journal: the Search Results tab still has the same columns and bulk bar
+- [ ] **17.** All four tabs at phone width: the card layout and the selection bar wrap rather than overflow, Log included
+
+---
+
 ## 2026-11-16 — Release (Account scripts, Documents file-count pill)
 
 Needs no migration. Nothing here has been seen on screen and no gate was run. **Items 1–6 write to a real database** — check the `Database:` line each script prints before you answer any prompt, and point it at a dev copy, never the NAS. Item 7 is a dev-server script; items 8–10 need a republish.
