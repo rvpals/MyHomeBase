@@ -1490,7 +1490,7 @@ rather than merging them.
 ### What is not done yet
 
 **MyJournal's importer predates `CsvImportPanel`** and still hand-rolls the same
-markup inside its own Import/Correct/Reset tabs
+markup inside its own Import/Correct tabs
 ([journal-import-view.tsx](src/app/(protected)/modules/[slug]/journal-import-view.tsx)).
 It works, so it has been left alone; migrating it onto the panel is its own
 change. Until then the panel — not that view — is what a new importer copies.
