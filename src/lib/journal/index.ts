@@ -444,11 +444,13 @@ export type { BulkEncryptResult } from "./bulk-encrypt";
 export type {
   BulkEntryEditData,
   BulkEntryEditInput,
+  BulkEntryEditOptions,
+  BulkEntryEditOptionsInput,
   BulkNameChangeData,
   BulkNameChangeInput,
   BulkNameMode,
 } from "./schema";
-export { bulkEntryEditSchema, entryIdsSchema } from "./schema";
+export { bulkEntryEditOptionsSchema, bulkEntryEditSchema, entryIdsSchema } from "./schema";
 export type {
   BulkEncryptOutcome,
   BulkEncryptRequest,

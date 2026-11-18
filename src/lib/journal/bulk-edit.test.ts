@@ -41,7 +41,11 @@ function fakeRepo(options: { locked?: number[]; missing?: number[] } = {}) {
   const locked = new Set(options.locked ?? []);
   const missing = new Set(options.missing ?? []);
   const calls: {
-    bulkEdit: { ids: number[]; changes: BulkEntryEditData }[];
+    bulkEdit: {
+      ids: number[];
+      changes: BulkEntryEditData;
+      options?: { ignoreLocked?: boolean };
+    }[];
     registeredCategories: string[][];
     registeredTags: string[][];
   } = { bulkEdit: [], registeredCategories: [], registeredTags: [] };
@@ -49,11 +53,18 @@ function fakeRepo(options: { locked?: number[]; missing?: number[] } = {}) {
   const repo = {
     registerCategoriesIfMissing: (names: string[]) => calls.registeredCategories.push(names),
     registerTagsIfMissing: (names: string[]) => calls.registeredTags.push(names),
-    bulkEditEntries: (ids: number[], changes: BulkEntryEditData): BulkEntryEditOutcome => {
-      calls.bulkEdit.push({ ids, changes });
+    bulkEditEntries: (
+      ids: number[],
+      changes: BulkEntryEditData,
+      options?: { ignoreLocked?: boolean },
+    ): BulkEntryEditOutcome => {
+      calls.bulkEdit.push({ ids, changes, options });
+      const ignore = options?.ignoreLocked === true;
+      const present = ids.filter((id) => !missing.has(id));
       return {
-        updatedIds: ids.filter((id) => !locked.has(id) && !missing.has(id)),
-        skippedLockedIds: ids.filter((id) => locked.has(id)),
+        updatedIds: present.filter((id) => ignore || !locked.has(id)),
+        skippedLockedIds: ignore ? [] : present.filter((id) => locked.has(id)),
+        relockedIds: ignore ? present.filter((id) => locked.has(id)) : [],
         missingIds: ids.filter((id) => missing.has(id)),
       };
     },
@@ -106,7 +117,7 @@ describe("bulkEditEntries", () => {
       tags: { mode: "add", names: ["Beach"] },
     });
 
-    expect(result).toEqual({ updatedCount: 3, skippedLockedCount: 0, missingCount: 0 });
+    expect(result).toEqual({ updatedCount: 3, skippedLockedCount: 0, relockedIds: [], missingCount: 0 });
   });
 
   it("reports locked entries as skipped rather than failing the whole edit", () => {
@@ -116,7 +127,7 @@ describe("bulkEditEntries", () => {
       tags: { mode: "add", names: ["Beach"] },
     });
 
-    expect(result).toEqual({ updatedCount: 2, skippedLockedCount: 1, missingCount: 0 });
+    expect(result).toEqual({ updatedCount: 2, skippedLockedCount: 1, relockedIds: [], missingCount: 0 });
   });
 
   it("reports ids that no longer exist separately from locked ones", () => {
@@ -124,7 +135,7 @@ describe("bulkEditEntries", () => {
 
     const result = bulkEditEntries(repo, [1, 2, 3], { placeName: "Lisbon" });
 
-    expect(result).toEqual({ updatedCount: 1, skippedLockedCount: 1, missingCount: 1 });
+    expect(result).toEqual({ updatedCount: 1, skippedLockedCount: 1, relockedIds: [], missingCount: 1 });
   });
 
   it("de-dupes a repeated id so the count matches what the reader was shown", () => {
@@ -240,6 +251,25 @@ describe("describeBulkEditResult", () => {
     expect(
       describeBulkEditResult({ updatedCount: 2, skippedLockedCount: 3, missingCount: 1 }),
     ).toBe("Updated 2 entries. 3 were locked and skipped. 1 no longer exists.");
+  });
+
+  it("says which locked entries were unlocked, updated and locked again", () => {
+    expect(
+      describeBulkEditResult({
+        updatedCount: 3,
+        skippedLockedCount: 0,
+        relockedIds: [4, 5],
+        missingCount: 0,
+      }),
+    ).toBe("Updated 3 entries. 2 were locked; they were unlocked, updated and locked again.");
+    expect(
+      describeBulkEditResult({
+        updatedCount: 1,
+        skippedLockedCount: 0,
+        relockedIds: [4],
+        missingCount: 0,
+      }),
+    ).toBe("Updated 1 entry. 1 was locked; it was unlocked, updated and locked again.");
   });
 
   it("still says something when nothing was written", () => {
@@ -403,5 +433,54 @@ describe("bulkEditEntries — locations", () => {
     });
     expect(result.updatedCount).toBe(2);
     expect(result.skippedLockedCount).toBe(1);
+  });
+});
+
+describe("bulkEditEntries — ignore locked", () => {
+  const PLAYGROUND = { latitude: 40.5, longitude: -74.5, locationName: "Playground" };
+
+  it("is off by default, so locked entries are skipped", () => {
+    const { repo, calls } = fakeRepo({ locked: [2] });
+    const result = bulkEditEntries(repo, [1, 2], { tags: { mode: "replace", names: ["A"] } });
+    expect(calls.bulkEdit[0].options).toEqual({ ignoreLocked: false });
+    expect(result.skippedLockedCount).toBe(1);
+    expect(result.relockedIds).toEqual([]);
+  });
+
+  it("passes the flag through on an overwrite and reports the relocked ids", () => {
+    const { repo, calls } = fakeRepo({ locked: [2, 3] });
+    const result = bulkEditEntries(
+      repo,
+      [1, 2, 3],
+      { categories: { mode: "replace", names: ["Trip"] }, placeName: "Lisbon" },
+      { ignoreLocked: true },
+    );
+    expect(calls.bulkEdit[0].options).toEqual({ ignoreLocked: true });
+    expect(result.updatedCount).toBe(3);
+    expect(result.skippedLockedCount).toBe(0);
+    expect(result.relockedIds).toEqual([2, 3]);
+  });
+
+  it("accepts a place-only change, which has no mode", () => {
+    const { repo } = fakeRepo({ locked: [1] });
+    const result = bulkEditEntries(repo, [1], { placeName: "Lisbon" }, { ignoreLocked: true });
+    expect(result.relockedIds).toEqual([1]);
+  });
+
+  it("refuses add or remove, and writes nothing", () => {
+    const { repo, calls } = fakeRepo({ locked: [1] });
+    expect(() =>
+      bulkEditEntries(repo, [1], { tags: { mode: "add", names: ["A"] } }, { ignoreLocked: true }),
+    ).toThrow(/only with an overwrite/);
+    expect(() =>
+      bulkEditEntries(
+        repo,
+        [1],
+        { locations: { mode: "remove", locations: [PLAYGROUND] } },
+        { ignoreLocked: true },
+      ),
+    ).toThrow(/only with an overwrite/);
+    expect(calls.bulkEdit).toHaveLength(0);
+    expect(calls.registeredTags).toHaveLength(0);
   });
 });

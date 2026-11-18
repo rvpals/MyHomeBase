@@ -215,6 +215,19 @@ export type BulkEntryEditInput = z.input<typeof bulkEntryEditSchema>;
 export type BulkEntryEditData = z.output<typeof bulkEntryEditSchema>;
 
 /**
+ * How a bulk edit treats locked entries. Off by default — a locked entry is
+ * skipped and counted. On, each locked entry is unlocked, written and locked
+ * again inside the same transaction (see `bulkEditEntries` in bulk-edit.ts).
+ * Only an overwrite may ask for it; the use-case enforces that.
+ */
+export const bulkEntryEditOptionsSchema = z.object({
+  ignoreLocked: z.boolean().default(false),
+});
+
+export type BulkEntryEditOptionsInput = z.input<typeof bulkEntryEditOptionsSchema>;
+export type BulkEntryEditOptions = z.output<typeof bulkEntryEditOptionsSchema>;
+
+/**
  * The ids a bulk edit or bulk delete applies to.
  *
  * Non-empty for the same reason `recycle.ts`'s list is: every caller is acting on

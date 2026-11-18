@@ -146,6 +146,20 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-17 — Release (Journal: Ignore locked in Bulk overwrite)
+
+Needs no migration; needs a republish. Nothing here has been seen on screen and the browser smoke was not run. Item 6 is a CLI check; item 7 needs debug logging on for `bulk-edit`.
+
+- [ ] **1.** Journal → Entries: tick some rows including a locked one → Bulk overwrite: an **Ignore locked** box sits near the bottom with its hint, unticked
+- [ ] **2.** Overwrite with the box unticked: the locked entry is unchanged and still locked, and the notice says it was locked and skipped
+- [ ] **3.** Overwrite with the box ticked: the locked entry now holds the new values, still shows its lock, and the notice says it was unlocked, updated and locked again
+- [ ] **4.** Ticked, entries that were not locked stay unlocked afterwards
+- [ ] **5.** Ticked with a field left empty: the "Clear these fields?" confirmation says locked entries are overwritten too, then locked again
+- [ ] **6.** CLI: `journal-bulk-edit --ids <id> --set-tags X --ignore-locked` overwrites a locked entry and leaves it locked; with `--add-tags` it refuses
+- [ ] **7.** Admin system log (debug on): one line per locked entry reads "entry #N was locked, before overwriting, it's unlocked, updated then locked again."
+- [ ] **8.** Bulk edit (not overwrite) has no Ignore locked box and still skips locked entries
+- [ ] **9.** Phone width: the box and its hint wrap inside the dialog with no horizontal scroll
+
 ## 2026-11-17 — Release (Photo Albums card, viewer thumbnails, Code Tester, Journal stats card)
 
 Needs no migration; needs a republish. Nothing here has been seen on screen and the browser smoke was not run. **Items 1–6 depend on `sharp` loading on the NAS** — if the strip is slow or the Code Tester reports no library, check that first. Item 24 changes what a stored home layout shows. Items 10 and 20 are phone-only checks.

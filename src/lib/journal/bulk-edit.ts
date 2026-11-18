@@ -12,6 +12,10 @@
 //     outright, so a bulk path that wrote them would be exactly the bypass the
 //     lock exists to prevent. They are skipped and counted, not refused — one
 //     locked row must not block a fifty-row edit.
+//   - **Except when an overwrite says "ignore locked".** The Bulk overwrite
+//     dialog's box (and the CLI's `--ignore-locked`) unlocks each locked entry,
+//     writes it and locks it again, in the repository's one transaction. It is
+//     refused for add/remove: only an overwrite may reach past the lock.
 //
 // Validation and the reported contract live here; the transaction and the SQL
 // live in the repository, next to the statements they run. Same division as
@@ -20,7 +24,13 @@
 import { isDuplicateLocation } from "@/lib/sys-locations";
 import type { JournalRepository } from "./ports";
 import type { BulkEntryEditOutcome } from "./ports";
-import { bulkEntryEditSchema, entryIdsSchema, type BulkEntryEditInput } from "./schema";
+import {
+  bulkEntryEditOptionsSchema,
+  bulkEntryEditSchema,
+  entryIdsSchema,
+  type BulkEntryEditInput,
+  type BulkEntryEditOptionsInput,
+} from "./schema";
 import type { BulkLocationChangeData, BulkNameChangeData, EntryLocationData } from "./schema";
 import type { EntryLocation } from "./types";
 
@@ -29,6 +39,12 @@ export interface BulkEditResult {
   updatedCount: number;
   /** How many were left alone because they are locked. */
   skippedLockedCount: number;
+  /**
+   * Ids that were locked and written anyway under `ignoreLocked` — unlocked,
+   * updated, locked again. Counted in `updatedCount` too. Ids rather than a count
+   * so the web action can log each one. Absent means none.
+   */
+  relockedIds?: number[];
   /** How many requested ids no longer existed. */
   missingCount: number;
 }
@@ -57,9 +73,22 @@ export function bulkEditEntries(
   repo: JournalRepository,
   ids: number[],
   changes: BulkEntryEditInput,
+  options: BulkEntryEditOptionsInput = {},
 ): BulkEditResult {
   const validatedIds = [...new Set(entryIdsSchema.parse(ids))];
   const validated = bulkEntryEditSchema.parse(changes);
+  const { ignoreLocked } = bulkEntryEditOptionsSchema.parse(options);
+
+  // Only an overwrite may reach past the lock. An add or remove on a locked
+  // entry is an *edit* of what it holds, which is exactly what the lock guards.
+  if (
+    ignoreLocked &&
+    [validated.categories, validated.tags, validated.locations].some(
+      (change) => change !== undefined && change.mode !== "replace",
+    )
+  ) {
+    throw new Error("Ignore locked works only with an overwrite (replace), not add or remove.");
+  }
 
   const normalized = {
     categories: normalizeChange(validated.categories),
@@ -83,7 +112,7 @@ export function bulkEditEntries(
     repo.registerTagsIfMissing(normalized.tags.names);
   }
 
-  const outcome = repo.bulkEditEntries(validatedIds, normalized);
+  const outcome = repo.bulkEditEntries(validatedIds, normalized, { ignoreLocked });
   return toResult(outcome);
 }
 
@@ -224,6 +253,7 @@ function toResult(outcome: BulkEntryEditOutcome): BulkEditResult {
   return {
     updatedCount: outcome.updatedIds.length,
     skippedLockedCount: outcome.skippedLockedIds.length,
+    relockedIds: [...outcome.relockedIds],
     missingCount: outcome.missingIds.length,
   };
 }
@@ -246,6 +276,14 @@ export function describeBulkEditResult(result: BulkEditResult): string {
       result.skippedLockedCount === 1
         ? "1 was locked and skipped."
         : `${result.skippedLockedCount} were locked and skipped.`,
+    );
+  }
+  const relocked = result.relockedIds?.length ?? 0;
+  if (relocked > 0) {
+    parts.push(
+      relocked === 1
+        ? "1 was locked; it was unlocked, updated and locked again."
+        : `${relocked} were locked; they were unlocked, updated and locked again.`,
     );
   }
   if (result.missingCount > 0) {

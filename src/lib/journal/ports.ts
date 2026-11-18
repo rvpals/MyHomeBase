@@ -48,6 +48,11 @@ export interface BulkEntryEditOutcome {
   updatedIds: number[];
   /** Ids that exist but are locked, so were left untouched. */
   skippedLockedIds: number[];
+  /**
+   * Ids that were locked and written anyway because the caller passed
+   * `ignoreLocked`: unlocked, updated, then locked again. Also in `updatedIds`.
+   */
+  relockedIds: number[];
   /** Ids that no longer exist at all. */
   missingIds: number[];
 }
@@ -187,8 +192,17 @@ export interface JournalRepository {
    * under-reporting. (Bulk *delete* is the opposite and moves locked entries too;
    * see the note on `recycleEntries` — the bin preserves the lock, so that one is
    * recoverable rather than a bypass.)
+   *
+   * The one exception is `options.ignoreLocked`, the Bulk overwrite dialog's
+   * "Ignore locked" box: each locked entry is then unlocked, written and locked
+   * again inside the same transaction, so a failure can never leave it unlocked.
+   * Those ids come back in `relockedIds` (and in `updatedIds`).
    */
-  bulkEditEntries(ids: number[], changes: BulkEntryEditData): BulkEntryEditOutcome;
+  bulkEditEntries(
+    ids: number[],
+    changes: BulkEntryEditData,
+    options?: { ignoreLocked?: boolean },
+  ): BulkEntryEditOutcome;
   /**
    * How many stored entries carry this exact date, time and title — the CSV
    * importer's duplicate check.

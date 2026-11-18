@@ -168,7 +168,7 @@ Tabs for **Unlocked Entries**, **Substantial Entries** (body past ten words),
 **All Entries** and **Log**, with a **Filtering card** of saved filters that carry a category and
 a description. **Bulk tools** — Bulk edit (add, remove or replace categories, tags, place and
 locations), **Bulk overwrite** (replace those fields outright, with a confirmation when a field would be
-cleared), Lock / Unlock / Encrypt, delete, merge — and a grid
+cleared, and an **Ignore locked** box that overwrites locked entries too, then locks them again), Lock / Unlock / Encrypt, delete, merge — and a grid
 status bar. An entry that has **clips** attached shows a paperclip, with a count, on its Title
 cell; it opens those clips. Administrators get **Show SQL** on each grid: the real statement behind the
 rows, which can be edited and re-run.

@@ -155,6 +155,7 @@ export async function bulkEditJournalEntriesAction(
   ids: number[],
   changes: BulkEntryEditInput,
   scope: BulkRefreshScope,
+  ignoreLocked = false,
 ): Promise<BulkActionResult & { updatedCount?: number; skippedLockedCount?: number }> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   const log = deps.systemLogger;
@@ -165,9 +166,16 @@ export async function bulkEditJournalEntriesAction(
       if (changes.tags) parts.push(`tags(${changes.tags.mode}): [${(changes.tags.names ?? []).join(", ")}]`);
       if (changes.placeName !== undefined) parts.push(`placeName: "${changes.placeName}"`);
       if (changes.locations) parts.push(`locations(${changes.locations.mode}): ${(changes.locations.locations ?? []).map(l => l.locationName || `${l.latitude},${l.longitude}`).join(", ")}`);
+      if (ignoreLocked) parts.push("ignoreLocked");
       return `bulkEditEntries ${parts.join(" | ")}`;
     });
-    const result = bulkEditEntries(deps.journalRepo, ids, changes);
+    const result = bulkEditEntries(deps.journalRepo, ids, changes, { ignoreLocked });
+    for (const id of result.relockedIds ?? []) {
+      log.debug(
+        "bulk-edit",
+        `entry #${id} was locked, before overwriting, it's unlocked, updated then locked again.`,
+      );
+    }
     log.debug("bulk-edit", () => `bulkEditEntries result: updated=${result.updatedCount} skippedLocked=${result.skippedLockedCount} missing=${result.missingCount}`);
     revalidatePath(JOURNAL_MODULE_PATH);
     const entries = refresh(scope);

@@ -1206,11 +1206,22 @@ export class SqliteJournalRepository implements JournalRepository {
    * go through `replaceChildren`: that one wipes locations, and a bulk tag edit
    * that silently dropped every entry's map pins would be a data-loss bug.
    */
-  bulkEditEntries(ids: number[], changes: BulkEntryEditData): BulkEntryEditOutcome {
-    const outcome: BulkEntryEditOutcome = { updatedIds: [], skippedLockedIds: [], missingIds: [] };
+  bulkEditEntries(
+    ids: number[],
+    changes: BulkEntryEditData,
+    options: { ignoreLocked?: boolean } = {},
+  ): BulkEntryEditOutcome {
+    const outcome: BulkEntryEditOutcome = {
+      updatedIds: [],
+      skippedLockedIds: [],
+      relockedIds: [],
+      missingIds: [],
+    };
     if (ids.length === 0) return outcome;
+    const ignoreLocked = options.ignoreLocked === true;
 
     const readRow = this.db.prepare("SELECT id, is_locked FROM jrn_entries WHERE id = ?");
+    const setLock = this.db.prepare("UPDATE jrn_entries SET is_locked = ? WHERE id = ?");
     const setPlaceName = this.db.prepare("UPDATE jrn_entries SET place_name = ? WHERE id = ?");
     // Bumps `updated_at` via the jrn_entries_set_updated_at trigger (0027). A
     // categories/tags-only change writes nothing to jrn_entries, so without this
@@ -1253,10 +1264,14 @@ export class SqliteJournalRepository implements JournalRepository {
         }
         // The lock is enforced here as well as in the use-case because this is
         // the layer that would actually do the writing. See the note on the port.
-        if (row.is_locked === 1) {
+        const wasLocked = row.is_locked === 1;
+        if (wasLocked && !ignoreLocked) {
           outcome.skippedLockedIds.push(id);
           continue;
         }
+        // "Ignore locked": unlock, write as usual, lock again below. All inside
+        // this transaction, so a throw rolls the unlock back with the write.
+        if (wasLocked) setLock.run(0, id);
 
         if (changes.categories) {
           const next = applyNameChange(this.categoryNamesFor(id), changes.categories);
@@ -1293,6 +1308,10 @@ export class SqliteJournalRepository implements JournalRepository {
         if (changes.placeName !== undefined) setPlaceName.run(changes.placeName, id);
         else touch.run(id);
 
+        if (wasLocked) {
+          setLock.run(1, id);
+          outcome.relockedIds.push(id);
+        }
         outcome.updatedIds.push(id);
       }
     })();

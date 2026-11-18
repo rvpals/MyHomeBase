@@ -93,6 +93,9 @@ export function JournalEntriesBulkOverwrite({
   /** The address-search tab's working point, before it is added to the list. */
   const [picked, setPicked] = useState<PickedLocation | null>(null);
 
+  /** Off by default: locked entries are skipped unless the reader ticks this. */
+  const [ignoreLocked, setIgnoreLocked] = useState(false);
+
   const [error, setError] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
   /** Set when Apply found a ticked-but-empty field and wants it confirmed. */
@@ -126,6 +129,7 @@ export function JournalEntriesBulkOverwrite({
         selected.map((entry) => entry.id),
         changes,
         scope,
+        ignoreLocked,
       );
       if (!result.ok || !result.entries) {
         setError(result.error ?? "Failed to overwrite the selected entries.");
@@ -175,8 +179,10 @@ export function JournalEntriesBulkOverwrite({
         noun={{ one: "entry", many: "entries" }}
         caveat={
           <>
-            This cannot be undone from here — the old values are not kept anywhere. Locked
-            entries are skipped.
+            This cannot be undone from here — the old values are not kept anywhere.{" "}
+            {ignoreLocked
+              ? "Locked entries are overwritten too, then locked again."
+              : "Locked entries are skipped."}
           </>
         }
         confirmLabel="Clear and overwrite"
@@ -383,9 +389,23 @@ export function JournalEntriesBulkOverwrite({
           )}
         </div>
 
+        <div className="flex flex-col gap-1">
+          <FieldToggle
+            label="Ignore locked"
+            enabled={ignoreLocked}
+            onEnabledChange={setIgnoreLocked}
+          />
+          <p className="text-xs text-muted">
+            If this is checked, overwrite will overwrite regardless of whether an entry is locked
+            or not.
+          </p>
+        </div>
+
         <p className="text-xs text-muted">
-          Locked entries are skipped — unlock one first if you meant to change it. Nothing here
-          touches an entry&apos;s date, time, title or text.
+          {ignoreLocked
+            ? "Each locked entry is unlocked, overwritten and locked again."
+            : "Locked entries are skipped — unlock one first if you meant to change it."}{" "}
+          Nothing here touches an entry&apos;s date, time, title or text.
         </p>
       </div>
     </Modal>

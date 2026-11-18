@@ -43,7 +43,9 @@ export async function journalBulkEditCommand(args: string[]): Promise<void> {
   const flags = parseFlags(args);
 
   if (flags.ids === undefined || flags.ids === "") {
-    console.error("Usage: journal-bulk-edit --ids 41,42 [--add-tags …] [--place …] [--delete]");
+    console.error(
+      "Usage: journal-bulk-edit --ids 41,42 [--add-tags …] [--place …] [--ignore-locked] [--delete]",
+    );
     process.exitCode = 1;
     return;
   }
@@ -78,7 +80,11 @@ export async function journalBulkEditCommand(args: string[]): Promise<void> {
   }
 
   try {
-    const result = bulkEditEntries(deps.journalRepo, ids, changes);
+    // --ignore-locked: the Bulk overwrite dialog's "Ignore locked" box. The
+    // library refuses it unless every list change is a --set-* (replace).
+    const result = bulkEditEntries(deps.journalRepo, ids, changes, {
+      ignoreLocked: "ignore-locked" in flags,
+    });
     console.log(describeBulkEditResult(result));
   } catch (error) {
     console.error(error instanceof Error ? error.message : "Failed to edit those entries.");

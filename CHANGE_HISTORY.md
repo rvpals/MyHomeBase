@@ -1,5 +1,18 @@
 # Change History
 
+## 2026-11-17 20:17 — Journal: "Ignore locked" in Bulk overwrite
+
+**No migration, no new package.** A **republish is required**.
+
+**What was checked.** `npm run typecheck` passes. `npx vitest run src/lib/journal` passes (64 files, 1,401 tests), including three new tests against a real in-memory SQLite. `check:lib-boundary` passes. The changed files lint clean (full-repo lint still has the 35 older React-compiler errors in files this change didn't touch). **The browser smoke was not run, and none of it has been seen on screen.** The CLI flag and the debug line in the log viewer were not exercised either.
+
+The Bulk overwrite dialog has a new **Ignore locked** checkbox, unticked by default. Ticked, every locked entry in the selection is unlocked, overwritten and locked again; unticked, locked entries are skipped as before. All three steps happen inside the repository's one transaction (`bulkEditEntries` in `repository.ts`), so a failed write rolls the unlock back and an entry can never be left unlocked. Each such entry writes this line to the `bulk-edit` debug log: *entry #N was locked, before overwriting, it's unlocked, updated then locked again.* The result notice adds "N were locked; they were unlocked, updated and locked again."
+
+- **Web: Bulk overwrite only.** Bulk edit has no such box.
+- **Library rule:** `ignoreLocked` is refused with any add or remove change (`Ignore locked works only with an overwrite`), so only a replace can reach past the lock.
+- **CLI:** `journal-bulk-edit --ignore-locked`, same rule: it works with `--set-*` and `--place`.
+- New `bulkEntryEditOptionsSchema` and `relockedIds` on the bulk-edit outcome. New `bulk-edit-repository.test.ts` applies every migration that mentions `jrn_`, so later journal migrations are included automatically.
+
 ## 2026-11-17 19:45 — Photo Albums home card, viewer thumbnails, Code Tester, Journal stats card, and four smaller changes
 
 **No migration, no new package.** A **republish is required**. Eight bodies of work from several sessions went out together, committed separately (one commit each, in the order below).
