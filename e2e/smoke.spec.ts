@@ -28,6 +28,7 @@ const ADMIN_ROUTES = [
   "/admin/system-messages?tab=messages",
   "/admin/background-tasks",
   "/admin/sql-explorer",
+  "/admin/code-tester",
   "/admin/daily-quote",
   "/admin/daily-quote/add",
   "/admin/daily-quote/import",

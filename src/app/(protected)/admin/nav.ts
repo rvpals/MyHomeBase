@@ -323,6 +323,15 @@ export const adminNav: SectionNode[] = [
     icon: "database",
   },
   {
+    // Fresh and permanent -- `SectionPanel` derives this section's icon slot from the
+    // id (`admin_section_code_tester`), so renaming it later orphans any uploaded icon.
+    id: "code-tester",
+    label: "Code Tester",
+    href: "/admin/code-tester",
+    hint: "Try out experiments, such as timing a photo resize on the server",
+    icon: "flash",
+  },
+  {
     id: "about",
     label: "About",
     href: "/admin/about",

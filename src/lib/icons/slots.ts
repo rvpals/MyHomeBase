@@ -2288,6 +2288,15 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "admin_section_code_tester",
+    label: "Code Tester",
+    group: "Admin navigation",
+    where: "Admin → section panel → Code Tester.",
+    defaultConcept: "flash",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "admin_section_about",
     label: "About",
     group: "Admin navigation",

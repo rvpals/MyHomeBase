@@ -187,7 +187,7 @@ describe("sectionSlotId", () => {
         // still addresses it. Asserted here so a later cleanup that deletes them
         // fails loudly instead of silently orphaning those rows.
         "system-messages", "security", "system-log", "messages",
-        "background-tasks", "sql-explorer", "about",
+        "background-tasks", "sql-explorer", "code-tester", "about",
       ],
     };
 
