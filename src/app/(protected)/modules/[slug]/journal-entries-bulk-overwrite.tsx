@@ -217,6 +217,20 @@ export function JournalEntriesBulkOverwrite({
       <div className="flex flex-col gap-5">
         {error && <p className="text-sm text-red-400">{error}</p>}
 
+        {/* First thing in the dialog, above the warning and the fields, so it is
+            seen before anything is ticked. It applies to the whole overwrite. */}
+        <div className="flex flex-col gap-1 rounded-md border border-line px-3 py-2">
+          <FieldToggle
+            label="Ignore locked"
+            enabled={ignoreLocked}
+            onEnabledChange={setIgnoreLocked}
+          />
+          <p className="text-xs text-muted">
+            If this is checked, overwrite will overwrite regardless of whether an entry is locked
+            or not.
+          </p>
+        </div>
+
         <p className="rounded-md border border-red-400/40 px-3 py-2 text-xs text-muted">
           This screen does not add to what is already there. Ticking{" "}
           <span className="text-ink">Categories</span> and picking CAR and FINANCE leaves every
@@ -387,18 +401,6 @@ export function JournalEntriesBulkOverwrite({
               </p>
             </>
           )}
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <FieldToggle
-            label="Ignore locked"
-            enabled={ignoreLocked}
-            onEnabledChange={setIgnoreLocked}
-          />
-          <p className="text-xs text-muted">
-            If this is checked, overwrite will overwrite regardless of whether an entry is locked
-            or not.
-          </p>
         </div>
 
         <p className="text-xs text-muted">

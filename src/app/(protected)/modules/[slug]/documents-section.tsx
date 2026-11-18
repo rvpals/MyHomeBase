@@ -3,6 +3,7 @@ import {
   DOCUMENT_PREFILL_FIELDS,
   attachTagIcons,
   buildDocumentTree,
+  findDuplicateGroups,
   getDocument,
   isInTreeSelection,
   listAttachmentsFor,
@@ -28,6 +29,7 @@ import { DocumentsMainView } from "./documents-main-view";
 import { DocumentsMetadataView } from "./documents-metadata-view";
 import { DocumentsKeywordsView } from "./documents-keywords-view";
 import { DocumentsRecycleView } from "./documents-recycle-view";
+import { DocumentsReviewView } from "./documents-review-view";
 import { DocumentsShell } from "./documents-shell";
 import { DocumentsTemplatesView } from "./documents-templates-view";
 import { DocumentsTreeView } from "./documents-tree-view";
@@ -167,6 +169,13 @@ export async function DocumentsSection({
   // pays for it.
   const recycled = view === "recycled" ? listRecycledDocuments(deps.documentsRepo) : [];
 
+  // Document Review's duplicate check: one grouped query on the hash index plus a
+  // count of un-hashed rows, read only on its own screen.
+  const duplicateReport =
+    view === "review"
+      ? findDuplicateGroups(deps.documentsRepo)
+      : { groups: [], unhashedCount: 0 };
+
   // Prefill templates: the whole list on the Templates screen, the enabled ones for
   // the New Document form's picker. `edit` deliberately gets neither — prefilling a
   // document that already exists is a different gesture, and offering it there would
@@ -287,6 +296,13 @@ export async function DocumentsSection({
             <DocumentsTemplatesView
               templates={prefillTemplates}
               suggestions={prefillSuggestions}
+            />
+          )}
+          {view === "review" && (
+            <DocumentsReviewView
+              groups={duplicateReport.groups}
+              unhashedCount={duplicateReport.unhashedCount}
+              isFolderConfigured={root !== ""}
             />
           )}
           {view === "recycled" && <DocumentsRecycleView documents={recycled} />}

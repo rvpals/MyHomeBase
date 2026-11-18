@@ -146,6 +146,25 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-18 — Release (Documents: Document Review, Journal form tweaks)
+
+**No migration; republish needed.** Nothing here has been run, linted or seen on screen. Items 1–9 need the Document Library with attachments (item 5 needs a pre-0163 un-hashed file); items 10–11 are phone-width; item 14 is a CLI check.
+
+- [ ] **1.** Documents: a new **Document Review** section appears in the section panel, just above Recycled Documents, with a clipboard icon
+- [ ] **2.** Document Review → "Check for duplicate attachments" lists each set of identical files; a file that occurs once is not listed
+- [ ] **3.** Each copy's link opens its document in the editor; the open button shows the file on its own
+- [ ] **4.** Removing one copy from a set removes it from its document, and once the set is down to one copy it drops off the list
+- [ ] **5.** The card states how many attachments are not checked yet; **Check these files now** hashes them with progress and the count falls
+- [ ] **6.** **Stop** during a check halts it promptly; running it again carries on
+- [ ] **7.** A file missing from the share is named and stays unchecked rather than failing the run
+- [ ] **8.** With no duplicates and nothing un-hashed, the card says so; with un-hashed files it does not claim "no duplicates"
+- [ ] **9.** The section's instructions panel explains that a check only reports and cleanup is manual
+- [ ] **10.** Phone width: duplicate rows wrap their actions below the file name, no horizontal scroll
+- [ ] **11.** Phone width: the Document Review section is reachable from the compact bar
+- [ ] **12.** Journal → Bulk overwrite: **Ignore locked** is the first thing in the dialog, in its own bordered block, and still works
+- [ ] **13.** Journal → entry form: the save bar stays pinned above the bottom bar (and music player) on a tall form, and never covers the last field; desktop unchanged
+- [ ] **14.** CLI: `documents-duplicates` lists the same sets; `documents-backfill-hashes --dry-run` still reports what it would hash
+
 ## 2026-11-17 — Release (Games: Arrow Clearing saves your run)
 
 **Needs migration 0171 applied on the NAS first**, and a republish. Nothing here has been run, linted or seen on screen — it was written in an earlier session and released untested. Items 7 and 8 need two devices; item 9 is a CLI check.

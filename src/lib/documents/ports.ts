@@ -8,6 +8,7 @@ import type {
   DocumentPrefillTemplate,
   DocumentSummary,
   DocumentTaxonomyItem,
+  DuplicateAttachment,
   DuplicateMatch,
   RecycledDocument,
 } from "./types";
@@ -110,10 +111,23 @@ export interface DocumentsRepository {
    * the library.
    */
   findAttachmentsByHash(contentHash: string): DuplicateMatch[];
-  /** Sets one row's hash. The backfill CLI's only write. */
+  /** Sets one row's hash. The backfill's only write. */
   setAttachmentHash(id: number, contentHash: string): void;
-  /** Attachments still carrying `''`, oldest first — the backfill's work list. */
-  listUnhashedAttachments(limit: number): DocumentAttachment[];
+  /**
+   * Attachments still carrying `''`, oldest first — the backfill's work list.
+   *
+   * `afterId` skips rows at or below it. A batched run needs it: a file missing from
+   * the share stays un-hashed, so without a cursor every later batch would start on
+   * the same unreadable rows and never advance.
+   */
+  listUnhashedAttachments(limit: number, afterId?: number): DocumentAttachment[];
+  /** How many attachments are still un-hashed. */
+  countUnhashedAttachments(): number;
+  /**
+   * Every hashed attachment whose hash appears on two or more rows, with its
+   * document's title, ordered by hash. Files that occur once are never returned.
+   */
+  listDuplicateAttachments(): DuplicateAttachment[];
 
   // Bulk operations (migration 0163)
   /**

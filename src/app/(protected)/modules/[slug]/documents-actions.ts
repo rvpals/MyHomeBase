@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  backfillContentHashes,
   bulkSetTaxonomy,
   clearCategoryIcon,
   clearTagIcon,
@@ -259,6 +260,56 @@ export async function removeAttachmentAction(
     return { ok: true };
   } catch (error) {
     return toErrorResult(error, "Could not remove that attachment.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Document Review — the content-hash backfill
+// ---------------------------------------------------------------------------
+
+/**
+ * Files one backfill call reads off the share. Small on purpose: each is a full read
+ * over SMB, and a short call keeps the screen's progress moving and its Stop button
+ * responsive. The client calls again with `lastId` until a batch comes back empty.
+ */
+const BACKFILL_BATCH_SIZE = 50;
+
+export interface BackfillBatchActionResult extends ActionResult {
+  examined?: number;
+  hashed?: number;
+  missing?: string[];
+  duplicates?: number;
+  lastId?: number;
+  remaining?: number;
+}
+
+/**
+ * Hashes the next batch of un-hashed attachments — the Review screen's
+ * "Check these files now" link. Same code as `documents-backfill-hashes`.
+ *
+ * `revalidatePath` is NOT called per batch: the screen refreshes once when the run
+ * ends, rather than re-rendering the duplicate list fifty files at a time.
+ */
+export async function backfillContentHashesAction(
+  afterId: number,
+): Promise<BackfillBatchActionResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const result = await backfillContentHashes(deps.documentsRepo, documentFiles(), {
+      limit: BACKFILL_BATCH_SIZE,
+      afterId: Number.isInteger(afterId) && afterId > 0 ? afterId : 0,
+    });
+    return {
+      ok: true,
+      examined: result.examined,
+      hashed: result.hashed,
+      missing: result.missing.map((file) => file.originalName),
+      duplicates: result.duplicates.length,
+      lastId: result.lastId,
+      remaining: result.remaining,
+    };
+  } catch (error) {
+    return toErrorResult(error, "Could not check those files.");
   }
 }
 

@@ -152,6 +152,35 @@ export interface DuplicateMatch {
 }
 
 /**
+ * One attachment that shares its bytes with at least one other — a row of the
+ * Document Review screen's duplicate check.
+ */
+export interface DuplicateAttachment extends DuplicateMatch {
+  contentHash: string;
+  byteSize: number;
+  mimeType: string;
+  createdAt: string;
+}
+
+/** Every attachment holding one set of bytes. Always two or more `files`. */
+export interface DuplicateGroup {
+  contentHash: string;
+  byteSize: number;
+  files: DuplicateAttachment[];
+}
+
+/**
+ * The whole-library duplicate check.
+ *
+ * `unhashedCount` is said out loud because an un-hashed file cannot take part: a
+ * report that hid it would read as "no duplicates" when it means "not checked".
+ */
+export interface DuplicateReport {
+  groups: DuplicateGroup[];
+  unhashedCount: number;
+}
+
+/**
  * A document sitting in the recycle bin (migration 0163).
  *
  * **`recycledId` is the handle**, not `id`. `id` is the id the document *had* when it

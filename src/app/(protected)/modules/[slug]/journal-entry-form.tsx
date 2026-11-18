@@ -1142,7 +1142,13 @@ export function JournalEntryForm({
           vertical rule between two buttons that have landed on different rows
           points at nothing. Phones get the same buttons in the same order, just
           without the rules. */}
-      <div className="rounded-xl border border-line bg-paper-raised px-3 py-2">
+      {/* `sticky`, not `fixed`: the bar stays in the form's flow (so it never
+          covers the last field) but pins to the bottom of the viewport while the
+          form is taller than the screen. The bottom offset clears the compact
+          section trigger and the music player — the same two heights `.app-main`
+          pads for — so it never hides behind the shared bar. `z-20` keeps it
+          under the shell chrome (z-30) and modals (z-50). */}
+      <div className="sticky bottom-[calc(var(--section-trigger-height)+var(--music-player-height,0px)+env(safe-area-inset-bottom))] z-20 rounded-xl border border-line bg-paper-raised px-3 py-2 shadow-lg">
         <div className="flex flex-wrap items-center gap-2">
           {/* Save first, because it is what the bar is for. */}
           <Button onClick={handleSave} disabled={isBusy || form.date === ""}>

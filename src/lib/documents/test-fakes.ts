@@ -30,6 +30,7 @@ import type {
   DocumentPrefillTemplate,
   DocumentSummary,
   DocumentTaxonomyItem,
+  DuplicateAttachment,
   DuplicateMatch,
   RecycledDocument,
 } from "./types";
@@ -156,8 +157,35 @@ export class FakeRepository implements DocumentsRepository {
     if (attachment) attachment.contentHash = contentHash;
   }
 
-  listUnhashedAttachments(limit: number): DocumentAttachment[] {
-    return this.attachments.filter((a) => a.contentHash === "").slice(0, limit);
+  listUnhashedAttachments(limit: number, afterId = 0): DocumentAttachment[] {
+    return this.attachments
+      .filter((a) => a.contentHash === "" && a.id > afterId)
+      .sort((a, b) => a.id - b.id)
+      .slice(0, limit);
+  }
+
+  countUnhashedAttachments(): number {
+    return this.attachments.filter((a) => a.contentHash === "").length;
+  }
+
+  listDuplicateAttachments(): DuplicateAttachment[] {
+    const counts = new Map<string, number>();
+    for (const a of this.attachments) {
+      if (a.contentHash !== "") counts.set(a.contentHash, (counts.get(a.contentHash) ?? 0) + 1);
+    }
+    return this.attachments
+      .filter((a) => a.contentHash !== "" && (counts.get(a.contentHash) ?? 0) > 1)
+      .map((a) => ({
+        attachmentId: a.id,
+        documentId: a.documentId,
+        documentTitle: this.getDocumentById(a.documentId)?.title ?? "",
+        originalName: a.originalName,
+        contentHash: a.contentHash,
+        byteSize: a.byteSize,
+        mimeType: a.mimeType,
+        createdAt: a.createdAt,
+      }))
+      .sort((x, y) => x.contentHash.localeCompare(y.contentHash));
   }
 
   // -------------------------------------------------------------------------

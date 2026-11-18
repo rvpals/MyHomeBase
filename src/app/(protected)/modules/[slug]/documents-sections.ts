@@ -12,7 +12,7 @@ import type { TreeIconConcept } from "@/lib/icons/tree-icon-names";
  * `configuration` is last on purpose — the usual "settings at the bottom" place,
  * matching every other module's shell.
  *
- * **Seven sections, and still flat** — which is past the point `modules.md` said was
+ * **Eight sections (seven when this was written), and still flat** — which is past the point `modules.md` said was
  * worth revisiting, so here is the revisit. Grouping these seven would mean headings
  * like "Browse" (main, tree, keywords) over "Curate" (metadata, templates) over
  * "Manage" (recycled, configuration): three headings and a level of nesting to
@@ -44,6 +44,10 @@ import type { TreeIconConcept } from "@/lib/icons/tree-icon-names";
  * and all — the shape Clips settled on when it absorbed its own `all` section. A second
  * route showing the same documents would have been the same screen twice.
  *
+ * `review` is the curating screen that checks the library itself rather than one
+ * document — duplicate attachments first. It sits just above `recycled` because what
+ * it finds is cleaned up into the bin. Eight sections: still flat, per the note above.
+ *
  * `recycled` sits immediately before `configuration` (migration 0163), the same place
  * Clips puts its bin: it is a destination you visit to undo something, not a setting.
  */
@@ -53,6 +57,7 @@ export const DOCUMENTS_SECTIONS = [
   "keywords",
   "metadata",
   "templates",
+  "review",
   "recycled",
   "configuration",
 ] as const;
@@ -104,6 +109,10 @@ export const DOCUMENTS_SECTION_INFO: Record<
     label: "Prefill Templates",
     description: "Named sets of field values a new document can start from.",
   },
+  review: {
+    label: "Document Review",
+    description: "Checks across the whole library — find what needs cleaning up.",
+  },
   recycled: {
     label: "Recycled Documents",
     description: "Deleted documents — restore one, or remove it for good.",
@@ -141,6 +150,10 @@ export const DOCUMENTS_SECTION_ICONS: Record<DocumentsSection, TreeIconConcept> 
   // slot existed, so any registry glyph is a free choice here; this is the one whose
   // meaning matches.
   templates: "copy",
+  // `clipboard` — a checklist being worked through, which is what a review is. The
+  // position drew nothing before this slot existed, so any registry glyph is a free
+  // choice; this is the one whose meaning matches.
+  review: "clipboard",
   recycled: "trash",
   configuration: "gear",
 };

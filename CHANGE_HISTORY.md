@@ -1,5 +1,26 @@
 # Change History
 
+## 2026-11-18 08:05 — Documents: Document Review (duplicate attachments), plus two Journal form tweaks and a gates script
+
+**No migration, no new package.** A **republish is required**. Relies on the content hashes from migration 0163; files uploaded before it must be hashed first (the screen offers this).
+
+**What was checked: nothing, in this session.** No typecheck, lint, test, build or browser run was done for this release, and none of it has been seen on screen. `src/lib/documents/duplicates.test.ts` exists but was not run. **Treat all of it as untested** and work through the Testing List section.
+
+### A. Documents → Document Review
+A new eighth section of the Document Library (`review`, icon slot `documents_section_review`, just above Recycled Documents). Its first card, **Check for duplicate attachments**, lists every set of attachments that share their bytes (SHA-256) and nothing else; a file that occurs once never appears. Each copy links to its document, opens on its own, or can be removed from its document (the stored file moves to `_deleted/`, as the editor's own remove does). The card says how many attachments are still un-hashed, because an un-hashed file cannot take part and a silent list would read as "no duplicates".
+
+- **Check these files now** hashes the un-hashed attachments in batches of 50 with a Stop button (`backfillContentHashesAction`); a file missing from the share stays unchecked and is named.
+- **Library:** new `duplicates.ts` (`findDuplicateGroups`) and `backfill-hashes.ts` (the backfill, now shared by web and CLI) in `src/lib/documents`; repository gained `listDuplicateAttachments`, `countUnhashedAttachments` and an `afterId` cursor on `listUnhashedAttachments` so a batched run advances past unreadable files.
+- **CLI:** new `documents-duplicates`; `documents-backfill-hashes` now calls the shared backfill.
+- **Docs:** `modules.md` (Document Library: eight sections, new commands). Phone: copy rows wrap their actions below 1024px with `max-lg:` variants only.
+
+### B. Journal
+- **Bulk overwrite:** the *Ignore locked* box moved to the top of the dialog, above the warning and the fields, in its own bordered block.
+- **Entry form:** the save bar is now `sticky` rather than in-flow, pinned above the compact section trigger and the music player so it stays visible on a tall form without covering the last field.
+
+### C. Tooling
+- New `run_gates.bat`: runs clean-next, typecheck, lint, lib-boundary, unit tests, migration dry-run and the browser smoke in order, stopping at the first failure; `--no-e2e` skips the smoke. Sibling of `full_test.bat`, which keeps going after a failure.
+
 ## 2026-11-17 20:25 — Games: Arrow Clearing saves your run (migration 0171)
 
 **One migration (`0171_create_games_saved_runs`), no new package.** A **republish is required**, and **0171 must be applied on the NAS** (`node --env-file-if-exists=.env migrate.cjs`) or the Arrows board fails to save or load with "no such table: gam_saved_runs".

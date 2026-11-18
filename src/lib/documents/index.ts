@@ -20,7 +20,10 @@ export type {
   DocumentSummary,
   DocumentTaxonomyItem,
   DocumentWithAttachments,
+  DuplicateAttachment,
+  DuplicateGroup,
   DuplicateMatch,
+  DuplicateReport,
   RecycledDocument,
 } from "./types";
 
@@ -131,6 +134,17 @@ export {
   hashContent,
   isHashed,
 } from "./content-hash";
+
+// Documents → Document Review: the whole-library duplicate check and the backfill
+// that brings older files into it.
+export { findDuplicateGroups, groupDuplicates } from "./duplicates";
+export {
+  backfillContentHashes,
+  type BackfillDuplicateFile,
+  type BackfillHashesOptions,
+  type BackfillHashesResult,
+  type BackfillMissingFile,
+} from "./backfill-hashes";
 
 export {
   BULK_TAXONOMY_MODES,

@@ -25,6 +25,7 @@ import type {
   DocumentPrefillTemplate,
   DocumentSummary,
   DocumentTaxonomyItem,
+  DuplicateAttachment,
   DuplicateMatch,
   RecycledDocument,
 } from "./types";
@@ -687,13 +688,62 @@ export class SqliteDocumentsRepository implements DocumentsRepository {
       .run(contentHash, id);
   }
 
-  listUnhashedAttachments(limit: number): DocumentAttachment[] {
+  listUnhashedAttachments(limit: number, afterId = 0): DocumentAttachment[] {
     const rows = this.db
       .prepare(
-        `SELECT * FROM doc_attachments WHERE content_hash = '' ORDER BY id LIMIT ?`,
+        `SELECT * FROM doc_attachments
+          WHERE content_hash = '' AND id > ?
+          ORDER BY id LIMIT ?`,
       )
-      .all(Math.max(1, Math.floor(limit))) as AttachmentRow[];
+      .all(Math.max(0, Math.floor(afterId)), Math.max(1, Math.floor(limit))) as AttachmentRow[];
     return rows.map(toAttachment);
+  }
+
+  countUnhashedAttachments(): number {
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS n FROM doc_attachments WHERE content_hash = ''`)
+      .get() as { n: number };
+    return row.n;
+  }
+
+  listDuplicateAttachments(): DuplicateAttachment[] {
+    // The inner GROUP BY runs on the partial index `idx_doc_attachments_hash`; the
+    // `!= ''` on both sides keeps it there, since the index excludes blank rows.
+    const rows = this.db
+      .prepare(
+        `SELECT a.id, a.document_id, a.original_name, a.content_hash, a.byte_size,
+                a.mime_type, a.created_at, d.title
+           FROM doc_attachments a
+           JOIN doc_documents d ON d.id = a.document_id
+          WHERE a.content_hash != ''
+            AND a.content_hash IN (
+              SELECT content_hash FROM doc_attachments
+               WHERE content_hash != ''
+               GROUP BY content_hash
+              HAVING COUNT(*) > 1)
+          ORDER BY a.content_hash, d.title COLLATE NOCASE, a.original_name COLLATE NOCASE`,
+      )
+      .all() as {
+      id: number;
+      document_id: number;
+      original_name: string;
+      content_hash: string;
+      byte_size: number;
+      mime_type: string;
+      created_at: string;
+      title: string;
+    }[];
+
+    return rows.map((row) => ({
+      attachmentId: row.id,
+      documentId: row.document_id,
+      documentTitle: row.title,
+      originalName: row.original_name,
+      contentHash: row.content_hash,
+      byteSize: row.byte_size,
+      mimeType: row.mime_type,
+      createdAt: row.created_at,
+    }));
   }
 
   // -------------------------------------------------------------------------

@@ -2457,18 +2457,20 @@ editor's one remaining two-column grid (Category/Rating/Source/Tags) collapses t
 bulk actions with it.
 
 **Document Library** (`documents`) — the household's filed paperwork: a lease, a
-warranty, an insurance policy, a manual. Seven sections (Home screen, Document Tree,
-Keywords, Categories & Tags, Prefill Templates, Recycled Documents, Configuration), one
-library module `src/lib/documents`, six `doc_` tables from migration 0159 plus two from
+warranty, an insurance policy, a manual. Eight sections (Home screen, Document Tree,
+Keywords, Categories & Tags, Prefill Templates, Document Review, Recycled Documents,
+Configuration), one library module `src/lib/documents`, six `doc_` tables from migration 0159 plus two from
 0165 and one from 0169. Driveable as
 `npm run cli -- list-documents [--search X] [--category C] [--tag T] [--id N] [--zip path]`,
-`npm run cli -- documents-index-text [--limit N] [--search X] [--ocr] [--dry-run]`
-and `npm run cli -- documents-templates list|show|apply|set|enable|disable|delete`.
+`npm run cli -- documents-index-text [--limit N] [--search X] [--ocr] [--dry-run]`,
+`npm run cli -- documents-templates list|show|apply|set|enable|disable|delete`,
+`npm run cli -- documents-duplicates` and
+`npm run cli -- documents-backfill-hashes [--limit N] [--dry-run]`.
 
-Seven sections, past the threshold this document sets, and the list is **still flat**
+Eight sections, past the threshold this document sets, and the list is **still flat**
 — that was the revisit, and the answer was no. Grouping them would mean "Browse" (main,
 tree, keywords) over "Curate" (metadata, templates) over "Manage" (recycled,
-configuration): three headings and a level of nesting to organise seven rows that
+configuration): three headings and a level of nesting to organise eight rows that
 already fit on screen without scrolling, costing a click to reach anything and buying
 nothing a reader cannot already see. Revisit again at nine.
 

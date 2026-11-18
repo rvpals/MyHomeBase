@@ -138,6 +138,21 @@ export function DocumentsInstructions({ section }: { section: DocumentsSection }
     );
   }
 
+  if (section === "review") {
+    return (
+      <div className="flex flex-col gap-2 text-sm text-muted">
+        <p>
+          Checks that look across the whole library rather than at one document. Each
+          check is its own card below; open one to see what it found.
+        </p>
+        <p>
+          A check only <strong className="text-ink">reports</strong>. Cleaning up is done
+          one item at a time, by you — open the document, or use the buttons on each row.
+        </p>
+      </div>
+    );
+  }
+
   if (section === "recycled") {
     return (
       <div className="flex flex-col gap-2 text-sm text-muted">

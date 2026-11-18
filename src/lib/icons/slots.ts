@@ -1307,6 +1307,17 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "documents_section_review",
+    label: "Document Review",
+    group: "Document Library sections",
+    where: "Documents → section panel → Document Review.",
+    // A checklist being worked through. The section is new, so there is no earlier
+    // glyph the default has to match.
+    defaultConcept: "clipboard",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "documents_section_recycled",
     label: "Recycled Documents",
     group: "Document Library sections",

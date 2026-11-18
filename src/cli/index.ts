@@ -67,6 +67,7 @@ import { examsCommand } from "./exams";
 import { takeAttendanceCommand } from "./take-attendance";
 import { clipsCommand } from "./clips";
 import { documentsBackfillHashesCommand } from "./documents-backfill-hashes";
+import { documentsDuplicatesCommand } from "./documents-duplicates";
 import { documentsTemplatesCommand } from "./documents-templates";
 import { documentsIndexTextCommand } from "./documents-index-text";
 import { listDocumentsCommand } from "./list-documents";
@@ -139,6 +140,7 @@ const commands: Record<string, Command> = {
   clips: clipsCommand,
   "list-documents": listDocumentsCommand,
   "documents-backfill-hashes": documentsBackfillHashesCommand,
+  "documents-duplicates": documentsDuplicatesCommand,
   "documents-templates": documentsTemplatesCommand,
   "documents-index-text": documentsIndexTextCommand,
   todo: todoCommand,
