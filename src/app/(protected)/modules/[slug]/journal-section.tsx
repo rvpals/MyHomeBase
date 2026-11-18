@@ -11,7 +11,6 @@ import {
   JOURNAL_PREFILL_FIELDS,
   cloneSeedFromEntry,
   countAllEntries,
-  countEntriesByYearAndMonth,
   countEntriesPerSavedLocation,
   hasLinkedEntries,
   getEntry,
@@ -28,7 +27,6 @@ import {
   listTopTags,
   getJournalHomeWidgets,
   visibleJournalHomeWidgets,
-  topWords,
   resolveJournalPreferences,
   type JournalEntryCloneSeed,
   type JournalPrefillField,
@@ -69,7 +67,6 @@ import { JOURNAL_SECTION_INFO, type JournalSection } from "./journal-sections";
 import { JournalCalendarPanel } from "./journal-calendar-panel";
 import { JournalTopicsView } from "./journal-topics-view";
 import { JournalEntriesPanel } from "./journal-entries-panel";
-import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 // The same name -> icon-URL map the Location Manager builds, reused rather than
 // rebuilt: these are the same taxonomy rows behind the same icon routes.
 import { locationTaxonomyIconMap } from "@/app/(protected)/admin/locations/icon-map";
@@ -96,12 +93,6 @@ import { JournalView } from "./journal-view";
 
 const JOURNAL_MODULE_SLUG = "journal";
 const RECENT_JOURNAL_ENTRY_LIMIT = 25;
-const TOP_TAXONOMY_LIMIT = 10;
-// The Top Words figure is the reader's own, from `topWordLimit` in the module's
-// preferences — no constant here. Scanning every entry's text is the cost of the
-// card either way: there is no cache, so it is recomputed per render, and the
-// limit only decides how much of the ranking survives the final slice.
-
 /**
  * How many tags and how many categories the Topics picker offers.
  *
@@ -166,41 +157,19 @@ function SectionBody({
 }) {
   switch (section) {
     case "main": {
-      // The category and tag rows carry the icon mime types the Statistics
-      // lists need — the top-N queries return names and counts only, so icons
-      // are matched back by name. The entry form's dropdowns used to be fed
-      // from the same reads; that form is the New Journal Entry section now.
-      const categories = listCategories(deps.journalRepo);
-      const tags = listTags(deps.journalRepo);
-      // The word ranking honours the reader's dismissals, which live with the
-      // module's other preferences rather than in a table of their own.
-      const homeModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
-      const homePreferences = resolveJournalPreferences(
-        homeModule ? listModuleSettingsFor(deps.moduleSettingsRepo, homeModule.id) : [],
-      );
+      // Top tags/categories, year counts and the word ranking are not read here: the
+      // Interesting Journal Stats card fetches each one when its tab is opened
+      // (journal-stats-actions.ts). The word ranking tokenizes every entry, so this
+      // page used to pay for it on every visit whether or not anyone looked.
+      //
       // Read once and reused below, so the Pinned Entries card can skip its own query
       // when the reader has switched that card off — the same rule the app home screen
       // applies to its cards.
       const homeWidgets = getJournalHomeWidgets(deps.userPreferencesRepo, userId);
-      // `topWordLimit` is passed as well as applied to `topWords` below,
-      // because the card names its own figure in the heading. The ranked list
-      // can be shorter than the limit — a small journal may not have that many
-      // distinct words — so the heading has to come from the setting rather
-      // than from `topWords.length`, or it would quietly rename itself on a
-      // thin journal.
       return (
         <JournalView
           entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
           tally={countAllEntries(deps.journalRepo)}
-          topWords={topWords(
-            listEntries(deps.journalRepo),
-            homePreferences.topWordLimit,
-            homePreferences.excludedWords,
-          )}
-          topWordLimit={homePreferences.topWordLimit}
-          topTags={listTopTags(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
-          topCategories={listTopCategories(deps.journalRepo, TOP_TAXONOMY_LIMIT)}
-          yearAndMonthCounts={countEntriesByYearAndMonth(deps.journalRepo)}
           pinnedEntries={
             visibleJournalHomeWidgets(homeWidgets).includes("pinnedAndRecentlyEdited")
               ? listPinnedEntries(deps.journalRepo)
@@ -212,8 +181,6 @@ function SectionBody({
               ? listRecentlyEditedEntries(deps.journalRepo)
               : []
           }
-          categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
-          tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
           canRunSql={isAdmin}
           widgets={homeWidgets}
         />

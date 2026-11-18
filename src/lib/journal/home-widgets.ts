@@ -21,21 +21,24 @@ export const JOURNAL_HOME_WIDGETS_KEY = "journal_home_widgets";
  */
 export const JOURNAL_HOME_WIDGET_IDS = [
   "counters",
-  // Tags and categories share one card. `topTags` and `topCategories` were two
-  // separate cards and are **retired ids** — a stored layout still naming either is
-  // dropped by `resolveJournalHomeWidgets`, and `topTaxonomy` is then inserted at this
+  // Top Tags & Categories, Count by Years and Top Words share one card, a tab each,
+  // each loading only when opened. `topTaxonomy`, `countByYears` and `topWords` are
+  // **retired ids**, as are `topTags` and `topCategories` before them (the two cards
+  // `topTaxonomy` once merged) — a stored layout still naming any of them is dropped
+  // by `resolveJournalHomeWidgets`, and `interestingStats` is then inserted at this
   // position, visible. That is why combining them needed no migration. Do not reuse
-  // either old id for something else.
-  "topTaxonomy",
-  "topWords",
-  "countByYears",
+  // any of the old ids for something else.
+  //
+  // Known consequence, the same as the earlier merges: a reader who had *hidden* one
+  // of the three old cards gets the combined card back visible.
+  "interestingStats",
   // Pinned entries and recently-edited entries share one card, as two tabs.
   // `pinnedEntries` is a **retired id** — a stored layout still naming it is dropped by
   // `resolveJournalHomeWidgets`, and `pinnedAndRecentlyEdited` is then inserted at this
   // position, visible. That is why combining them needed no migration, and it is the
-  // same arrangement `topTaxonomy` uses. Do not reuse the old id for something else.
+  // same arrangement `interestingStats` uses. Do not reuse the old id for something else.
   //
-  // Known consequence, the same one the topTaxonomy merge has: a reader who had
+  // Known consequence, the same one the taxonomy merge had: a reader who had
   // *hidden* Pinned Entries gets the combined card back visible. Hiding a retired id
   // cannot carry forward, because the id it was hiding no longer exists.
   "pinnedAndRecentlyEdited",
@@ -57,24 +60,10 @@ export const JOURNAL_HOME_WIDGET_INFO: Record<
     label: "Entry counters",
     description: "Total, locked, log and recycled entry counts.",
   },
-  topTaxonomy: {
-    label: "Top Tags & Categories",
+  interestingStats: {
+    label: "Interesting Journal Stats",
     description:
-      "The tags and the categories you use most, side by side, each linking to its entries.",
-  },
-  // The label carries no number, unlike the card's own heading: how many words
-  // rank is a preference now, and a fixed "Top 10" here would be wrong for
-  // anyone who changed it. The id stays `topWords` — it is persisted in the
-  // ordering string, so renaming it would drop the card from every reader's
-  // saved layout.
-  topWords: {
-    label: "Top Words",
-    description:
-      "The words you write most often across every entry. How many are ranked is set in Journal → Preferences.",
-  },
-  countByYears: {
-    label: "Count by Years",
-    description: "How many entries you wrote in each year and month.",
+      "Three tabs in one card: your top tags and categories, entry counts by year and month, and the words you write most often. Each tab loads when you open it.",
   },
   pinnedAndRecentlyEdited: {
     label: "Pinned & Recently Edited",

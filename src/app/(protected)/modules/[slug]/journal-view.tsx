@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
@@ -13,13 +13,13 @@ import { TaxonomyChip, TaxonomyIcon } from "@/components/taxonomy-icon";
 import { useIsCompact } from "@/components/viewport-context";
 import { getIconSlot } from "@/lib/icons";
 import {
-  DEFAULT_TOP_WORD_LIMIT,
   PINNED_ENTRY_LIMIT,
   RECENTLY_EDITED_ENTRY_LIMIT,
   defaultJournalHomeWidgets,
   visibleJournalHomeWidgets,
   type JournalHomeWidgetId,
   type JournalHomeWidgetPreference,
+  type JournalStatsTab,
 } from "@/lib/journal";
 import type {
   JournalEntry,
@@ -29,10 +29,12 @@ import type {
   JournalYearCount,
 } from "@/lib/journal";
 import { journalEntriesFilterHref } from "./journal-shared";
+import { loadJournalStatsTabAction, type JournalStatsTabResult } from "./journal-stats-actions";
 
 // Resolved once at module scope — `getIconSlot` reads the static registry, no I/O. The
 // non-null assertions are safe because slots.test.ts asserts each id is registered.
 const STATS_SLOT = getIconSlot("journal_card_statistics")!;
+const INTERESTING_STATS_SLOT = getIconSlot("journal_card_interesting_stats")!;
 const TOP_TAGS_SLOT = getIconSlot("journal_heading_top_tags")!;
 const TOP_CATEGORIES_SLOT = getIconSlot("journal_heading_top_categories")!;
 const RECENT_SLOT = getIconSlot("journal_card_recent_entries")!;
@@ -280,8 +282,18 @@ function StatTile({
 // above: that one links every row to a filtered entry list and carries an
 // uploaded icon per name, neither of which a word has — a word is not a
 // taxonomy term, so there is nothing to filter by and nothing to illustrate.
-function TopWordsList({ words }: { words: JournalWordCount[] }) {
-  const router = useRouter();
+function TopWordsList({
+  words,
+  onChanged,
+}: {
+  words: JournalWordCount[];
+  /**
+   * Called after a word is excluded, to fetch the re-ranked list. The list is loaded
+   * by the Interesting Journal Stats card on demand, not by the page, so
+   * `router.refresh()` would re-render the page without ever reaching it.
+   */
+  onChanged: () => Promise<void>;
+}) {
   // Which word is being dismissed, so its row can show it is in flight. One at a
   // time: the server re-ranks on every change, so a second click before the first
   // lands would be acting on a list that is about to be replaced.
@@ -298,16 +310,16 @@ function TopWordsList({ words }: { words: JournalWordCount[] }) {
         return;
       }
       // The ranking is computed on the server from every entry's text, so the
-      // new list arrives by re-rendering the page rather than by patching this
-      // one. `revalidatePath` in the action invalidates it; this asks for it.
-      router.refresh();
+      // new list is fetched again rather than patched here — the next word has
+      // to move up into the list.
+      await onChanged();
     } finally {
       setPending(undefined);
     }
   }
 
   if (words.length === 0) {
-    return <p className="mt-2 text-sm text-muted">Not enough writing yet to rank words.</p>;
+    return <p className="text-sm text-muted">Not enough writing yet to rank words.</p>;
   }
 
   // Every bar is read against the most-used word, which is `words[0]` because the
@@ -421,7 +433,7 @@ function CountByYears({ yearCounts }: { yearCounts: JournalYearCount[] }) {
   }
 
   if (yearCounts.length === 0) {
-    return <p className="mt-2 text-sm text-muted">No entries yet.</p>;
+    return <p className="text-sm text-muted">No entries yet.</p>;
   }
 
   return (
@@ -433,7 +445,7 @@ function CountByYears({ yearCounts }: { yearCounts: JournalYearCount[] }) {
     // `items-start` stops a collapsed year stretching to match an expanded
     // neighbour; an expanded year grows in place, so clicking one never relays out
     // the rest of the card. A phone stays the single stack it already was.
-    <div className="mt-3 grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] items-start gap-2.5 max-lg:grid-cols-1">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] items-start gap-2.5 max-lg:grid-cols-1">
       {yearCounts.map((yearCount) => {
         const isExpanded = expandedYears.has(yearCount.year);
 
@@ -514,19 +526,202 @@ function CountByYears({ yearCounts }: { yearCounts: JournalYearCount[] }) {
   );
 }
 
+type LoadedStatsTab = Extract<JournalStatsTabResult, { ok: true }>;
+
+/**
+ * Fires the tab's load when it is drawn. Its own component because `Tabs` mounts only
+ * the active tab's content and `CollapsibleCard` unmounts its body when shut — so this
+ * mounting *is* "the reader is now looking at this tab", whichever of the two caused it.
+ */
+function StatsTabLoader({
+  tab,
+  ensureLoaded,
+  children,
+}: {
+  tab: JournalStatsTab;
+  ensureLoaded: (tab: JournalStatsTab) => void;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    ensureLoaded(tab);
+  }, [tab, ensureLoaded]);
+  return <>{children}</>;
+}
+
+/**
+ * The Interesting Journal Stats card: Top Tags & Categories, Count by Years and Top
+ * Words as three tabs, each fetched the first time it is opened and then kept until
+ * the page reloads. The cache lives here, above the `CollapsibleCard`, so collapsing
+ * and re-opening the card doesn't fetch again either.
+ */
+function InterestingStatsCard() {
+  const [loaded, setLoaded] = useState<Partial<Record<JournalStatsTab, LoadedStatsTab>>>({});
+  const [errors, setErrors] = useState<Partial<Record<JournalStatsTab, string>>>({});
+  // In-flight and done keys, as a ref: a state check would read a stale snapshot and
+  // let React's dev double-effect (or a fast double click) fire the same fetch twice.
+  const requested = useRef(new Set<JournalStatsTab>());
+
+  const fetchTab = useCallback(async (tab: JournalStatsTab) => {
+    requested.current.add(tab);
+    setErrors((current) => ({ ...current, [tab]: undefined }));
+    try {
+      const result = await loadJournalStatsTabAction(tab);
+      if (result.ok) {
+        setLoaded((current) => ({ ...current, [tab]: result }));
+      } else {
+        requested.current.delete(tab);
+        setErrors((current) => ({ ...current, [tab]: result.error }));
+      }
+    } catch (error) {
+      requested.current.delete(tab);
+      setErrors((current) => ({
+        ...current,
+        [tab]: error instanceof Error ? error.message : "Failed to load these stats.",
+      }));
+    }
+  }, []);
+
+  const ensureLoaded = useCallback(
+    (tab: JournalStatsTab) => {
+      if (!requested.current.has(tab)) void fetchTab(tab);
+    },
+    [fetchTab],
+  );
+
+  // What a tab shows until its data is in: the error with a retry, or a loading line.
+  function pending(tab: JournalStatsTab): ReactNode {
+    const error = errors[tab];
+    if (error) {
+      return (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-red-400">{error}</p>
+          <Button size="sm" variant="secondary" onClick={() => void fetchTab(tab)}>
+            Try again
+          </Button>
+        </div>
+      );
+    }
+    return <p className="text-sm text-muted">Loading…</p>;
+  }
+
+  const taxonomy = loaded.taxonomy;
+  const count = loaded.count;
+  const words = loaded.words;
+
+  return (
+    <CollapsibleCard
+      title="Interesting Journal Stats"
+      titleIcon={<SlotIcon slot={INTERESTING_STATS_SLOT} className="h-4 w-4" />}
+      defaultOpen
+    >
+      <Tabs
+        items={[
+          {
+            key: "taxonomy",
+            label: "Top Tags & Categories",
+            content: (
+              <StatsTabLoader tab="taxonomy" ensureLoaded={ensureLoaded}>
+                {taxonomy?.data.tab === "taxonomy" ? (
+                  // The old card's own two-tab strip, moved in whole. Tags and
+                  // categories are two cuts of the same question, read one at a time.
+                  <Tabs
+                    items={[
+                      {
+                        key: "tags",
+                        label: (
+                          <span className="flex items-center gap-2">
+                            <SlotIcon slot={TOP_TAGS_SLOT} className="h-4 w-4 shrink-0" />
+                            Top Tags
+                          </span>
+                        ),
+                        content: (
+                          <TaxonomyList
+                            counts={taxonomy.data.topTags}
+                            emptyMessage="No tags yet."
+                            hrefFor={(name) => journalEntriesFilterHref("tag", name)}
+                            titleFor={(name) => `Show entries tagged "${name}"`}
+                            iconUrls={taxonomy.tagIcons}
+                          />
+                        ),
+                      },
+                      {
+                        key: "categories",
+                        label: (
+                          <span className="flex items-center gap-2">
+                            <SlotIcon slot={TOP_CATEGORIES_SLOT} className="h-4 w-4 shrink-0" />
+                            Top Categories
+                          </span>
+                        ),
+                        content: (
+                          <TaxonomyList
+                            counts={taxonomy.data.topCategories}
+                            emptyMessage="No categories yet."
+                            hrefFor={(name) => journalEntriesFilterHref("category", name)}
+                            titleFor={(name) => `Show entries in "${name}"`}
+                            iconUrls={taxonomy.categoryIcons}
+                          />
+                        ),
+                      },
+                    ]}
+                  />
+                ) : (
+                  pending("taxonomy")
+                )}
+              </StatsTabLoader>
+            ),
+          },
+          {
+            key: "count",
+            label: "Count",
+            content: (
+              <StatsTabLoader tab="count" ensureLoaded={ensureLoaded}>
+                {count?.data.tab === "count" ? (
+                  <CountByYears yearCounts={count.data.yearCounts} />
+                ) : (
+                  pending("count")
+                )}
+              </StatsTabLoader>
+            ),
+          },
+          {
+            key: "words",
+            label: "Words",
+            content: (
+              <StatsTabLoader tab="words" ensureLoaded={ensureLoaded}>
+                {words?.data.tab === "words" ? (
+                  <>
+                    {/* The asked-for figure from Preferences, not the list's length. */}
+                    <p className="text-sm text-muted">
+                      Your top {words.data.limit} words. Press ✕ to stop counting one.
+                    </p>
+                    <TopWordsList words={words.data.words} onChanged={() => fetchTab("words")} />
+                  </>
+                ) : (
+                  pending("words")
+                )}
+              </StatsTabLoader>
+            ),
+          },
+        ]}
+      />
+    </CollapsibleCard>
+  );
+}
+
 function cellToText(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
-// The cards that take the whole row on desktop; the other four are half-width.
-// `topTaxonomy` stays full-width now that its two lists are tabs rather than
-// columns: the tile grid is the reason, not the old side-by-side layout. Tiles are
-// capped at 6rem, so a full-width row fits roughly twice as many before wrapping,
-// and the ten of them read as a block instead of a narrow strip.
+// The cards that take the whole row on desktop. Every current card is listed, so the
+// two-column grid below only matters for a half-width card added later. The tile
+// grid in Interesting Journal Stats is the reason that one is full-width: tiles are
+// capped at 6rem, so a full row fits roughly twice as many before wrapping.
 const FULL_WIDTH_WIDGETS = new Set<JournalHomeWidgetId>([
   "counters",
-  "topTaxonomy",
-  // Full-width for the same reason `topTaxonomy` is: two tabbed lists in one card.
+  // Three tabs, the taxonomy tile grid among them — which is why it was full-width
+  // back when it was the Top Tags & Categories card on its own.
+  "interestingStats",
+  // Full-width for the same reason `interestingStats` is: tabbed lists in one card.
   // The Recently Edited tab carries three columns and up to 20 rows, which in a
   // half-width cell would truncate titles against the Edited column.
   "pinnedAndRecentlyEdited",
@@ -536,15 +731,8 @@ const FULL_WIDTH_WIDGETS = new Set<JournalHomeWidgetId>([
 export function JournalView({
   entries,
   tally,
-  topWords,
-  topWordLimit = DEFAULT_TOP_WORD_LIMIT,
-  topTags,
-  topCategories,
-  yearAndMonthCounts = [],
   pinnedEntries = [],
   recentlyEditedEntries = [],
-  categoryIcons = {},
-  tagIcons = {},
   canRunSql = false,
   widgets = defaultJournalHomeWidgets(),
 }: {
@@ -560,20 +748,8 @@ export function JournalView({
    * have left the journal, so it counts rows `totalCount` does not include.
    */
   tally: JournalEntryTally;
-  /** The most-used words across every entry, already ranked and trimmed. */
-  topWords: JournalWordCount[];
-  /**
-   * The reader's chosen length for that list — what the card's heading names.
-   *
-   * Only ever the *asked-for* figure, never `topWords.length`: a journal with
-   * fewer distinct words than this returns a shorter list, and a heading
-   * derived from the array would rename the card to whatever happened to fit.
-   */
-  topWordLimit?: number;
-  topTags: JournalTaxonomyCount[];
-  topCategories: JournalTaxonomyCount[];
-  /** Entry counts grouped by year and month. */
-  yearAndMonthCounts?: JournalYearCount[];
+  // No top words, top tags/categories or year counts here: the Interesting Journal
+  // Stats card fetches each of those itself, when its tab is opened.
   /**
    * The pinned entries for the Pinned tab, newest first and already capped by
    * `listPinnedEntries`. Separate from `entries`, which is the recent slice — a
@@ -588,9 +764,6 @@ export function JournalView({
    * there.
    */
   recentlyEditedEntries?: JournalEntry[];
-  /** Name -> icon URL for the Statistics lists; absent names just show no icon. */
-  categoryIcons?: Record<string, string>;
-  tagIcons?: Record<string, string>;
   /** Only admins may run SQL; the server action re-checks this. */
   canRunSql?: boolean;
   /** This reader's card order and visibility. Defaults to every card, catalogue order. */
@@ -677,77 +850,9 @@ export function JournalView({
         </div>
       </div>
     ),
-    // Tags and categories share one card and one space, a tab each. Side by side they
-    // each got half the width, which on a `minmax(5rem,6rem)` tile grid is a visible
-    // cost — a tab gets the whole card. They are two cuts of the same question ("what
-    // do I write about most"), read one at a time, which is what tabs are for
-    // (components.md → Tabs vs ViewModeSwitch).
-    //
-    // The tab label carries each list's name and slot icon, so `TaxonomyList` no
-    // longer draws a heading of its own. Same strip on a phone: two short labels fit
-    // a narrow screen, and `Tabs` wraps them if they ever don't.
-    topTaxonomy: (
-      <div className="rounded-xl border border-line p-4">
-        <Tabs
-          items={[
-            {
-              key: "tags",
-              label: (
-                <span className="flex items-center gap-2">
-                  <SlotIcon slot={TOP_TAGS_SLOT} className="h-4 w-4 shrink-0" />
-                  Top Tags
-                </span>
-              ),
-              content: (
-                <TaxonomyList
-                  counts={topTags}
-                  emptyMessage="No tags yet."
-                  hrefFor={(name) => journalEntriesFilterHref("tag", name)}
-                  titleFor={(name) => `Show entries tagged "${name}"`}
-                  iconUrls={tagIcons}
-                />
-              ),
-            },
-            {
-              key: "categories",
-              label: (
-                <span className="flex items-center gap-2">
-                  <SlotIcon slot={TOP_CATEGORIES_SLOT} className="h-4 w-4 shrink-0" />
-                  Top Categories
-                </span>
-              ),
-              content: (
-                <TaxonomyList
-                  counts={topCategories}
-                  emptyMessage="No categories yet."
-                  hrefFor={(name) => journalEntriesFilterHref("category", name)}
-                  titleFor={(name) => `Show entries in "${name}"`}
-                  iconUrls={categoryIcons}
-                />
-              ),
-            },
-          ]}
-        />
-      </div>
-    ),
-    topWords: (
-      <div className="rounded-xl border border-line p-4">
-        <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
-          <span aria-hidden="true" className="h-4 w-4 shrink-0" />
-          Top {topWordLimit} Words
-        </h3>
-        <TopWordsList words={topWords} />
-      </div>
-    ),
-    countByYears: (
-      <div className="rounded-xl border border-line p-4">
-        <h3 className="flex items-center gap-2 font-display text-sm text-brass-dark">
-          <span aria-hidden="true" className="h-4 w-4 shrink-0" />
-          Count by Years
-        </h3>
-        <CountByYears yearCounts={yearAndMonthCounts} />
-      </div>
-    ),
+    // Top Tags & Categories, Count by Years and Top Words, a tab each. The card owns
+    // its own loading — see `InterestingStatsCard` — so the page renders none of it.
+    interestingStats: <InterestingStatsCard />,
     // Two shortlists of entries in one card, as tabs: the ones the reader pinned, and
     // the ones they edited most recently. Neither is a second Entries list — each is
     // capped and links to the full filtered list for the rest, which is why they carry
@@ -755,7 +860,7 @@ export function JournalView({
     //
     // One card rather than two because they answer the same kind of question ("which
     // entries do I want to get back to") and halve the vertical room doing it. Same
-    // arrangement as the Statistics card, which holds Top Tags and Top Categories.
+    // arrangement as the Interesting Journal Stats card.
     pinnedAndRecentlyEdited: (
       <CollapsibleCard
         title="Pinned & Recently Edited"

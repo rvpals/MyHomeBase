@@ -35,20 +35,20 @@ describe("resolveJournalHomeWidgets", () => {
   });
 
   it("reads order and the hidden prefix", () => {
-    const resolved = resolveJournalHomeWidgets("recentEntries,-topWords,counters");
+    const resolved = resolveJournalHomeWidgets("recentEntries,-interestingStats,counters");
 
     // The named ids keep the RELATIVE order they were given, and the hidden prefix
     // survives. Asserted on their relative positions rather than on `slice(0, 3)`:
     // an id the reader did not name is inserted immediately before its catalogue
-    // successor, not appended — so `countByYears` and `pinnedAndRecentlyEdited`
+    // successor, not appended — so `pinnedAndRecentlyEdited`
     // legitimately sort ahead of `recentEntries` here. The old assertion assumed the
     // named ids came first, which contradicts the documented insertion rule this
     // function implements on purpose.
     const order = resolved.map((widget) => widget.id);
-    expect(order.indexOf("recentEntries")).toBeLessThan(order.indexOf("topWords"));
-    expect(order.indexOf("topWords")).toBeLessThan(order.indexOf("counters"));
+    expect(order.indexOf("recentEntries")).toBeLessThan(order.indexOf("interestingStats"));
+    expect(order.indexOf("interestingStats")).toBeLessThan(order.indexOf("counters"));
 
-    expect(resolved.find((widget) => widget.id === "topWords")?.visible).toBe(false);
+    expect(resolved.find((widget) => widget.id === "interestingStats")?.visible).toBe(false);
     expect(resolved.find((widget) => widget.id === "recentEntries")?.visible).toBe(true);
     expect(resolved.find((widget) => widget.id === "counters")?.visible).toBe(true);
 
@@ -68,8 +68,8 @@ describe("resolveJournalHomeWidgets", () => {
   it("inserts a card missing from the stored value before its catalogue successor", () => {
     const resolved = resolveJournalHomeWidgets("recentEntries,counters");
     const ids = resolved.map((widget) => widget.id);
-    expect(ids.indexOf("topTaxonomy")).toBeLessThan(ids.indexOf("recentEntries"));
-    expect(resolved.find((widget) => widget.id === "topTaxonomy")?.visible).toBe(true);
+    expect(ids.indexOf("interestingStats")).toBeLessThan(ids.indexOf("recentEntries"));
+    expect(resolved.find((widget) => widget.id === "interestingStats")?.visible).toBe(true);
   });
 });
 
@@ -85,7 +85,7 @@ describe("Pinned & Recently Edited", () => {
     // A layout saved while Pinned Entries was its own card. The retired id is dropped
     // and `pinnedAndRecentlyEdited` is inserted at its catalogue position, visible —
     // which is why combining the two shipped without a migration, exactly as the
-    // topTaxonomy merge did.
+    // taxonomy merge did.
     const resolved = resolveJournalHomeWidgets(
       "counters,topTaxonomy,topWords,countByYears,pinnedEntries,recentEntries",
     );
@@ -113,7 +113,7 @@ describe("Pinned & Recently Edited", () => {
   });
 
   it("shows the combined card even to someone who had hidden Pinned Entries", () => {
-    // The same deliberate consequence the topTaxonomy merge has: hiding a retired id
+    // The same deliberate consequence the taxonomy merge had: hiding a retired id
     // cannot carry over, because the card it referred to no longer exists. Pinned up
     // to now meant "pinned only", so inheriting that switch would hide a card that is
     // half new anyway.
@@ -125,18 +125,29 @@ describe("Pinned & Recently Edited", () => {
   });
 });
 
-describe("Top Tags & Categories", () => {
-  it("replaced the two separate cards", () => {
+describe("Interesting Journal Stats", () => {
+  it("replaced the taxonomy, words and year-count cards", () => {
     const ids = JOURNAL_HOME_WIDGET_IDS as readonly string[];
-    expect(ids).toContain("topTaxonomy");
-    expect(ids).not.toContain("topTags");
-    expect(ids).not.toContain("topCategories");
+    expect(ids).toContain("interestingStats");
+    for (const retired of ["topTaxonomy", "topWords", "countByYears", "topTags", "topCategories"]) {
+      expect(ids).not.toContain(retired);
+    }
   });
 
-  it("drops the retired ids and shows the combined card instead", () => {
-    // A layout saved while Top Tags and Top Categories were separate cards. The two
-    // retired ids are dropped and `topTaxonomy` is inserted at its catalogue position,
-    // visible — which is why combining them shipped without a migration.
+  it("drops the retired ids and shows the combined card where they stood", () => {
+    // A layout saved while the three were separate cards. The retired ids are dropped
+    // and `interestingStats` is inserted at its catalogue position, visible — which is
+    // why combining them shipped without a migration.
+    const resolved = resolveJournalHomeWidgets(
+      "counters,topTaxonomy,topWords,countByYears,pinnedAndRecentlyEdited,recentEntries",
+    );
+    const ids = resolved.map((widget) => widget.id) as string[];
+
+    expect(ids).toEqual(["counters", "interestingStats", "pinnedAndRecentlyEdited", "recentEntries"]);
+    expect(resolved.find((widget) => widget.id === "interestingStats")?.visible).toBe(true);
+  });
+
+  it("still drops the older topTags/topCategories ids", () => {
     const resolved = resolveJournalHomeWidgets(
       "counters,topTags,topCategories,topWords,countByYears,recentEntries",
     );
@@ -144,27 +155,22 @@ describe("Top Tags & Categories", () => {
 
     expect(ids).not.toContain("topTags");
     expect(ids).not.toContain("topCategories");
-    expect(resolved.find((widget) => widget.id === "topTaxonomy")).toEqual({
-      id: "topTaxonomy",
-      visible: true,
-    });
     expect(resolved).toHaveLength(JOURNAL_HOME_WIDGET_IDS.length);
   });
 
-  it("shows the combined card even to someone who had hidden one of the two", () => {
-    // A deliberate consequence worth pinning down: hiding `topCategories` cannot carry
-    // over, because the card it referred to no longer exists. The combined card
-    // arrives visible rather than inheriting either old switch.
-    const resolved = resolveJournalHomeWidgets("counters,topTags,-topCategories,recentEntries");
+  it("shows the combined card even to someone who had hidden one of the three", () => {
+    // Hiding a retired id cannot carry over, because the card it referred to no longer
+    // exists. The combined card arrives visible rather than inheriting any old switch.
+    const resolved = resolveJournalHomeWidgets("counters,-topWords,-countByYears,recentEntries");
 
-    expect(resolved.find((widget) => widget.id === "topTaxonomy")?.visible).toBe(true);
+    expect(resolved.find((widget) => widget.id === "interestingStats")?.visible).toBe(true);
   });
 });
 
 describe("move and toggle", () => {
   it("moves one place and does not wrap", () => {
     const widgets = defaultJournalHomeWidgets();
-    expect(moveJournalHomeWidget(widgets, "topTaxonomy", "up")[0].id).toBe("topTaxonomy");
+    expect(moveJournalHomeWidget(widgets, "interestingStats", "up")[0].id).toBe("interestingStats");
     expect(moveJournalHomeWidget(widgets, "counters", "up")).toBe(widgets);
     const last = JOURNAL_HOME_WIDGET_IDS[JOURNAL_HOME_WIDGET_IDS.length - 1];
     expect(moveJournalHomeWidget(widgets, last, "down")).toBe(widgets);
@@ -177,8 +183,8 @@ describe("move and toggle", () => {
     expect(ids(reorderJournalHomeWidget(widgets, "recentEntries", "counters"))[0]).toBe(
       "recentEntries",
     );
-    expect(ids(reorderJournalHomeWidget(widgets, "counters", "topTaxonomy"))).toEqual([
-      "topTaxonomy",
+    expect(ids(reorderJournalHomeWidget(widgets, "counters", "interestingStats"))).toEqual([
+      "interestingStats",
       "counters",
       ...ids(widgets).slice(2),
     ]);
@@ -188,10 +194,10 @@ describe("move and toggle", () => {
 
   it("toggles visibility without mutating", () => {
     const widgets = defaultJournalHomeWidgets();
-    const next = toggleJournalHomeWidget(widgets, "topWords");
-    expect(next.find((widget) => widget.id === "topWords")?.visible).toBe(false);
+    const next = toggleJournalHomeWidget(widgets, "interestingStats");
+    expect(next.find((widget) => widget.id === "interestingStats")?.visible).toBe(false);
     expect(widgets.every((widget) => widget.visible)).toBe(true);
-    expect(visibleJournalHomeWidgets(next)).not.toContain("topWords");
+    expect(visibleJournalHomeWidgets(next)).not.toContain("interestingStats");
   });
 });
 
@@ -213,7 +219,7 @@ describe("storage", () => {
 
   it("saves and reads per user", () => {
     const repo = fakeRepo();
-    const mine = toggleJournalHomeWidget(defaultJournalHomeWidgets(), "topTaxonomy");
+    const mine = toggleJournalHomeWidget(defaultJournalHomeWidgets(), "interestingStats");
     saveJournalHomeWidgets(repo, 1, mine);
 
     expect(repo.rows[0].key).toBe(JOURNAL_HOME_WIDGETS_KEY);

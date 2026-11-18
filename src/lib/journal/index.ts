@@ -501,3 +501,12 @@ export {
   RECENTLY_EDITED_ENTRY_LIMIT,
   listRecentlyEditedEntries,
 } from "./recently-edited";
+export {
+  JOURNAL_STATS_TABS,
+  JOURNAL_STATS_TAXONOMY_LIMIT,
+  journalStatsTabSchema,
+  loadJournalStatsTab,
+  type JournalStatsTab,
+  type JournalStatsTabData,
+  type JournalStatsOptions,
+} from "./stats-tabs";

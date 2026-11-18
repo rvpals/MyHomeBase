@@ -748,10 +748,23 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "journal_card_interesting_stats",
+    label: "Interesting Journal Stats card",
+    group: "Journal cards",
+    where: "Journal → Home screen → the Interesting Journal Stats card header.",
+    // The card that took over Top Tags & Categories, Count by Years and Top Words.
+    // None of those three had a header slot of its own, so this is new rather than
+    // re-pointed; the two taxonomy slots below move inside it unchanged.
+    defaultConcept: "chart",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "journal_heading_top_tags",
     label: "Top Tags heading",
     group: "Journal cards",
-    where: "Journal → Home screen → inside the Statistics card, the Top Tags sub-heading.",
+    where:
+      "Journal → Home screen → Interesting Journal Stats card → Top Tags & Categories tab, the Top Tags tab.",
     defaultConcept: "chart",
     wired: true,
     namespace: "tree",
@@ -760,7 +773,8 @@ export const ICON_SLOTS: IconSlot[] = [
     id: "journal_heading_top_categories",
     label: "Top Categories heading",
     group: "Journal cards",
-    where: "Journal → Home screen → inside the Statistics card, the Top Categories sub-heading.",
+    where:
+      "Journal → Home screen → Interesting Journal Stats card → Top Tags & Categories tab, the Top Categories tab.",
     defaultConcept: "shapes",
     wired: true,
     namespace: "tree",
