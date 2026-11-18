@@ -146,6 +146,39 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-17 — Release (Photo Albums card, viewer thumbnails, Code Tester, Journal stats card)
+
+Needs no migration; needs a republish. Nothing here has been seen on screen and the browser smoke was not run. **Items 1–6 depend on `sharp` loading on the NAS** — if the strip is slow or the Code Tester reports no library, check that first. Item 24 changes what a stored home layout shows. Items 10 and 20 are phone-only checks.
+
+- [ ] **1.** Photo viewer (any gallery or journal photo set of more than 5): the strip shows the current photo and two each side, and the rest as `+n` tiles
+- [ ] **2.** Click a `+n` tile: the 10 nearest photos of that run appear and the tile's count drops; they stay shown while the viewer is open
+- [ ] **3.** Open a big folder: the main photo appears first, then the strip fills nearest-first, each slot with a spinner until it loads
+- [ ] **4.** Strip thumbnails are small and quick (a few KB each in the browser's network tab), not the full photos
+- [ ] **5.** A photo whose EXIF preview is sideways shows the right way up in the strip
+- [ ] **6.** On desktop, arrowing to the next or previous photo is instant once the strip has settled
+- [ ] **7.** Admin → Code Tester appears in the Admin panel; a non-admin can't open `/admin/code-tester`
+- [ ] **8.** Code Tester: run the photo resize test and see load, read and resize timings for each size
+- [ ] **9.** Picture Gallery → Albums: each album is drawn as a closed book with the name in the script font on a plate
+- [ ] **10.** Albums at phone width: the books wrap to a sensible column count and the name plate stays readable
+- [ ] **11.** An empty album shows the album glyph on its cover; clicking any book opens it
+- [ ] **12.** Journal home: **Interesting Journal Stats** is one card with Top Tags & Categories, Count by Years and Top Words tabs
+- [ ] **13.** Each stats tab loads the first time you open it ("Loading…" then data), and switching back doesn't reload it
+- [ ] **14.** Top Words: exclude a word — the list re-ranks with the next word moved up
+- [ ] **15.** Collapse and re-open the stats card: no second fetch
+- [ ] **16.** Journal → Import: there is no Reset / clear-all-entries control any more
+- [ ] **17.** Household → HSA Receipts: **By type** groups expenses by type in the editor's order; opening one group closes the other
+- [ ] **18.** HSA By type: an expense with an unrecognised type still appears, after the known types
+- [ ] **19.** Expense dashboard: clicking the uncategorised count lands on just the uncategorised transactions
+- [ ] **20.** Home screen at phone width: the Photo Albums card keeps its 4:3 frame and the album picker doesn't overflow the header
+- [ ] **21.** Home → **Photo Albums** card appears for someone with Picture Gallery access and not for someone without it
+- [ ] **22.** Pick an album in the card: it starts cycling that album's photos every 5 seconds, in album order, looping after the last, with an "n / total" counter
+- [ ] **23.** Reload the home screen: the card still shows the album you picked; delete that album and reload — it falls back to the newest one
+- [ ] **24.** Journal home Dashboard Widgets list: the three old stats cards are gone and "Interesting Journal Stats" is present (visible even if you'd hidden an old one)
+- [ ] **25.** Switch to another browser tab for a while and back: the Photo Albums slideshow resumes rather than racing through photos
+- [ ] **26.** Admin → Dashboard Widgets lists Photo Albums and can hide it; the card's ✕ closes it for you only
+
+---
+
 ## 2026-11-17 — Release (Journal Entries: four identical tabs)
 
 Needs no migration; needs a republish. Nothing here has been seen on screen and no gate was run to a clean result — typecheck went red mid-change and was not re-run, so **if the app won't build, start with `journal-entries-view.tsx`**. Items 9–11 are the ones most likely to expose a wiring slip.

@@ -1,5 +1,39 @@
 # Change History
 
+## 2026-11-17 19:45 — Photo Albums home card, viewer thumbnails, Code Tester, Journal stats card, and four smaller changes
+
+**No migration, no new package.** A **republish is required**. Eight bodies of work from several sessions went out together, committed separately (one commit each, in the order below).
+
+**What was checked.** `npm run typecheck` and `check:lib-boundary` pass. The full unit suite ran from `C:\git\MyHomeBase`: **8,426 of 8,436 pass**; this release fixed two of the failures (below) and the remaining 8 are older, in folders this release didn't touch (`documents/keywords`, `games/game-arrows` ×2, `games/pictionary-import`, `modules/modules`, `expense/auto-import` ×2, `scheduled-refresh/settings`). Lint reports **35 errors, all React-compiler rules in files this release didn't change** (the one in a changed file, `photo-viewer.tsx`, is code already at HEAD); files written for this release lint clean. **The browser smoke was not run** (no `MYHOMEBASE_DB` on this machine), **and none of it has been seen on screen.**
+
+**Heads-up for the terminal:** from VS Code's `c:\git\...` (lower-case drive) every Vitest file fails with "Cannot read properties of undefined (reading 'config')". Run from `C:\git\MyHomeBase` and they pass.
+
+### A. Viewer thumbnails — the photo strip no longer downloads originals
+The viewer's strip now loads small thumbnails from `/api/journal/photos/thumb` (the EXIF preview when the file has one, else the original shrunk by `sharp`, else the original as-is), built in memory and never stored. The strip shows the current photo and two each side, with the rest folded into **`+n` tiles** (`strip-window.ts`) that reveal 10 more per click. Load order: main photo first, then the strip nearest-first three at a time, then (desktop only) the next and previous full-size photos. At most three originals are shrunk at once across all requests (`shared/concurrency.ts`). `PhotoViewer` and `PhotoOfTheDay` take an optional `thumbUrl`; Picture Gallery's Albums, Favorites and Magic screens, the Random Photo card and the Journal photo host pass it.
+
+### B. Admin → Code Tester
+A new admin section (`/admin/code-tester`, icon slot `admin_section_code_tester`) for timing experiments on the server. First one: resize a photo at several long-edge sizes and report load/read/resize times, using the same renderer as A. Admin only.
+
+### C. Journal home: Interesting Journal Stats card
+Top Tags & Categories, Count by Years and Top Words are now **one card with three tabs, each fetched the first time it's opened** (`journal-stats-actions.ts`, `stats-tabs.ts`), so the Journal home no longer tokenizes every entry on every visit. The three old home-widget ids are retired into `interestingStats`; **a reader who had hidden one of the old three gets the combined card back visible.** New slot `journal_card_interesting_stats`.
+
+### D. Journal import: "clear all entries" removed
+The import screen's Reset tab (count, then delete every entry) is gone, along with its two actions. The library functions are untouched.
+
+### E. Household → HSA Receipts: "By type"
+A third view beside All and By year, grouping by expense type in the editor's order (`groupHsaExpensesByType`); unknown types sort last rather than dropping.
+
+### F. Picture Gallery → Albums: covers drawn as closed books
+Spine, page edges, and the album name in the script font on a name plate (`design.md`'s second `--font-script` caller).
+
+### G. Expense dashboard
+The uncategorised count now links to just the uncategorised rows instead of the whole Transactions list.
+
+### H. Home screen: Photo Albums card
+A new Dashboard Widgets card: pick an album in its header and it cycles that album's photos every 5 seconds, wrapping at the end, in the album's own order, using thumbnails. Each reader's choice is stored as a user preference (`home_album_id`, no migration); a deleted album falls back to the newest. Shown only to people who can open Picture Gallery. No buttons by design; the timer stops while the tab is hidden. New slot `homescreen_card_photo_albums`. Library: `albums/slideshow.ts`, `saveHomeAlbum`. The card's thumbnails are only **160px on the short side**, so expect a soft picture; widening that is a one-line change to `THUMBNAIL_SIZE`. Two tests were corrected on the way: `home-dashboard.test.ts` (the last-card edge case) and `thumbnail.test.ts` (a `FakeStore` default swallowed the "unreadable photo" case, so it never tested it).
+
+---
+
 ## 2026-11-17 07:54 — Journal Entries: all four tabs are now the same grid
 
 **No migration, no new package.** A **republish is required**.
