@@ -55,6 +55,8 @@ import { SqliteJournalRepository } from "./journal/repository";
 import { SqliteSavedLocationRepository as SqliteSysLocationRepository } from "./sys-locations/repository";
 import { SqliteJournalReportRepository } from "./journal-reports/repository";
 import { NodePhotoFileStore } from "./journal-photos/file-store";
+import { SharpPhotoThumbnailRenderer } from "./journal-photos/thumbnail-renderer";
+import { createConcurrencyLimit } from "./shared/concurrency";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
 import { SqliteMenuItemOverrideRepository } from "./menu-items/repository";
 import { SqliteToolbarRepository } from "./toolbars/repository";
@@ -289,6 +291,16 @@ export const deps = {
   photoFileStoreFor: (root: string) => new NodePhotoFileStore(root),
   /** Fallback for an install still configured through the environment. */
   photoRootFromEnv,
+  /** Shrinks photos to strip thumbnails. Loads `sharp` lazily, on the first thumbnail. */
+  photoThumbnailRenderer: new SharpPhotoThumbnailRenderer(),
+  /**
+   * At most three thumbnails built from an original at once, ACROSS ALL REQUESTS.
+   *
+   * Each one is a full multi-megabyte read over SMB, and Node has only four threads
+   * for file reads -- without the cap a strip's burst takes all four and the main
+   * photo waits behind it. One shared instance is the whole point, so it lives here.
+   */
+  photoThumbnailLimit: createConcurrencyLimit(3),
   expenseRepo: new SqliteExpenseRepository(db),
   attendanceRepo: new SqliteAttendanceRepository(db),
   // The Classroom module's Exam group (migrations/0145). Shares the module with

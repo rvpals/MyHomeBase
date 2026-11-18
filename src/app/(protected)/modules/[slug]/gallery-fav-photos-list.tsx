@@ -41,6 +41,11 @@ function photoUrl(relativePath: string): string {
   return `/api/journal/photos?path=${encodeURIComponent(relativePath)}`;
 }
 
+/** The strip thumbnail: a few KB instead of the original. See `readPhotoThumbnail`. */
+function thumbUrl(relativePath: string): string {
+  return `/api/journal/photos/thumb?path=${encodeURIComponent(relativePath)}`;
+}
+
 /** The file name, for the caption column. */
 function fileNameOf(relativePath: string): string {
   return relativePath.split("/").pop() ?? relativePath;
@@ -546,6 +551,7 @@ duplicate of ${fileNameOf(verdict.duplicateOf)}`))
           initialIndex={openIndex}
           autoPlay={openPlaying}
           photoUrl={photoUrl}
+          thumbUrl={thumbUrl}
           onPhotoDetails={readPhotoDetailsAction}
           {...albumFiling}
           onClose={closeViewer}

@@ -89,3 +89,15 @@ export {
 } from "./paths";
 export { photoJournalDate, type PhotoJournalDateInput } from "./viewer-date";
 export { NodePhotoFileStore } from "./file-store";
+// The viewer strip's thumbnails: the EXIF preview when there is one, else the original
+// shrunk. Built in memory per request; nothing is written.
+export {
+  THUMBNAIL_SIZE,
+  readPhotoThumbnail,
+  type PhotoThumbnail,
+  type PhotoThumbnailDeps,
+  type PhotoThumbnailSource,
+} from "./thumbnail";
+export type { PhotoThumbnailRenderer } from "./ports";
+export { SharpPhotoThumbnailRenderer } from "./thumbnail-renderer";
+export { readEmbeddedThumbnail, orientationTransform } from "./embedded-thumbnail";

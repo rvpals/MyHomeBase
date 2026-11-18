@@ -38,6 +38,11 @@ function photoUrl(relativePath: string): string {
   return `/api/journal/photos?path=${encodeURIComponent(relativePath)}`;
 }
 
+/** The strip thumbnail: a few KB instead of the original. See `readPhotoThumbnail`. */
+function thumbUrl(relativePath: string): string {
+  return `/api/journal/photos/thumb?path=${encodeURIComponent(relativePath)}`;
+}
+
 export interface JournalPhotosHostProps {
   /** A single day, `YYYY-MM-DD`. Pass this or `range`, not both. */
   date?: string;
@@ -121,6 +126,7 @@ export function JournalPhotosHost({ date, range, onClose, autoLookup }: JournalP
       onClose={onClose}
       autoLookup={autoLookup}
       photoUrl={photoUrl}
+      thumbUrl={thumbUrl}
       isFavorite={isFavorite}
       onToggleFavorite={onToggleFavorite}
       {...albumFiling}

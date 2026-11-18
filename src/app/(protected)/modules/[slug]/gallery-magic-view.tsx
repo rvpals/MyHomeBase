@@ -62,6 +62,11 @@ function photoUrl(relativePath: string): string {
   return `/api/journal/photos?path=${encodeURIComponent(relativePath)}`;
 }
 
+/** The strip thumbnail: a few KB instead of the original. See `readPhotoThumbnail`. */
+function thumbUrl(relativePath: string): string {
+  return `/api/journal/photos/thumb?path=${encodeURIComponent(relativePath)}`;
+}
+
 /**
  * The form's own shape: every field a string, because that is what an `<input>` holds.
  *
@@ -659,6 +664,7 @@ export function MagicListView({
           initialIndex={viewerIndex}
           autoPlay={viewerAutoPlay}
           photoUrl={photoUrl}
+          thumbUrl={thumbUrl}
           onClose={() => setViewerIndex(undefined)}
         />
       )}

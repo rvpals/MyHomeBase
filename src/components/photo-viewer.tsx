@@ -52,6 +52,13 @@ import {
   type SlideshowOptions,
 } from "@/lib/journal-photos/slideshow";
 import { photoJournalDate } from "@/lib/journal-photos/viewer-date";
+import {
+  STRIP_REVEAL_BATCH,
+  buildStripTiles,
+  nearestFirst,
+  revealFromRun,
+} from "@/lib/journal-photos/strip-window";
+import { useIsCompact } from "@/components/viewport-context";
 import type { ExifGpsFix } from "@/lib/journal-photos/exif-all";
 import type { ExifTag } from "@/lib/journal-photos/exif-tags";
 
@@ -169,6 +176,14 @@ export interface ViewerAlbum {
 interface PhotoViewerCommonProps {
   /** Builds the URL for one photo's bytes. */
   photoUrl: (relativePath: string) => string;
+  /**
+   * Builds the URL for one photo's strip THUMBNAIL -- a few KB rather than the original.
+   *
+   * Optional, falling back to `photoUrl`, so a caller without a thumbnail route still
+   * works. Pass it wherever one exists: full-size strip images are what used to tie up
+   * the browser's connections and make the viewer feel hung.
+   */
+  thumbUrl?: (relativePath: string) => string;
   /** Raised on Escape and on the close button. */
   onClose: () => void;
   /**
@@ -339,18 +354,17 @@ interface PhotoViewerFolderProps extends PhotoViewerCommonProps {
 export type PhotoViewerProps = PhotoViewerSetProps | PhotoViewerFolderProps;
 
 /**
- * How many thumbnails are mounted at once.
+ * How many strip thumbnails may be downloading at once.
  *
- * THE REASON THIS LIMIT EXISTS: there is no thumbnail pipeline. The archive's port is
- * read-only and forbids writing a cache into it, so a "thumbnail" here is the original
- * multi-megabyte JPEG scaled down by the browser. Mounting a 1,187-photo folder's worth
- * would queue 1,187 full-size reads over an SMB share and stall the strip for minutes.
- *
- * So the strip is a WINDOW around the current photo rather than the whole set. It still
- * scrolls the full width — every photo has a slot, keeping the scrollbar honest about
- * how big the set is — but only the slots near the reader hold an `<img>`.
+ * The browser allows six connections to the app. Keeping thumbnails to three leaves the
+ * rest for what the reader is doing -- the heart, the EXIF lookup, the next photo -- so
+ * a strip filling in can never make the viewer feel hung. Which photos are in the strip
+ * at all is `buildStripTiles` (two each side, the rest folded into "+n").
  */
-const THUMBNAIL_WINDOW = 24;
+const THUMBNAIL_CONCURRENCY = 3;
+
+/** An empty set with a stable identity, for "nothing revealed yet". */
+const NO_INDICES: ReadonlySet<number> = new Set();
 
 /** The two selects share this, so the panel's controls cannot drift apart. */
 const SELECT_CLASS =
@@ -376,6 +390,7 @@ export function PhotoViewer({
   initialPhotoPath,
   folderLabel,
   photoUrl,
+  thumbUrl = photoUrl,
   onClose,
   initialIndex,
   autoPlay = false,
@@ -493,6 +508,26 @@ export function PhotoViewer({
   const [isCreatingAlbum, setIsCreatingAlbum] = useState(false);
 
   const stripRef = useRef<HTMLDivElement>(null);
+
+  // Photos the reader has opened out of a "+n" tile, by PATH. Paths rather than
+  // indices so a caller that hands in a fresh-but-equal `photos` array does not fold
+  // the strip back up. They stay shown for the life of the viewer.
+  const [revealedPaths, setRevealedPaths] = useState<ReadonlySet<string>>(() => new Set());
+  // Thumbnails whose bytes have arrived (or failed). Once here a slot keeps its
+  // `<img>`, which the browser then serves from its cache if the slot remounts.
+  const [doneThumbs, setDoneThumbs] = useState<ReadonlySet<string>>(() => new Set());
+  const markThumbDone = useCallback((relativePath: string) => {
+    setDoneThumbs((current) => {
+      if (current.has(relativePath)) return current;
+      const next = new Set(current);
+      next.add(relativePath);
+      return next;
+    });
+  }, []);
+
+  // Full-size neighbour preloading is a desktop nicety: on a phone, ~5MB per
+  // neighbour of mobile data is not worth a faster arrow press.
+  const isCompact = useIsCompact();
 
   // Only for prefetching the journal link — this component never navigates.
   const router = useRouter();
@@ -960,6 +995,79 @@ export function PhotoViewer({
     active?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   }, [index]);
 
+  // Whether the photograph ON SCREEN is still arriving. Compared by path, so paging to
+  // a neighbour while a read is in flight moves the indicator with the reader instead of
+  // leaving it on the photo they have left.
+  const isStageLoading = photo !== undefined && loadedPath !== photo.relativePath;
+
+  // ---- The strip: which tiles, and which thumbnails may download now. ----
+  //
+  // ALL DERIVED, NO EFFECT. A thumbnail's `<img>` gets a `src` only when it is done or
+  // in `startableThumbs`; a slot without one shows a spinner. So the queue is just
+  // "the nearest THUMBNAIL_CONCURRENCY not-yet-done paths", recomputed each render:
+  // a thumbnail landing (`markThumbDone`) frees a place and the next one starts.
+  //
+  // MAIN PHOTO FIRST: while the stage is loading nothing new starts, so the photo the
+  // reader is looking at never shares the connection with its own strip.
+  const revealedIndices = useMemo(() => {
+    if (revealedPaths.size === 0) return NO_INDICES;
+    const indices = new Set<number>();
+    photos.forEach((candidate, candidateIndex) => {
+      if (revealedPaths.has(candidate.relativePath)) indices.add(candidateIndex);
+    });
+    return indices;
+  }, [photos, revealedPaths]);
+  const stripTiles = useMemo(
+    () => buildStripTiles(photos.length, index, revealedIndices),
+    [photos.length, index, revealedIndices],
+  );
+  const pendingThumbs = useMemo(() => {
+    const shown = stripTiles.flatMap((tile) => (tile.kind === "photo" ? [tile.index] : []));
+    return nearestFirst(shown, index)
+      .map((shownIndex) => photos[shownIndex].relativePath)
+      .filter((relativePath) => !doneThumbs.has(relativePath));
+  }, [stripTiles, index, photos, doneThumbs]);
+  const startableThumbs = useMemo(
+    () => new Set(isStageLoading ? [] : pendingThumbs.slice(0, THUMBNAIL_CONCURRENCY)),
+    [isStageLoading, pendingThumbs],
+  );
+  const isStripBusy = pendingThumbs.length > 0;
+
+  /** Opens the batch of a "+n" run nearest the current photo. */
+  const revealRun = useCallback(
+    (run: { start: number; end: number }) => {
+      const opened = revealFromRun(run, index, STRIP_REVEAL_BATCH);
+      setRevealedPaths((current) => {
+        const next = new Set(current);
+        for (const openedIndex of opened) {
+          const candidate = photos[openedIndex];
+          if (candidate !== undefined) next.add(candidate.relativePath);
+        }
+        return next;
+      });
+    },
+    [index, photos],
+  );
+
+  // Full-size preload of the next and previous photo, so an arrow press is instant.
+  //
+  // LAST IN LINE: only once the stage has loaded AND the strip has nothing pending, so
+  // it never competes with either. Desktop only (see `isCompact`). Not cancelled on
+  // cleanup -- it starts only when idle, so it cannot pile up, and a finished download
+  // is what the stage then reads from the browser's cache.
+  const nextPath = photos[index + 1]?.relativePath;
+  const previousPath = photos[index - 1]?.relativePath;
+  const shouldPreload = !isCompact && !isStageLoading && !isStripBusy;
+  useEffect(() => {
+    if (!shouldPreload) return;
+    for (const relativePath of [nextPath, previousPath]) {
+      if (relativePath === undefined) continue;
+      const image = new Image();
+      image.decoding = "async";
+      image.src = photoUrl(relativePath);
+    }
+  }, [shouldPreload, nextPath, previousPath, photoUrl]);
+
   // The EXIF rows for the photo on the stage, off the `details` derived above -- the
   // same cache entry the details line and the journal link already read, so the panel
   // cannot show one photo's tags beside another's date.
@@ -996,11 +1104,6 @@ export function PhotoViewer({
   // The caption the caller wants, falling back to the file name a folder browse has.
   const caption = photo?.caption ?? photo?.name ?? "";
   const subcaption = photo?.subcaption ?? (label === "" ? undefined : label);
-
-  // Whether the photograph ON SCREEN is still arriving. Compared by path, so paging to
-  // a neighbour while a read is in flight moves the indicator with the reader instead of
-  // leaving it on the photo they have left.
-  const isStageLoading = photo !== undefined && loadedPath !== photo.relativePath;
 
   return createPortal(
     <>
@@ -1353,6 +1456,9 @@ export function PhotoViewer({
                 key={photo.relativePath}
                 src={photoUrl(photo.relativePath)}
                 alt={caption}
+                // Ahead of the strip in the browser's queue; the strip also waits for
+                // this to land before it starts (see `startableThumbs`).
+                fetchPriority="high"
                 // Hidden rather than unmounted while the bytes are in flight: the
                 // element has to be mounted for the browser to fetch it at all, and
                 // `visibility` keeps it out of sight without cancelling the request.
@@ -1428,12 +1534,40 @@ export function PhotoViewer({
               // A single scrolling row, not a wrapping grid: the strip's job is "where am I
               // in this set", which a line preserves and a block of rows loses.
               className="mb-3 flex gap-2 overflow-x-auto pb-2"
+              aria-busy={isStripBusy}
             >
-              {photos.map((candidate, candidateIndex) => {
+              {/* For screen readers: the per-slot spinners below are the visible signal. */}
+              <span className="sr-only" aria-live="polite">
+                {isStripBusy ? "Loading thumbnails…" : ""}
+              </span>
+              {stripTiles.map((tile) => {
+                if (tile.kind === "more") {
+                  const isBefore = tile.end < index;
+                  const opens = Math.min(tile.count, STRIP_REVEAL_BATCH);
+                  const moreLabel = `Show ${opens} more of ${tile.count.toLocaleString()} ${
+                    isBefore ? "earlier" : "later"
+                  } photos`;
+                  return (
+                    <button
+                      key={`more-${tile.start}`}
+                      type="button"
+                      onClick={() => revealRun(tile)}
+                      title={moreLabel}
+                      aria-label={moreLabel}
+                      className="grid h-16 w-16 shrink-0 place-items-center rounded-md border-2 border-white/20 bg-white/10 text-sm font-medium text-white transition-colors hover:border-white/50 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white max-lg:h-12 max-lg:w-12 max-lg:text-xs"
+                    >
+                      +{tile.count.toLocaleString()}
+                    </button>
+                  );
+                }
+
+                const candidateIndex = tile.index;
+                const candidate = photos[candidateIndex];
                 const isActive = candidateIndex === index;
-                // Every photo gets a slot so the scrollbar reflects the real set size, but
-                // only those near the reader hold an image. See THUMBNAIL_WINDOW.
-                const isInWindow = Math.abs(candidateIndex - index) <= THUMBNAIL_WINDOW / 2;
+                const isThumbDone = doneThumbs.has(candidate.relativePath);
+                // Done, or one of the few allowed to download right now. Anything else
+                // waits with a spinner -- see `startableThumbs`.
+                const hasImage = isThumbDone || startableThumbs.has(candidate.relativePath);
                 const verdict = isCullOn ? cullRun.verdicts?.[candidate.relativePath] : undefined;
                 const isSetAside = verdict !== undefined && !verdict.isKeeper;
                 const thumbLabel =
@@ -1451,7 +1585,7 @@ export function PhotoViewer({
                     title={thumbLabel}
                     aria-label={thumbLabel}
                     aria-current={isActive}
-                    className={`h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 transition-all max-lg:h-12 max-lg:w-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+                    className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-md border-2 bg-white/10 transition-all max-lg:h-12 max-lg:w-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
                       isActive ? "border-white" : "border-white/20 hover:border-white/50"
                     } ${
                       // Dimmed, never removed: the arrows and the counter still walk the
@@ -1461,18 +1595,17 @@ export function PhotoViewer({
                       isSetAside && !isActive ? "opacity-30 grayscale" : ""
                     }`}
                   >
-                    {isInWindow ? (
+                    {hasImage && (
                       // eslint-disable-next-line @next/next/no-img-element -- as above.
                       <img
-                        src={photoUrl(candidate.relativePath)}
+                        src={thumbUrl(candidate.relativePath)}
                         alt=""
-                        loading="lazy"
-                        // Decoded OFF the main thread. These are full-size NAS JPEGs, not
-                        // thumbnails (there is no thumbnail pipeline -- see
-                        // THUMBNAIL_WINDOW), so a burst of synchronous multi-megapixel
-                        // decodes blocks input long enough to swallow a click on the
-                        // header's own controls while the strip fills.
+                        // Decoded off the main thread. Cheap now that these are real
+                        // thumbnails, but a caller without `thumbUrl` still falls back
+                        // to full-size originals here.
                         decoding="async"
+                        // Behind the main photo in the browser's own queue too.
+                        fetchPriority="low"
                         // Intrinsic size, so a slot reserves its box before the bytes
                         // land. Without it each arriving image relayouts the row, which
                         // is both jank and a moving target for a finger already on its
@@ -1480,11 +1613,20 @@ export function PhotoViewer({
                         width={64}
                         height={64}
                         className="h-full w-full object-cover"
+                        onLoad={() => markThumbDone(candidate.relativePath)}
+                        // A failed thumbnail must not hold a download place forever.
+                        onError={() => markThumbDone(candidate.relativePath)}
                       />
-                    ) : (
-                      // A placeholder, not an image: this slot exists to hold the strip's
-                      // width open, and loading it would defeat the window entirely.
-                      <span className="block h-full w-full bg-white/10" />
+                    )}
+                    {/* The busy signal: queued or downloading. Absolute, so the slot's
+                        size never changes when the image replaces it. */}
+                    {!isThumbDone && (
+                      <span
+                        className="pointer-events-none absolute inset-0 grid place-items-center"
+                        aria-hidden="true"
+                      >
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-white/80" />
+                      </span>
                     )}
                   </button>
                 );

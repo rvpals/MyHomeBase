@@ -4671,6 +4671,7 @@ shape or the other, and the branch inside is a single `useEffect`.
 | Prop | Type | Notes |
 |------|------|-------|
 | `photoUrl` | `(relativePath: string) => string` | Builds the URL for one photo's bytes. |
+| `thumbUrl?` | `(relativePath: string) => string` | Builds the URL for one photo's strip thumbnail (`/api/journal/photos/thumb?path=…`). Falls back to `photoUrl`. Pass it wherever the thumbnail route exists. |
 | `onClose` | `() => void` | Raised by Escape and the close button. **Not** by a backdrop click — the stage covers the screen, so there is no backdrop to hit. |
 | `autoPlay?` | `boolean` | Open with the slide show already running, for a "Slideshow" button elsewhere on the page. Read **once at mount**. |
 | `onPhotoDetails?` | `(relativePath) => Promise<ViewerPhotoDetails>` | The path and capture timestamp of the photo on the stage. **Lazy, one photo at a time** — see below. Omit to hide the details line. Stable reference. |
@@ -4889,15 +4890,30 @@ paper-on-paper with a `--line` shadow and reads as a pale slab. The header carri
 **own opaque background** because the app's `z-40` bar sits exactly here and at anything
 less its nav links read straight through.
 
-**The thumbnail strip is a window, not the set.** There is no thumbnail pipeline — the
-archive's port is read-only and forbids writing a cache into it
-([ports.ts](src/lib/journal-photos/ports.ts)), so a "thumbnail" is the original
-multi-megabyte JPEG scaled by the browser. Mounting a 1,187-photo folder's worth would
-queue 1,187 full-size reads over SMB. So every photo gets a **slot** (keeping the scrollbar
-honest about the set's size) but only those within `THUMBNAIL_WINDOW` of the reader hold an
-`<img>`; the rest are `bg-white/10` placeholders. Moving through the set slides the window,
-so pictures ahead are already loading. A single scrolling row, not a wrapping grid: the
-strip's job is "where am I", which a line preserves and a block of rows loses.
+**The thumbnail strip is two each side, and the rest folded into `+n`.** The strip shows
+the current photo and two on each side; every other run collapses into one **`+n` tile**
+([`buildStripTiles`](src/lib/journal-photos/strip-window.ts)). Clicking a tile reveals the
+10 photos of that run nearest the current one, and the tile's count shrinks. Revealed
+photos stay shown, by path, for the life of the viewer. A set of five or fewer shows every
+photo. A single row, not a wrapping grid: the strip's job is "where am I", which a line
+preserves and a block of rows loses.
+
+**Loading order: main photo first, then the strip, then the neighbours.**
+- **Thumbnails** come from `thumbUrl`: the `/api/journal/photos/thumb` route, a few KB
+  each ([`readPhotoThumbnail`](src/lib/journal-photos/thumbnail.ts): the EXIF preview,
+  else the original shrunk by sharp, else the original as-is when sharp is missing).
+- **The main photo goes first.** Nothing in the strip starts downloading until it has
+  loaded (`fetchPriority="high"` on it, `"low"` on the strip).
+- **The strip fills nearest first**, at most `THUMBNAIL_CONCURRENCY` (3) at a time, so
+  the browser's six connections always have room for a click. The queue is derived in
+  render (`startableThumbs`), not an effect.
+- **Busy signal:** each slot shows a small spinner until its image lands, and the stage
+  keeps its own "Loading the photograph…".
+- **Neighbours last.** On desktop only, once the stage and the strip are idle, the
+  full-size next and previous photos are preloaded so an arrow press is instant. A phone
+  skips this to save mobile data.
+- **Without `thumbUrl`** the strip falls back to `photoUrl`, i.e. full-size originals,
+  as before.
 
 **The slide show.** Interval and transition are chosen in a `CollapsibleCard`, collapsed by
 default. Options are **not persisted** — a freshly opened viewer starts from
@@ -5405,6 +5421,7 @@ picture-glyph control that opens it.
 | `onFindFolders` | `(query) => Promise<PhotoFoldersOutcome>` | The cheap lookup — folder names and counts. Wired to a server action by the caller. |
 | `onListPhotos` | `(query, relativePath, includeAll) => Promise<PhotoContentsOutcome>` | The expensive one; called only when a folder is opened. |
 | `photoUrl` | `(relativePath: string) => string` | Builds the URL for a photo's bytes. |
+| `thumbUrl?` | `(relativePath: string) => string` | Handed to the viewer's thumbnail strip (see `PhotoViewer`). The dialog's own folder grid still uses `photoUrl`. |
 | `onClose` | `() => void` | Escape, the ✕, an overlay click, and the Close button. |
 | `autoLookup?` | `boolean` | Default `false`. `true` looks on mount — for a caller whose button press already meant "go and look". |
 | `className?` | `string` | Applied to the dialog panel, merged last. |

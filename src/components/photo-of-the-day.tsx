@@ -151,6 +151,11 @@ export interface PhotoOfTheDayProps {
   onCullPhotos?: (relativePaths: string[]) => Promise<ViewerCullOutcome>;
   /** Builds the URL for one photo's bytes from its archive-relative path. */
   photoUrl: (relativePath: string) => string;
+  /**
+   * Builds the URL for one photo's strip thumbnail, handed to the viewer. Optional;
+   * the viewer falls back to `photoUrl`.
+   */
+  thumbUrl?: (relativePath: string) => string;
   /** Raised by Escape, the ✕, and an overlay click. Returns the reader to the caller. */
   onClose: () => void;
   /**
@@ -242,6 +247,7 @@ export function PhotoOfTheDay({
   onCullFolder,
   onCullPhotos,
   photoUrl,
+  thumbUrl,
   onClose,
   autoLookup = false,
   isFavorite,
@@ -581,6 +587,7 @@ export function PhotoOfTheDay({
           initialIndex={viewer.index}
           onCull={onCullPhotos}
           photoUrl={photoUrl}
+          thumbUrl={thumbUrl}
           isFavorite={isFavorite}
           onToggleFavorite={onToggleFavorite}
           albums={albums}

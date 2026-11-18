@@ -13,7 +13,8 @@ import type { PhotoRootCheck } from "./types";
  * Consequences that follow and are deliberate:
  *
  * - Nothing is written into a photo folder -- not a thumbnail cache, not an index,
- *   not a sidecar. Thumbnails are the original JPEGs scaled by the browser.
+ *   not a sidecar. Thumbnails are built in memory per request (`readPhotoThumbnail`)
+ *   and never stored anywhere.
  * - No EXIF is ever rewritten, even when a date looks wrong.
  * - A folder that has moved or been renamed simply stops matching. Nothing is
  *   "repaired" on disk.
@@ -91,4 +92,34 @@ export interface PhotoFileStore {
    * unreadable photo is skipped rather than failing the scan it appears in.
    */
   statPhoto(relativePath: string): Promise<{ bytes: number; mtime: string } | undefined>;
+}
+
+/**
+ * Shrinks a JPEG to a strip thumbnail.
+ *
+ * A port so `readPhotoThumbnail`'s decisions -- embedded preview or original, rotate or
+ * not, what to do when image processing is unavailable -- are tested with a fake, with
+ * no native module involved. The real one is `SharpPhotoThumbnailRenderer`.
+ *
+ * Writes nothing. It takes bytes and returns bytes, so it adds no capability to the
+ * archive; `PhotoFileStore` stays the only thing that touches it, and stays read-only.
+ */
+export interface PhotoThumbnailRenderer {
+  /**
+   * A JPEG no larger than `size` on its shorter side.
+   *
+   * With `transform`, applies exactly that rotation and mirroring -- for an EXIF
+   * preview, which carries no orientation of its own. Without it, orients the image
+   * from its own EXIF, which is right for an original.
+   *
+   * Throws when image processing is unavailable (a missing native module on the NAS);
+   * the caller falls back rather than failing the thumbnail.
+   */
+  render(
+    bytes: Uint8Array,
+    options: {
+      size: number;
+      transform?: { rotate: 0 | 90 | 180 | 270; flop: boolean; flip: boolean };
+    },
+  ): Promise<Uint8Array>;
 }

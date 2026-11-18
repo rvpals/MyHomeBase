@@ -44,6 +44,11 @@ function photoUrl(relativePath: string): string {
   return `/api/journal/photos?path=${encodeURIComponent(relativePath)}`;
 }
 
+/** The strip thumbnail: a few KB instead of the original. See `readPhotoThumbnail`. */
+function thumbUrl(relativePath: string): string {
+  return `/api/journal/photos/thumb?path=${encodeURIComponent(relativePath)}`;
+}
+
 /** The file name, for a caption. */
 function fileNameOf(relativePath: string): string {
   return relativePath.split("/").pop() ?? relativePath;
@@ -589,6 +594,7 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
           initialIndex={openIndex}
           autoPlay={isPlaying}
           photoUrl={photoUrl}
+          thumbUrl={thumbUrl}
           onPhotoDetails={readPhotoDetailsAction}
           {...albumFiling}
           onClose={() => {

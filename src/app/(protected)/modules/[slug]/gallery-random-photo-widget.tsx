@@ -67,6 +67,11 @@ function photoUrl(relativePath: string): string {
   return `/api/journal/photos?path=${encodeURIComponent(relativePath)}`;
 }
 
+/** The strip thumbnail: a few KB instead of the original. See `readPhotoThumbnail`. */
+function thumbUrl(relativePath: string): string {
+  return `/api/journal/photos/thumb?path=${encodeURIComponent(relativePath)}`;
+}
+
 /**
  * The folder a photo sits in — everything before the last slash.
  *
@@ -838,6 +843,7 @@ export function RandomPhotoWidget({
             // culling a set of one would answer nothing.
             onCull={cullGalleryPhotosAction}
             photoUrl={photoUrl}
+            thumbUrl={thumbUrl}
             onPhotoDetails={readPhotoDetailsAction}
             isFavorite={isPhotoFavorited}
             onToggleFavorite={toggleFavoriteByPath}
@@ -848,6 +854,7 @@ export function RandomPhotoWidget({
           <PhotoViewer
             photos={viewerPhotos}
             photoUrl={photoUrl}
+            thumbUrl={thumbUrl}
             onPhotoDetails={readPhotoDetailsAction}
             isFavorite={isPhotoFavorited}
             onToggleFavorite={toggleFavoriteByPath}
