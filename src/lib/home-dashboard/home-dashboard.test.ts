@@ -49,16 +49,17 @@ describe("resolveHomeWidgets", () => {
       "myShortcuts",
       "dailyQuote",
       "todayInHistory",
-      // `todo` is absent too, and is last in the catalogue, so nothing follows it to
-      // anchor before — it is appended.
+      // `todo` and `photoAlbums` are absent too, and are last in the catalogue, so
+      // nothing follows them to anchor before — they are appended.
       "todo",
+      "photoAlbums",
     ]);
     expect(widgets.every((widget) => widget.visible)).toBe(true);
   });
 
   it("reads a hyphen prefix as hidden", () => {
     const widgets = resolveHomeWidgets(
-      "carousel,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo",
+      "carousel,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo,photoAlbums",
     );
     expect(widgets.find((widget) => widget.id === "dailyQuote")?.visible).toBe(false);
     expect(widgets.find((widget) => widget.id === "carousel")?.visible).toBe(true);
@@ -94,14 +95,15 @@ describe("resolveHomeWidgets", () => {
       "todayInHistory",
       "stockGlance",
       "todo",
+      "photoAlbums",
     ]);
     expect(widgets.find((widget) => widget.id === "carousel")?.visible).toBe(true);
   });
 
   it("appends a missing card when nothing in the catalogue follows it", () => {
-    // `todo` is last in the catalogue, so it has no successor to anchor before.
+    // `photoAlbums` is last in the catalogue, so it has no successor to anchor before.
     const widgets = resolveHomeWidgets("carousel,dailyQuote,todayInHistory,stockGlance");
-    expect(widgets.at(-1)?.id).toBe("todo");
+    expect(widgets.at(-1)?.id).toBe("photoAlbums");
   });
 
   it("keeps a deliberate reorder when adding a missing card back", () => {
@@ -127,7 +129,7 @@ describe("homeWidgetsToValue", () => {
 
   it("marks hidden cards with a hyphen and leaves visible ones bare", () => {
     expect(homeWidgetsToValue(toggleHomeWidget(defaultHomeWidgets(), "dailyQuote"))).toBe(
-      "carousel,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo",
+      "carousel,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo,photoAlbums",
     );
   });
 
@@ -181,7 +183,7 @@ describe("moveHomeWidget", () => {
   it("returns the list unchanged at either edge rather than wrapping", () => {
     const widgets = defaultHomeWidgets();
     expect(moveHomeWidget(widgets, "carousel", "up")).toEqual(widgets);
-    expect(moveHomeWidget(widgets, "todo", "down")).toEqual(widgets);
+    expect(moveHomeWidget(widgets, "photoAlbums", "down")).toEqual(widgets);
   });
 
   it("carries visibility with the card it moves", () => {
@@ -223,6 +225,7 @@ describe("visibleHomeWidgets", () => {
       "stockGlance",
       "todayInHistory",
       "todo",
+      "photoAlbums",
     ]);
   });
 

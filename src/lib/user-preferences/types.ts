@@ -101,6 +101,15 @@ export interface UserPreferences {
    */
   homeLayout: HomeLayoutPreference;
   /**
+   * The album the home screen's Photo Albums card cycles through, or `undefined` when
+   * this reader has never picked one (the card then shows the first album).
+   *
+   * May name an album that has since been deleted — `resolveHomeAlbum` falls back
+   * rather than this being cleaned up when an album goes. Optional so every caller
+   * that builds a preference set (the Account form, the CLI, tests) needn't name it.
+   */
+  homeAlbumId?: number;
+  /**
    * The place the Floating Clock forecasts for, or `undefined` when the user hasn't
    * set one — in which case the clock shows the time alone.
    */

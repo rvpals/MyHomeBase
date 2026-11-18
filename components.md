@@ -1642,7 +1642,10 @@ the About
 screen's "Application & System Info" card
 [admin/about/view.tsx](src/app/(protected)/admin/about/view.tsx), and the home-screen
 cards — Daily Quote, Today In History and Daily Glance
-[page.tsx](<src/app/(protected)/page.tsx>).
+[page.tsx](<src/app/(protected)/page.tsx>), and the one-off Photo Albums slideshow
+[photo-albums-widget.tsx](<src/app/(protected)/photo-albums-widget.tsx>) *(uncontrolled,
+`defaultOpen`; its album `<select>` sits in `headerAction` so changing album never
+toggles the card, and its "Open" link in `titleAction`)*.
 
 For **mixing a client island with server-rendered content**, copy the floating clock:
 the weather strip ([clock-weather.tsx](<src/app/(protected)/clock-weather.tsx>)) stays a

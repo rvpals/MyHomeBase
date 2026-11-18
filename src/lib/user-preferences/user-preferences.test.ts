@@ -13,6 +13,7 @@ import {
   UnknownFavoriteModuleError,
   getUserPreferences,
   saveFloatingState,
+  saveHomeAlbum,
   resolveStartupDestination,
   saveUserPreferences,
 } from "./user-preferences";
@@ -693,5 +694,48 @@ describe("saveFloatingState", () => {
     expect(() =>
       saveFloatingState(repo, 7, { id: "clock", state: "sideways" as "open" }),
     ).toThrow();
+  });
+});
+
+describe("saveHomeAlbum", () => {
+  it("stores the album id and reads it back as a number", () => {
+    const repo = new FakeUserPreferencesRepository();
+    saveHomeAlbum(repo, 1, 7);
+    expect(getUserPreferences(repo, 1).homeAlbumId).toBe(7);
+  });
+
+  it("accepts a numeric string, overwrites rather than accumulating, and is per user", () => {
+    const repo = new FakeUserPreferencesRepository();
+    saveHomeAlbum(repo, 1, "3");
+    saveHomeAlbum(repo, 1, 4);
+    expect(getUserPreferences(repo, 1).homeAlbumId).toBe(4);
+    expect(getUserPreferences(repo, 2).homeAlbumId).toBeUndefined();
+    expect(repo.countAll()).toBe(1);
+  });
+
+  it("rejects an id that is not a positive integer and writes nothing", () => {
+    const repo = new FakeUserPreferencesRepository();
+    expect(() => saveHomeAlbum(repo, 1, 0)).toThrow();
+    expect(() => saveHomeAlbum(repo, 1, "abc")).toThrow();
+    expect(() => saveHomeAlbum(repo, 1, 1.5)).toThrow();
+    expect(repo.countAll()).toBe(0);
+  });
+
+  it("reads a blank or garbled stored value as no choice", () => {
+    for (const value of ["", "0", "-2", "x", "1.5"]) {
+      expect(
+        resolveUserPreferences([
+          { id: 1, userId: 1, key: USER_PREFERENCE_KEYS.homeAlbumId, value },
+        ]).homeAlbumId,
+      ).toBeUndefined();
+    }
+  });
+
+  it("is never written by userPreferencesToEntries, so the Preferences form can't clear it", () => {
+    const entries = userPreferencesToEntries({
+      ...resolveUserPreferences([]),
+      homeAlbumId: 9,
+    } as UserPreferences);
+    expect(entries.some((entry) => entry.key === USER_PREFERENCE_KEYS.homeAlbumId)).toBe(false);
   });
 });

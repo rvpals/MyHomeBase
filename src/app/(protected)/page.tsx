@@ -6,6 +6,7 @@ import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import { getAuthEventSummary } from "@/lib/auth-events";
 import { homeTexture } from "@/lib/app-texture";
 import { getDashboardTexture } from "@/lib/dashboard-texture";
+import { getHomeAlbumSlideshow } from "@/lib/albums";
 import { getRandomQuote } from "@/lib/daily-quote";
 import {
   HOME_WIDGETS_SETTING_KEY,
@@ -38,6 +39,7 @@ import { DailyQuoteWidget } from "./daily-quote-widget";
 import { HomeShell } from "./home-shell";
 import { HomeWidgetGrid, type HomeWidgetItem } from "./home-widget-grid";
 import { MyShortcutsWidget } from "./my-shortcuts-widget";
+import { PhotoAlbumsWidget } from "./photo-albums-widget";
 import { getNavTreeData } from "./nav-tree-data";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
 import { PAGE_CONTAINER } from "./page-container";
@@ -49,6 +51,7 @@ import { TodoWidget } from "./todo-widget";
 
 const INVESTMENTS_MODULE_SLUG = "investments";
 const JOURNAL_MODULE_SLUG = "journal";
+const GALLERY_MODULE_SLUG = "picture-gallery";
 const TOOLS_MODULE_SLUG = "tools";
 
 export default async function Home({
@@ -179,6 +182,17 @@ export default async function Home({
       ? buildTodoBoard({ categoryRepo: deps.todoCategoryRepo, itemRepo: deps.todoItemRepo })
       : undefined;
 
+  // The Photo Albums card, on the TODO card's rule: shown only to someone who can open
+  // the module that owns albums, and read only once that's true. Cheap — one summary
+  // query and the chosen album's membership rows; no file is touched until the browser
+  // asks for a thumbnail. The album is this reader's own choice (a user preference);
+  // whether the card exists is still the household's.
+  const galleryModule = modules.find((appModule) => appModule.slug === GALLERY_MODULE_SLUG);
+  const albumSlideshow =
+    galleryModule && shows("photoAlbums")
+      ? getHomeAlbumSlideshow(deps.albumRepo, preferences?.homeAlbumId)
+      : undefined;
+
   // The dashboard's optional background picture (migrations/0063, 0116).
   //
   // Drawn here ONLY when the texture is not app-wide. With the scope ticked on,
@@ -208,6 +222,9 @@ export default async function Home({
     // Quote: a household with no lists yet gets the card's empty state pointing at
     // Tools, and hiding it until a list exists would leave nothing to click.
     todo: todoBoard !== undefined,
+    // Like TODO: once the module is granted the card draws even with no albums, so its
+    // empty state can point at where to make one.
+    photoAlbums: albumSlideshow !== undefined,
   };
   const drawnWidgets = visibleHomeWidgets(widgets).filter((id) => hasContent[id]);
 
@@ -363,6 +380,21 @@ export default async function Home({
                     id,
                     label: "TODO",
                     node: <TodoWidget board={todoBoard} />,
+                  },
+                ];
+              case "photoAlbums":
+                // Re-tested for the same reason as TODO above.
+                if (!albumSlideshow) return [];
+                return [
+                  {
+                    id,
+                    label: "Photo Albums",
+                    node: (
+                      <PhotoAlbumsWidget
+                        albums={albumSlideshow.albums}
+                        initialAlbum={albumSlideshow.current}
+                      />
+                    ),
                   },
                 ];
               case "todayInHistory":

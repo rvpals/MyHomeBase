@@ -35,6 +35,11 @@ export const USER_PREFERENCE_KEYS = {
   homeColumns: "home_columns",
   homeWidgetOrder: "home_widget_order",
   homeHiddenWidgets: "home_hidden_widgets",
+  // The album the home screen's Photo Albums card cycles through, as the album's id.
+  // Per reader, unlike whether the card exists (the household `home_widgets` setting).
+  // Written alone by `saveHomeAlbum` from the card's own picker, never by the
+  // Preferences form.
+  homeAlbumId: "home_album_id",
   weatherLatitude: "weather_latitude",
   weatherLongitude: "weather_longitude",
   weatherPlaceName: "weather_place_name",
@@ -87,6 +92,20 @@ function resolveWeatherLocation(byKey: Map<string, string>): WeatherLocation | u
 }
 
 /**
+ * The stored album id back into a number, or `undefined`.
+ *
+ * Blank (never chosen) and anything that isn't a positive integer both read as "no
+ * choice" — the card then falls back to the first album, a better outcome than an
+ * error on the home screen. Whether the album still *exists* is not checked here;
+ * that is `resolveHomeAlbum`'s job, against the album list.
+ */
+function resolveHomeAlbumId(stored: string | undefined): number | undefined {
+  const trimmed = stored?.trim() ?? "";
+  if (!/^[1-9]\d*$/.test(trimmed)) return undefined;
+  return Number(trimmed);
+}
+
+/**
  * Parses a user's key/value rows into typed preferences.
  *
  * This is the single place blank becomes `undefined`: `preference_value` is
@@ -125,6 +144,7 @@ export function resolveUserPreferences(preferences: UserPreference[]): UserPrefe
       order: resolveHomeWidgetOrder(byKey.get(USER_PREFERENCE_KEYS.homeWidgetOrder)),
       hidden: resolveHiddenHomeWidgets(byKey.get(USER_PREFERENCE_KEYS.homeHiddenWidgets)),
     },
+    homeAlbumId: resolveHomeAlbumId(byKey.get(USER_PREFERENCE_KEYS.homeAlbumId)),
     weatherLocation: resolveWeatherLocation(byKey),
     // Anything unrecognised reads as Fahrenheit, matching the weather schema's own
     // default rather than inventing a second answer.
@@ -194,7 +214,14 @@ export function userPreferencesToEntries(
   // all, so a drag made on the home screen survives a save made elsewhere.
   preferences: Omit<
     UserPreferences,
-    "floating" | "floatingCorners" | "floatingPositions" | "calculator" | "homeLayout"
+    | "floating"
+    | "floatingCorners"
+    | "floatingPositions"
+    | "calculator"
+    | "homeLayout"
+    // Written alone by `saveHomeAlbum`, like the calculator's state: saving the
+    // Preferences form must not forget which album the home card shows.
+    | "homeAlbumId"
   > &
     Partial<Pick<UserPreferences, "homeLayout">>,
 ): { key: string; value: string }[] {

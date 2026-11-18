@@ -26,6 +26,7 @@ import {
 } from "./preferences";
 import {
   calculatorStateUpdateSchema,
+  homeAlbumIdSchema,
   floatingCornerUpdateSchema,
   floatingStateUpdateSchema,
   userPreferencesUpdateSchema,
@@ -170,6 +171,23 @@ export function saveHomeLayout(
       hiddenHomeWidgetsToValue(validated.hidden),
     );
   }
+}
+
+/**
+ * Records which album this reader's home-screen Photo Albums card shows.
+ *
+ * A single-key write, like `saveHomeLayout`: picking an album must not rewrite a
+ * favorite or a layout. Validates the id's shape only — whether the album exists (and
+ * whether the reader may see albums at all) is the caller's check, since this module
+ * knows nothing about albums. Throws on a malformed id.
+ */
+export function saveHomeAlbum(
+  repo: UserPreferencesRepository,
+  userId: number,
+  albumId: unknown,
+): void {
+  const validated = homeAlbumIdSchema.parse(albumId);
+  repo.setValue(userId, USER_PREFERENCE_KEYS.homeAlbumId, String(validated));
 }
 
 /**

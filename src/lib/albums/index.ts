@@ -38,3 +38,13 @@ export {
   updateAlbum,
   type AlbumResult,
 } from "./albums";
+// The home screen's Photo Albums card.
+export {
+  HOME_ALBUM_INTERVAL_MS,
+  getHomeAlbumSlideshow,
+  nextSlideIndex,
+  resolveHomeAlbum,
+  type HomeAlbumOption,
+  type HomeAlbumSlides,
+  type HomeAlbumSlideshow,
+} from "./slideshow";

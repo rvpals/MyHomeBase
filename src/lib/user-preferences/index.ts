@@ -25,6 +25,7 @@ export {
   floatingStateUpdateSchema,
   calculatorStateUpdateSchema,
   floatingCornerUpdateSchema,
+  homeAlbumIdSchema,
   type UserPreferenceInput,
   type UserPreferencesUpdate,
   type FloatingStateUpdate,
@@ -46,6 +47,7 @@ export {
   resetFloatingPosition,
   saveCalculatorState,
   saveHomeLayout,
+  saveHomeAlbum,
   resolveStartupDestination,
   UnknownFavoriteModuleError,
 } from "./user-preferences";

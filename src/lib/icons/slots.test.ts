@@ -77,6 +77,10 @@ describe("getIconSlot", () => {
     expect(getIconSlot("homescreen_card_daily_quote")?.defaultConcept).toBe("quote");
   });
 
+  it("registers the Photo Albums card with the album glyph", () => {
+    expect(getIconSlot("homescreen_card_photo_albums")?.defaultConcept).toBe("album");
+  });
+
   it("returns undefined for an unknown id", () => {
     expect(getIconSlot("not_a_real_slot")).toBeUndefined();
   });

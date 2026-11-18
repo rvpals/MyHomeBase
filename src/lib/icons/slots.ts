@@ -176,6 +176,17 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    id: "homescreen_card_photo_albums",
+    label: "Photo Albums card",
+    group: "Home screen",
+    where: "Home screen → the Photo Albums card header, immediately left of the title.",
+    // `album` rather than `photo`: Random Photo and Photo of the Day already draw
+    // `photo`, and this card is about an album specifically.
+    defaultConcept: "album",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "homescreen_shortcut_add",
     label: "Add shortcut",
     group: "Home screen",

@@ -141,6 +141,9 @@ export const calculatorStateUpdateSchema = z.object({
 
 export type CalculatorStateUpdate = z.infer<typeof calculatorStateUpdateSchema>;
 
+/** The home Photo Albums card's chosen album id. Coerced: it may arrive as a string. */
+export const homeAlbumIdSchema = z.coerce.number().int().positive();
+
 /**
  * `z.input`, not `z.infer` — this is the type of what a *caller* hands in, before
  * the schema applies its defaults. `z.infer` describes the parsed result, in which

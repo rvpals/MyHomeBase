@@ -35,6 +35,7 @@ export const HOME_WIDGET_IDS = [
   "todayInHistory",
   "stockGlance",
   "todo",
+  "photoAlbums",
 ] as const;
 
 export type HomeWidgetId = (typeof HOME_WIDGET_IDS)[number];
@@ -82,6 +83,12 @@ export const HOME_WIDGET_INFO: Record<HomeWidgetId, HomeWidgetInfo> = {
     label: "TODO Lists",
     description:
       "The household's TODO lists as tabs, with a checkbox on each item. The lists and the items are shared — everyone granted the Tools module sees and ticks the same ones. Shown only to someone who can open Tools.",
+  },
+  photoAlbums: {
+    id: "photoAlbums",
+    label: "Photo Albums",
+    description:
+      "A slideshow of one Picture Gallery album, moving to the next photo every few seconds and starting over after the last. Each person picks their own album from the card. Shown only to someone who can open Picture Gallery.",
   },
 };
 
