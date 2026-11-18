@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { UNDATED_YEAR_LABEL, groupHsaExpensesByYear, yearOf } from "./hsa-grouping";
-import type { HsaExpense } from "./hsa-types";
+import { UNDATED_YEAR_LABEL, groupHsaExpensesByType, groupHsaExpensesByYear, yearOf } from "./hsa-grouping";
+import type { HsaExpense, HsaType } from "./hsa-types";
 
 let nextId = 1;
 
@@ -105,6 +105,58 @@ describe("groupHsaExpensesByYear", () => {
     const rows = [expense({ entryDate: "2024-01-01" }), expense({ entryDate: "2026-01-01" })];
     const before = rows.map((row) => row.id);
     groupHsaExpensesByYear(rows);
+    expect(rows.map((row) => row.id)).toEqual(before);
+  });
+});
+
+describe("groupHsaExpensesByType", () => {
+  it("returns nothing for no expenses", () => {
+    expect(groupHsaExpensesByType([])).toEqual([]);
+  });
+
+  it("orders types as the editor offers them, leaving out empty ones", () => {
+    const groups = groupHsaExpensesByType([
+      expense({ type: "Vision" }),
+      expense({ type: "Pharmacy" }),
+      expense({ type: "Other" }),
+      expense({ type: "Pharmacy" }),
+    ]);
+    expect(groups.map((group) => group.key)).toEqual(["Pharmacy", "Vision", "Other"]);
+    expect(groups[0].expenseCount).toBe(2);
+  });
+
+  it("orders each type's rows newest first, across years", () => {
+    const [group] = groupHsaExpensesByType([
+      expense({ entryDate: "2024-03-01" }),
+      expense({ entryDate: "2026-03-01" }),
+      expense({ entryDate: "2025-03-01" }),
+    ]);
+    expect(group.rows.map((row) => row.entryDate)).toEqual(["2026-03-01", "2025-03-01", "2024-03-01"]);
+  });
+
+  it("totals the type, its unreimbursed part and its receipts", () => {
+    const [group] = groupHsaExpensesByType([
+      expense({ amountCents: 4250, isReimbursed: false, hasReceipt: true }),
+      expense({ amountCents: 1000, isReimbursed: true }),
+    ]);
+    expect(group.totalCents).toBe(5250);
+    expect(group.unreimbursedCents).toBe(4250);
+    expect(group.receiptCount).toBe(1);
+  });
+
+  it("keeps an unknown type, after the known ones", () => {
+    const groups = groupHsaExpensesByType([
+      expense({ type: "Chiropractic" as HsaType }),
+      expense({ type: "Other" }),
+      expense({ type: "Dental" }),
+    ]);
+    expect(groups.map((group) => group.key)).toEqual(["Dental", "Other", "Chiropractic"]);
+  });
+
+  it("does not mutate the array it was given", () => {
+    const rows = [expense({ type: "Vision" }), expense({ type: "Pharmacy" })];
+    const before = rows.map((row) => row.id);
+    groupHsaExpensesByType(rows);
     expect(rows.map((row) => row.id)).toEqual(before);
   });
 });

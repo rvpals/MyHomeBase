@@ -140,8 +140,10 @@ export {
 } from "./settings";
 export {
   UNDATED_YEAR_LABEL,
+  groupHsaExpensesByType,
   groupHsaExpensesByYear,
   yearOf,
+  type HsaExpenseGroup,
   type HsaYearGroup,
 } from "./hsa-grouping";
 export { SqliteHsaRepository } from "./hsa-repository";

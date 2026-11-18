@@ -1,17 +1,16 @@
-// Grouping HSA expenses by year, for the Receipts screen's "By year" view. Pure — the
-// view only renders what this returns.
+// Grouping HSA expenses by year or by type, for the Receipts screen's "By year" and
+// "By type" views. Pure — the view only renders what this returns.
 //
-// Modelled on `src/lib/expense/grouping.ts`, deliberately smaller: there is one
-// grouping here, not five, so there is no `groupBy` discriminator and no namespaced
-// key — the year *is* the key.
+// Modelled on `src/lib/expense/grouping.ts`, deliberately smaller: two groupings, each
+// its own function, and the group's label *is* its key — no namespaced keys.
 
-import type { HsaExpense } from "./hsa-types";
+import { HSA_TYPES, type HsaExpense } from "./hsa-types";
 
 /** What a row whose date cannot be read groups under. */
 export const UNDATED_YEAR_LABEL = "No usable date";
 
-export interface HsaYearGroup {
-  /** The four-digit year, or `UNDATED_YEAR_LABEL`. Stable identity and the React key. */
+export interface HsaExpenseGroup {
+  /** The group's label — a year, a type, or `UNDATED_YEAR_LABEL`. Stable identity and the React key. */
   key: string;
   /** Sum of `amountCents` over `rows`. */
   totalCents: number;
@@ -20,9 +19,12 @@ export interface HsaYearGroup {
   expenseCount: number;
   /** How many carry a receipt file. */
   receiptCount: number;
-  /** The year's expenses, newest first. */
+  /** The group's expenses, newest first. */
   rows: HsaExpense[];
 }
+
+/** A year group is just a group keyed by year; the name is kept for existing callers. */
+export type HsaYearGroup = HsaExpenseGroup;
 
 /**
  * The year an expense belongs to.
@@ -45,16 +47,43 @@ export function yearOf(expense: HsaExpense): string {
  * Undated rows sort last whatever they are called: they have no year to place them
  * against, and leading the list with them would bury the current year.
  */
-export function groupHsaExpensesByYear(expenses: HsaExpense[]): HsaYearGroup[] {
-  const byYear = new Map<string, HsaExpense[]>();
+export function groupHsaExpensesByYear(expenses: HsaExpense[]): HsaExpenseGroup[] {
+  return groupBy(expenses, yearOf).sort((left, right) => {
+    if (left.key === UNDATED_YEAR_LABEL) return 1;
+    if (right.key === UNDATED_YEAR_LABEL) return -1;
+    return right.key.localeCompare(left.key);
+  });
+}
+
+/**
+ * Groups expenses by type, in the order the editor offers the types (`HSA_TYPES`),
+ * with each type's rows newest first. Types with no expenses are left out.
+ *
+ * A type outside `HSA_TYPES` (older data, a renamed type) is grouped rather than
+ * dropped — it is still money — and sorts after the known types, alphabetically.
+ */
+export function groupHsaExpensesByType(expenses: HsaExpense[]): HsaExpenseGroup[] {
+  const known: readonly string[] = HSA_TYPES;
+  const rank = (key: string) => {
+    const index = known.indexOf(key);
+    return index === -1 ? known.length : index;
+  };
+  return groupBy(expenses, (expense) => expense.type).sort(
+    (left, right) => rank(left.key) - rank(right.key) || left.key.localeCompare(right.key),
+  );
+}
+
+/** Buckets by `keyOf`, totals each bucket and orders its rows newest first. Buckets unsorted. */
+function groupBy(expenses: HsaExpense[], keyOf: (expense: HsaExpense) => string): HsaExpenseGroup[] {
+  const buckets = new Map<string, HsaExpense[]>();
   for (const expense of expenses) {
-    const key = yearOf(expense);
-    const existing = byYear.get(key);
+    const key = keyOf(expense);
+    const existing = buckets.get(key);
     if (existing) existing.push(expense);
-    else byYear.set(key, [expense]);
+    else buckets.set(key, [expense]);
   }
 
-  const groups = [...byYear.entries()].map(([key, rows]): HsaYearGroup => {
+  return [...buckets.entries()].map(([key, rows]): HsaExpenseGroup => {
     const sorted = [...rows].sort((left, right) =>
       `${right.entryDate} ${right.entryTime}`.localeCompare(`${left.entryDate} ${left.entryTime}`),
     );
@@ -68,11 +97,5 @@ export function groupHsaExpensesByYear(expenses: HsaExpense[]): HsaYearGroup[] {
       receiptCount: sorted.filter((row) => row.hasReceipt).length,
       rows: sorted,
     };
-  });
-
-  return groups.sort((left, right) => {
-    if (left.key === UNDATED_YEAR_LABEL) return 1;
-    if (right.key === UNDATED_YEAR_LABEL) return -1;
-    return right.key.localeCompare(left.key);
   });
 }

@@ -6,7 +6,7 @@ import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
 import { Modal } from "@/components/modal";
 import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";
-import { groupHsaExpensesByYear } from "@/lib/household/hsa-grouping";
+import { groupHsaExpensesByType, groupHsaExpensesByYear } from "@/lib/household/hsa-grouping";
 // Leaf modules, not the `@/lib/household` barrel: the barrel re-exports the SQLite
 // repositories, which would drag better-sqlite3 into this client bundle.
 import type { HsaCard, HsaExpense } from "@/lib/household/hsa-types";
@@ -63,15 +63,17 @@ function toForm(expense: HsaExpense): HsaForm {
 }
 
 /**
- * How the list is cut. "All" is the flat grid; "By year" groups it.
+ * How the list is cut. "All" is the flat grid; "By year" and "By type" group it.
  *
- * A `ViewModeSwitch` rather than a lone "By year" button, per components.md: every
+ * A `ViewModeSwitch` rather than lone grouping buttons, per components.md: every
  * option answers the same question about the same rows, and a one-way button would
  * leave no way back to the flat list.
  */
-const VIEW_MODE_OPTIONS: readonly ViewModeOption<"all" | "year">[] = [
+type HsaViewMode = "all" | "year" | "type";
+const VIEW_MODE_OPTIONS: readonly ViewModeOption<HsaViewMode>[] = [
   { key: "all", label: "All", hint: "Every expense in one list" },
   { key: "year", label: "By year", hint: "Grouped by the year of each expense's date" },
+  { key: "type", label: "By type", hint: "Grouped by each expense's type" },
 ];
 
 /**
@@ -123,15 +125,20 @@ export function HouseholdHsaView({
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [dialog, setDialog] = useState<Dialog>({ kind: "closed" });
-  const [viewMode, setViewMode] = useState<"all" | "year">("all");
-  // Which year is expanded. One at a time: several open grids each carry their own
-  // toolbar, paging and footer total, at which point nothing reads as a summary —
-  // the same call the Expense Transactions screen makes.
-  const [openYear, setOpenYear] = useState<string>();
+  const [viewMode, setViewMode] = useState<HsaViewMode>("all");
+  // Which group (year or type) is expanded. One at a time: several open grids each
+  // carry their own toolbar, paging and footer total, at which point nothing reads as
+  // a summary — the same call the Expense Transactions screen makes.
+  const [openGroup, setOpenGroup] = useState<string>();
 
   const activeCardNames = cards.filter((card) => card.isActive).map((card) => card.name);
   // Grouped in the library, not here — the view only renders what it returns.
-  const yearGroups = groupHsaExpensesByYear(expenses);
+  const groups =
+    viewMode === "year"
+      ? groupHsaExpensesByYear(expenses)
+      : viewMode === "type"
+        ? groupHsaExpensesByType(expenses)
+        : [];
 
   /**
    * Runs an action, surfaces its error in the page banner, and refreshes on success.
@@ -444,8 +451,9 @@ export function HouseholdHsaView({
           onChange={(next) => {
             setViewMode(next);
             // Closing on a switch is the honest reset: an open year means nothing in
-            // the flat list, and leaving it set would surprise on the way back.
-            setOpenYear(undefined);
+            // the flat list or the type list, and leaving it set would surprise on the
+            // way back.
+            setOpenGroup(undefined);
           }}
           label="View"
         />
@@ -453,21 +461,21 @@ export function HouseholdHsaView({
 
       {viewMode === "all" ? (
         renderGrid(expenses, "household-hsa")
-      ) : yearGroups.length === 0 ? (
+      ) : groups.length === 0 ? (
         <p className="rounded-md border border-line bg-paper px-3 py-6 text-center text-sm text-muted">
           No HSA expenses yet — add the first one.
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-line overflow-hidden rounded-md border border-line bg-paper">
-          {yearGroups.map((group) => {
-            const isOpen = group.key === openYear;
+          {groups.map((group) => {
+            const isOpen = group.key === openGroup;
             return (
               <li key={group.key}>
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-paper-raised max-lg:flex-col max-lg:items-start"
                   aria-expanded={isOpen}
-                  onClick={() => setOpenYear(isOpen ? undefined : group.key)}
+                  onClick={() => setOpenGroup(isOpen ? undefined : group.key)}
                 >
                   <span className="font-display text-base text-ink">
                     <span aria-hidden="true" className="mr-2 text-muted">
@@ -490,11 +498,12 @@ export function HouseholdHsaView({
                 </button>
                 {isOpen && (
                   <div className="border-t border-line bg-paper-raised p-3">
-                    {/* One storageKey across every year, so the columns you arranged
-                        stay arranged as you move between them — a per-year key would
-                        make each year forget. A different key from the flat list, since
-                        the two are laid out independently. */}
-                    {renderGrid(group.rows, "household-hsa-year")}
+                    {/* One storageKey per view across every group, so the columns you
+                        arranged stay arranged as you move between years (or types) — a
+                        per-group key would make each group forget. Separate keys from
+                        the flat list and from each other, since each view is laid out
+                        independently. */}
+                    {renderGrid(group.rows, viewMode === "type" ? "household-hsa-type" : "household-hsa-year")}
                   </div>
                 )}
               </li>
