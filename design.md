@@ -216,7 +216,7 @@ faces (`src/lib/settings/script-fonts.ts`):
 
 | Token | Tailwind class | Drives |
 | --- | --- | --- |
-| `--font-script` | `font-script` | The Daily Quote card on the home screen |
+| `--font-script` | `font-script` | The Daily Quote card on the home screen; the album names on Picture Gallery → Albums covers |
 | `--font-script-journal` | `font-script-journal` | The Journal entry form's Content field, with **Handwriting** on |
 
 Neither is a theme face. Both are deliberately absent from `FONT_KEYS`, so the theme
@@ -262,6 +262,11 @@ The two callers, and why each is allowed:
   is the least readable combination in the app, and an explicitly chosen size shouldn't be
   silently overridden on a narrow screen. A third caller wanting script for body copy is a
   design conversation, not a precedent this one sets.
+- **The album covers on Picture Gallery → Albums** (`gallery-albums-view.tsx`), asked for
+  by Min (2026-11-17). Shares `--font-script` with the quote rather than adding a third
+  variable: a cover title is the same kind of writing as the quote — a few words glanced
+  at, never read at length. `text-3xl`, stepping to `text-2xl` narrow, in `text-brass` on
+  a `bg-paper/90` name plate so it reads in every theme whatever the cover photo is.
 
 **The Content field's *plain* state is configurable too, and separately.** With
 Handwriting **off** the field is not a script surface at all, so it takes a face from the

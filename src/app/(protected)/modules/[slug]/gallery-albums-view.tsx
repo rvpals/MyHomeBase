@@ -660,44 +660,74 @@ function AlbumGrid({
         /* `.card-grid`, not `grid-cols-N max-lg:grid-cols-1`: the column count follows
            the space available, so a 402px phone and an 810px tablet get different
            counts rather than the same one. See design.md. */
-        <div className="card-grid gap-4">
+        <div className="card-grid gap-6 max-lg:gap-5">
           {albums.map((album) => (
-            <div
-              key={album.id}
-              className="flex flex-col overflow-hidden rounded-xl border border-line bg-paper-raised"
-            >
-              {/* The cover is a button, so the whole picture is the way in. */}
+            <div key={album.id} className="flex flex-col">
+              {/* The album itself, drawn as a closed book: a cover carrying the photo,
+                  a shaded spine down the left, and two page edges peeking out on the
+                  right. The whole book is one button, so the cover is the way in.
+
+                  `pr-3` reserves the room the page edges stick out into, so they never
+                  overlap the next card in the grid at any column count. */}
               <button
                 type="button"
                 onClick={() => onOpen(album.id)}
-                className="group relative block aspect-[4/3] w-full overflow-hidden bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                className="group relative block w-full pr-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
                 aria-label={`Open ${album.name}`}
               >
-                {album.coverPath === undefined ? (
-                  <span className="flex h-full items-center justify-center text-muted">
-                    <TreeIcon name="album" className="h-10 w-10" />
-                  </span>
-                ) : (
-                  /* eslint-disable-next-line @next/next/no-img-element -- the bytes
-                     come from our own session-gated route over a NAS share, not a
-                     static asset next/image can optimize. */
-                  <img
-                    src={photoUrl(album.coverPath)}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                <span className="relative block aspect-[4/5] w-full">
+                  {/* Page edges, behind the cover. */}
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-y-2 -right-3 left-6 rounded-r-md border border-line bg-paper-raised"
                   />
-                )}
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-y-1 -right-1.5 left-4 rounded-r-md border border-line bg-paper"
+                  />
+
+                  {/* The cover. */}
+                  <span className="absolute inset-0 overflow-hidden rounded-l-sm rounded-r-lg border border-line bg-brass-soft shadow-lg transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-xl">
+                    {album.coverPath === undefined ? (
+                      <span className="flex h-full items-center justify-center pb-16 text-brass">
+                        <TreeIcon name="album" className="h-12 w-12" />
+                      </span>
+                    ) : (
+                      /* eslint-disable-next-line @next/next/no-img-element -- the bytes
+                         come from our own session-gated route over a NAS share, not a
+                         static asset next/image can optimize. */
+                      <img
+                        src={photoUrl(album.coverPath)}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                      />
+                    )}
+
+                    {/* The spine: a shadow fold and a hinge line, over the photo. */}
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-y-0 left-0 w-5 bg-gradient-to-r from-black/50 via-black/20 to-transparent"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-y-0 left-5 w-px bg-white/25"
+                    />
+
+                    {/* The name plate. The theme's own paper under its own accent, so
+                        the script reads in every theme rather than only over a dark
+                        photo. Script is decorative here and stays at 24px+ — see
+                        design.md, "The two exceptions". */}
+                    <span className="absolute inset-x-7 bottom-5 rounded-md border border-brass/50 bg-paper/90 px-3 py-2 text-center shadow-md backdrop-blur-sm max-lg:inset-x-6 max-lg:bottom-4">
+                      <span className="line-clamp-2 break-words font-script text-3xl leading-tight text-brass max-lg:text-2xl">
+                        {album.name}
+                      </span>
+                    </span>
+                  </span>
+                </span>
               </button>
 
-              <div className="flex flex-1 flex-col gap-1 p-3">
-                <button
-                  type="button"
-                  onClick={() => onOpen(album.id)}
-                  className="text-left font-display text-base text-ink hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-                >
-                  {album.name}
-                </button>
+              <div className="flex flex-1 flex-col gap-1 px-1 pt-3">
                 <p className="text-xs text-muted">{photoCountLabel(album.photoCount)}</p>
                 {album.description !== "" && (
                   <p className="line-clamp-2 text-xs text-muted">{album.description}</p>
