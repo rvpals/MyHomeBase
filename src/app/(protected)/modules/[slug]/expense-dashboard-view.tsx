@@ -173,7 +173,11 @@ export function ExpenseDashboardView({
           label="Uncategorised"
           value={String(uncategorisedCount)}
           needsAttention={uncategorisedCount > 0}
-          href={expenseSectionHref("transactions")}
+          // Land on just the uncategorised rows: the same group link the
+          // "uncategorised" row in the category list below uses. `category-` (empty
+          // name) is the key `groupByCategory` gives rows with no category, the
+          // same `categoryName === ""` test this count is taken with.
+          href={expenseGroupHref("category", categoryGroupKey(""))}
         />
         <Tile label="To reconcile" value={String(toReconcileCount)} />
       </section>
