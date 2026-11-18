@@ -1128,8 +1128,10 @@ is never retried at all. So a track is asked about at most once, ever.
 **Games** (`games`) — a small arcade with a shared high-score board. Sections:
 **Arcade** (the list of games; Play opens the board full-bleed), **Scores**, and
 **Configuration** (the catalogue read-only, plus Pictionary's word bank). Library:
-`src/lib/games`. Two tables: `gam_scores` (`migrations/0074`, registered by `0075`) and
-`gam_pictionary_words` (`migrations/0164`). Eleven games so far: **2048**,
+`src/lib/games`. Three tables: `gam_scores` (`migrations/0074`, registered by `0075`),
+`gam_pictionary_words` (`migrations/0164`) and `gam_saved_runs` (`migrations/0171`: runs
+in progress, one per player per game key, so a board can be resumed on any device. Only
+Arrow Clearing uses it so far, through `arrow-save.ts` and `saved-runs.ts`). Eleven games so far: **2048**,
 **Arrow Clearing**, **Tetris**, **Sudoku**, **Blackjack**, **Minesweeper**,
 **Mahjong Match**, **Mahjong**, **Bridge**, **Pac-Man**, and **Pictionary**.
 

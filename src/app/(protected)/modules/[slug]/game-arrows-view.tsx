@@ -7,19 +7,32 @@ import {
   ARROW_DIFFICULTIES,
   ARROW_DIFFICULTY_SETUP,
   ARROW_LIVES,
+  ARROW_MOVE_FREE_MISS,
+  ARROW_MOVE_MISS,
+  ARROW_MOVE_UNDO,
+  buildArrowSave,
   clearArrow,
   generatePuzzle,
   isBlocked,
   isSolved,
   pathAhead,
+  restoreArrowRun,
   scoreBoard,
   unblockedArrows,
   type Arrow,
   type ArrowBoard,
   type ArrowDifficulty,
+  type ArrowRunProgress,
+  type ArrowRunSave,
+  type ArrowSnapshot,
   type Cell,
 } from "@/lib/games";
-import { saveScoreAction } from "./games-actions";
+import {
+  discardArrowRunAction,
+  loadArrowRunAction,
+  saveArrowRunAction,
+  saveScoreAction,
+} from "./games-actions";
 
 // The Arrow Clearing board. A client component that owns only presentation state —
 // every rule (what blocks what, how a board is generated, what a solve scores) comes
@@ -300,9 +313,33 @@ function useClearingPoints(
    The board.
 --------------------------------------------------------------------------------- */
 
-interface Snapshot {
-  board: ArrowBoard;
-  lives: number;
+/** One Undo step. Defined in lib, because restoring a saved run rebuilds the same stack. */
+type Snapshot = ArrowSnapshot;
+
+/**
+ * How long after the last move the run is saved, in ms.
+ *
+ * Long enough that a burst of taps is one save rather than ten. Short enough that
+ * closing the game straight after a move loses nothing, and closing it or hiding the
+ * tab saves straight away in any case.
+ */
+const RUN_SAVE_DELAY_MS = 2000;
+
+/** The saved run the resume prompt is offering, while the player decides. */
+interface ResumeOffer {
+  savedAt: string;
+  cleared: number;
+  remaining: number;
+}
+
+/**
+ * What a run looked like when it was restored or dealt. While nothing has changed
+ * since, there is nothing new to save.
+ */
+interface SaveBaseline {
+  moves: readonly number[];
+  unlimitedLives: boolean;
+  practiceRun: boolean;
 }
 
 /** A route being flashed after a tap: the cells, and whether the move was legal. */
@@ -397,6 +434,30 @@ export function GameArrowsView({
   // that cost a life gives it back.
   const [history, setHistory] = useState<Snapshot[]>([]);
 
+  /*
+    Saving and resuming.
+
+    `dealt` is the board as it was dealt and `moves` is every move since, in the
+    encoding `ArrowRunSave` uses. Together they are the whole save. `restoreArrowRun`
+    rebuilds everything else, so the view's own state never needs to be stored.
+
+    `offer` is set while the resume prompt is showing. The saved board is already on
+    screen behind it, but taps are ignored until the player chooses. `checking` is set
+    while the save for a tier is being looked up.
+  */
+  const [dealt, setDealt] = useState<ArrowBoard | undefined>(undefined);
+  const [moves, setMoves] = useState<readonly number[]>([]);
+  const [offer, setOffer] = useState<ResumeOffer | undefined>(undefined);
+  const [checking, setChecking] = useState(true);
+  const [progressNote, setProgressNote] = useState<string | undefined>(undefined);
+  const baselineRef = useRef<SaveBaseline | undefined>(undefined);
+  // The save waiting for its timer, so closing the game or hiding the tab can send it
+  // straight away instead of losing it.
+  const pendingSaveRef = useRef<ArrowRunSave | undefined>(undefined);
+  const saveTimerRef = useRef<number | undefined>(undefined);
+  // Counts tier lookups, so a slow lookup for a tier the player has already left is ignored.
+  const lookupRef = useRef(0);
+
   const sounds = useSounds(soundOn);
 
   // Guards the one-shot save; `outcome` alone would re-fire on every re-render.
@@ -427,51 +488,233 @@ export function GameArrowsView({
 
     Same shape as Minesweeper's `newGame(level)`, for the same reasons.
   */
+  /** Sends the waiting save now, if there is one. */
+  const flushSave = useCallback(() => {
+    if (saveTimerRef.current !== undefined) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = undefined;
+    const save = pendingSaveRef.current;
+    pendingSaveRef.current = undefined;
+    if (!save) return;
+    void saveArrowRunAction(save).then((result) => {
+      setProgressNote(result.ok ? undefined : `Progress not saved: ${result.error}`);
+    });
+  }, []);
+
+  /** Forgets the waiting save without sending it. */
+  const dropSave = useCallback(() => {
+    if (saveTimerRef.current !== undefined) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = undefined;
+    pendingSaveRef.current = undefined;
+  }, []);
+
+  /** Clears everything about the previous board's presentation. */
+  const resetPresentation = useCallback(() => {
+    clearTimers();
+    setClearing([]);
+    setBumping(undefined);
+    setFlash(undefined);
+    setHinted(undefined);
+    setSaveNote(undefined);
+    setOutcome(undefined);
+    savedRef.current = false;
+  }, [clearTimers]);
+
+  /*
+    Deals a fresh board for a tier, switching to it in the same step, and deletes that
+    tier's saved run, which the new board replaces.
+
+    The tier is a **required argument** rather than read from state, which is what keeps
+    this out of the render loop: reading `difficulty` would put it in the dependency
+    array, so the identity would change on every tier switch and the mount effect below
+    would re-fire and deal a second board over the one just dealt. It also deals the
+    right board immediately — `setDifficulty` has not applied yet when a picker press
+    runs, so a state read here would be one board behind.
+
+    Same shape as Minesweeper's `newGame(level)`, for the same reasons.
+
+    `discard` is false only when looking up the save failed. The save may still be
+    there, and a failed lookup is no reason to delete it.
+  */
   const newGame = useCallback(
-    (tier: ArrowDifficulty) => {
-      clearTimers();
+    (tier: ArrowDifficulty, discard = true) => {
+      // A waiting save for this tier belongs to the board being replaced, so it is
+      // dropped. One for another tier is still a live run, so it is sent.
+      if (pendingSaveRef.current?.difficulty === tier) dropSave();
+      else flushSave();
+      if (discard) void discardArrowRunAction(tier);
+
+      resetPresentation();
+      const fresh = generatePuzzle(tier, Math.random).board;
       setDifficulty(tier);
-      setBoard(generatePuzzle(tier, Math.random).board);
+      setDealt(fresh);
+      setBoard(fresh);
+      setMoves([]);
       setLives(ARROW_LIVES);
       setCleared(0);
       setMisses(0);
       setHistory([]);
-      setClearing([]);
-      setBumping(undefined);
-      setFlash(undefined);
-      setHinted(undefined);
-      setSaveNote(undefined);
-      setOutcome(undefined);
-      savedRef.current = false;
+      setOffer(undefined);
+      setChecking(false);
       // Scoring is the default you opt out of, per board: a fresh board is a scored
       // board unless the toggle is flipped again.
       setUnlimitedLives(false);
       setPracticeRun(false);
+      baselineRef.current = { moves: [], unlimitedLives: false, practiceRun: false };
     },
-    [clearTimers],
+    [dropSave, flushSave, resetPresentation],
+  );
+
+  /** Puts a restored run on screen, exactly as it was when saved. */
+  const applyRun = useCallback(
+    (run: ArrowRunProgress) => {
+      resetPresentation();
+      setDifficulty(run.difficulty);
+      setDealt(run.dealt);
+      setBoard(run.board);
+      setMoves(run.moves);
+      setLives(run.lives);
+      setCleared(run.cleared);
+      setMisses(run.misses);
+      setHistory(run.history);
+      setUnlimitedLives(run.unlimitedLives);
+      setPracticeRun(run.practiceRun);
+      baselineRef.current = {
+        moves: run.moves,
+        unlimitedLives: run.unlimitedLives,
+        practiceRun: run.practiceRun,
+      };
+    },
+    [resetPresentation],
   );
 
   /*
-    Deals the opening board, once, on mount.
+    Opens a tier: looks up the player's saved run for it, and either shows that board
+    behind the resume prompt or deals a fresh one.
 
-    This used to depend on `newGame` and re-deal whenever the difficulty changed, which
-    was right when the tier arrived as a prop. Now the picker calls `newGame(tier)`
-    itself, so re-dealing here would throw that board away before it was drawn — which
-    is why `newGame` takes its tier as an argument and depends only on `clearTimers`.
-    Its identity is therefore stable, so this runs once despite the honest dep array.
+    Any waiting save for the tier being left is sent first. A lookup that comes back
+    after the player has already moved to another tier is ignored.
+  */
+  const openTier = useCallback(
+    (tier: ArrowDifficulty) => {
+      flushSave();
+      const lookup = ++lookupRef.current;
+      setChecking(true);
+      setOffer(undefined);
+
+      void loadArrowRunAction(tier).then((result) => {
+        if (lookup !== lookupRef.current) return;
+        if (!result.ok) {
+          newGame(tier, false);
+          setProgressNote("Couldn't check for a saved run, so this is a new board.");
+          return;
+        }
+        // Checked again in the browser: this is also what rebuilds the undo history.
+        const restored = result.run ? restoreArrowRun(result.run.save) : undefined;
+        if (!result.run || !restored?.ok) {
+          newGame(tier);
+          return;
+        }
+        applyRun(restored.run);
+        setOffer({
+          savedAt: result.run.savedAt,
+          cleared: result.run.cleared,
+          remaining: result.run.remaining,
+        });
+        setChecking(false);
+      });
+    },
+    [applyRun, flushSave, newGame],
+  );
+
+  /**
+   * "New board" on the current tier. Asks first when that would throw away a run in
+   * progress, because the run is saved and the player may well expect to keep it.
+   */
+  const confirmNewBoard = useCallback(() => {
+    const inProgress = moves.length > 0 && !outcome;
+    if (
+      inProgress &&
+      !window.confirm("Discard this run? Your saved progress on this board will be lost.")
+    ) {
+      return;
+    }
+    newGame(difficulty);
+  }, [difficulty, moves.length, newGame, outcome]);
+
+  /*
+    Opens the starting tier, once, on mount.
+
+    `openTier` takes its tier as an argument and its dependencies are all stable, so
+    this runs once despite the honest dependency array.
   */
   useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
-       Seeding client-only random state on mount; a lazy initialiser would run during
-       SSR and render different markup on the server than on the client. */
-    newGame(initialDifficulty);
-  }, [newGame, initialDifficulty]);
+       Seeding client-only state on mount: the board is random or comes from the server,
+       and neither can be known during SSR. */
+    openTier(initialDifficulty);
+  }, [openTier, initialDifficulty]);
 
   useEffect(() => clearTimers, [clearTimers]);
 
+  /*
+    Saves the run a couple of seconds after it changes.
+
+    Not while the resume prompt is showing (nothing has been played yet) and not once
+    the run has ended (the end deletes the save, below). "Ended" is `savedRef`, not
+    `outcome`: dismissing a won board clears `outcome`, but the run is still over until
+    the next deal. A run that is unchanged since it was dealt or restored isn't saved
+    either, so simply opening a tier writes nothing.
+  */
+  useEffect(() => {
+    if (!dealt || offer || checking || outcome || savedRef.current) return;
+    const baseline = baselineRef.current;
+    if (
+      baseline &&
+      baseline.moves === moves &&
+      baseline.unlimitedLives === unlimitedLives &&
+      baseline.practiceRun === practiceRun
+    ) {
+      return;
+    }
+    pendingSaveRef.current = buildArrowSave({
+      difficulty,
+      dealt,
+      moves,
+      unlimitedLives,
+      practiceRun,
+    });
+    if (saveTimerRef.current !== undefined) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(flushSave, RUN_SAVE_DELAY_MS);
+  }, [checking, dealt, difficulty, flushSave, moves, offer, outcome, practiceRun, unlimitedLives]);
+
+  /*
+    A finished run has nothing to resume, so its save is deleted.
+
+    Server actions from one page run one at a time, in order, so this delete can't
+    be overtaken by a save that was sent just before it.
+  */
+  useEffect(() => {
+    if (!outcome) return;
+    dropSave();
+    void discardArrowRunAction(difficulty);
+  }, [difficulty, dropSave, outcome]);
+
+  // Hiding the tab or closing the game sends the waiting save straight away.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushSave();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      flushSave();
+    };
+  }, [flushSave]);
+
   const onArrowClick = useCallback(
     (arrowId: number) => {
-      if (!board || outcome) return;
+      // No taps while the resume prompt is up or a tier is being looked up.
+      if (!board || outcome || offer || checking) return;
       // Ignore a second tap on a piece already on its way out.
       if (clearing.some((entry) => entry.id === arrowId)) return;
 
@@ -497,6 +740,7 @@ export function GameArrowsView({
         const remainingLives = unlimitedLives ? lives : lives - 1;
         setLives(remainingLives);
         setMisses((value) => value + 1);
+        setMoves((log) => [...log, unlimitedLives ? ARROW_MOVE_FREE_MISS : ARROW_MOVE_MISS]);
         setBumping(arrowId);
         setFlash({ cells: route, ok: false });
         later(() => setBumping(undefined), BLOCKED_MS);
@@ -515,6 +759,7 @@ export function GameArrowsView({
       if (!result.cleared) return;
 
       setHistory((entries) => [...entries, { board, lives }]);
+      setMoves((log) => [...log, arrowId]);
       setFlash({ cells: route, ok: true });
       // Unmounted as soon as its own fade has finished, rather than held for the whole
       // slide: the point of the flash is to confirm the tap, and the arrow leaving is
@@ -538,25 +783,30 @@ export function GameArrowsView({
         later(() => setOutcome("won"), ROUTE_FLASH_MS + CLEAR_MS + 120);
       }
     },
-    [board, clearing, later, lives, outcome, sounds, unlimitedLives],
+    [board, checking, clearing, later, lives, offer, outcome, sounds, unlimitedLives],
   );
 
+  /*
+    Reads `history` directly rather than through an updater. The old version set the
+    board from inside `setHistory`'s updater, and an updater must not have side
+    effects: React may run it twice. That matters now because undo also adds to the
+    move log, and doing it twice would corrupt the save.
+  */
   const undo = useCallback(() => {
-    setHistory((entries) => {
-      const previous = entries[entries.length - 1];
-      if (!previous) return entries;
+    const previous = history[history.length - 1];
+    if (!previous || offer || checking) return;
 
-      setBoard(previous.board);
-      setLives(previous.lives);
-      setCleared((value) => Math.max(0, value - 1));
-      setHinted(undefined);
-      setFlash(undefined);
-      return entries.slice(0, -1);
-    });
-  }, []);
+    setBoard(previous.board);
+    setLives(previous.lives);
+    setCleared((value) => Math.max(0, value - 1));
+    setHinted(undefined);
+    setFlash(undefined);
+    setHistory((entries) => entries.slice(0, -1));
+    setMoves((log) => [...log, ARROW_MOVE_UNDO]);
+  }, [checking, history, offer]);
 
   const hint = useCallback(() => {
-    if (!board || outcome) return;
+    if (!board || outcome || offer || checking) return;
     const options = unblockedArrows(board);
     if (options.length === 0) return;
     // Any unblocked arrow is a legal next move — see game-arrows.ts on why a board in
@@ -565,7 +815,7 @@ export function GameArrowsView({
     const pick = options[Math.floor(Math.random() * options.length)];
     setHinted(pick.id);
     later(() => setHinted(undefined), 1400);
-  }, [board, later, outcome]);
+  }, [board, checking, later, offer, outcome]);
 
   // Save once, when the run ends either way. In an effect rather than in the click
   // handler because the final counts are only known after React applies the update.
@@ -594,6 +844,8 @@ export function GameArrowsView({
   }, [outcome, finalScore, cleared, misses, setup.gameKey, practiceRun]);
 
   const remaining = board?.arrows.length ?? 0;
+  /** The board can't be played while a save is looked up or the resume prompt is up. */
+  const paused = offer !== undefined || checking;
   /*
     The best for the tier being played, not for the card that was opened.
 
@@ -769,21 +1021,25 @@ export function GameArrowsView({
         <div className="flex flex-wrap gap-2">
           {/*
             The tier, as three buttons rather than a select — the reason Sudoku and
-            Minesweeper give: there are exactly three, it is the first decision of every
-            board, and each one deals immediately rather than arming a separate "New
-            board" press.
+            Minesweeper give: there are exactly three, and it is the first decision of
+            every board.
 
-            Dealing on press means a press mid-board discards it. That is the same trade
-            those two games already make, and the board is not saved anywhere, so there
-            is nothing to lose beyond the sitting itself.
+            Each tier keeps its own saved run, so switching to another tier loses
+            nothing. That tier opens with its saved run (behind the resume prompt) or a
+            fresh board. Pressing the tier already being played means "new board" and
+            asks before discarding the run.
           */}
           {ARROW_DIFFICULTIES.map((tier) => (
             <Button
               key={tier}
-              onClick={() => newGame(tier)}
+              onClick={() => (tier === difficulty ? confirmNewBoard() : openTier(tier))}
               variant={tier === difficulty ? "primary" : "secondary"}
               size="sm"
-              title={`Deal a new ${ARROW_DIFFICULTY_SETUP[tier].label} board`}
+              title={
+                tier === difficulty
+                  ? `Deal a new ${ARROW_DIFFICULTY_SETUP[tier].label} board`
+                  : `Switch to ${ARROW_DIFFICULTY_SETUP[tier].label}`
+              }
             >
               {ARROW_DIFFICULTY_SETUP[tier].label}
             </Button>
@@ -792,7 +1048,7 @@ export function GameArrowsView({
             onClick={undo}
             variant="secondary"
             size="sm"
-            disabled={history.length === 0 || outcome !== undefined}
+            disabled={history.length === 0 || outcome !== undefined || paused}
           >
             Undo
           </Button>
@@ -800,7 +1056,7 @@ export function GameArrowsView({
             onClick={hint}
             variant="secondary"
             size="sm"
-            disabled={remaining === 0 || outcome !== undefined}
+            disabled={remaining === 0 || outcome !== undefined || paused}
           >
             Hint
           </Button>
@@ -848,7 +1104,7 @@ export function GameArrowsView({
             Unlimited lives
             {practiceRun && <span className="text-[0.65rem] opacity-70">(not scored)</span>}
           </label>
-          <Button onClick={() => newGame(difficulty)} variant="secondary" size="sm">
+          <Button onClick={confirmNewBoard} variant="secondary" size="sm" disabled={paused}>
             New board
           </Button>
 
@@ -916,7 +1172,20 @@ export function GameArrowsView({
         about 13px, which is already small for a tap. The cap is raised and the `vh` term
         loosened accordingly — the game plays full-bleed, so there is height to use.
       */}
-      <div className="mx-auto w-full" style={{ maxWidth: "min(56rem, 94vw, 74vh)" }}>
+      {offer && (
+        <ResumePanel
+          offer={offer}
+          tierLabel={setup.label}
+          practice={practiceRun}
+          onResume={() => setOffer(undefined)}
+          onNewBoard={() => newGame(difficulty)}
+        />
+      )}
+
+      <div
+        className={`mx-auto w-full transition-opacity ${paused ? "opacity-50" : ""}`}
+        style={{ maxWidth: "min(56rem, 94vw, 74vh)" }}
+      >
         <svg
           ref={svgRef}
           viewBox={`${pan.x} ${pan.y} ${viewSize} ${viewSize}`}
@@ -1011,8 +1280,12 @@ export function GameArrowsView({
       </div>
 
       <div aria-live="polite" className="min-h-6 text-center text-sm">
-        {!outcome && remaining === 0 && <span className="text-brass">Board clear.</span>}
+        {checking && <span className="text-muted">Checking for a saved run…</span>}
+        {!outcome && !checking && remaining === 0 && (
+          <span className="text-brass">Board clear.</span>
+        )}
         {saveNote && <span className="ml-2 text-muted">{saveNote}</span>}
+        {progressNote && <span className="ml-2 text-red-400">{progressNote}</span>}
       </div>
 
       <p className="text-center text-xs text-muted">
@@ -1319,6 +1592,60 @@ function ResultPanel({
           </Button>
         )}
         <Button onClick={onNewGame} size="sm">
+          New board
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The resume prompt: the saved board is already drawn below it, and taps wait until
+ * the player chooses.
+ *
+ * Inline rather than a `Modal`, for the reason `ResultPanel` gives: the game already
+ * plays inside a full-bleed dialog, and a Modal inside it would fight it over Escape
+ * and focus.
+ *
+ * "New board" here doesn't ask for confirmation, because this panel is already the
+ * question.
+ */
+function ResumePanel({
+  offer,
+  tierLabel,
+  practice,
+  onResume,
+  onNewBoard,
+}: {
+  offer: ResumeOffer;
+  tierLabel: string;
+  /** Whether the saved run used unlimited lives, so it won't be scored. */
+  practice: boolean;
+  onResume: () => void;
+  onNewBoard: () => void;
+}) {
+  const savedAt = new Date(offer.savedAt);
+  const when = Number.isNaN(savedAt.getTime())
+    ? ""
+    : savedAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+  return (
+    <div className="mx-auto w-full max-w-xl rounded-xl border border-brass bg-paper-raised p-4 text-center">
+      <h3 className="font-display text-lg text-ink">
+        Resume your run?
+        <span className="ml-2 text-sm font-normal text-muted">{tierLabel}</span>
+      </h3>
+      <p className="mt-1 text-sm text-muted">
+        {offer.cleared.toLocaleString()} {offer.cleared === 1 ? "arrow" : "arrows"} cleared,{" "}
+        {offer.remaining.toLocaleString()} left
+        {when && ` · saved ${when}`}
+        {practice && " · practice run, not scored"}
+      </p>
+      <div className="mt-3 flex flex-wrap justify-center gap-2">
+        <Button onClick={onResume} size="sm">
+          Resume
+        </Button>
+        <Button onClick={onNewBoard} variant="secondary" size="sm">
           New board
         </Button>
       </div>

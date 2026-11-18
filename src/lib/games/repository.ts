@@ -1,12 +1,13 @@
 import type Database from "better-sqlite3";
-import type { PictionaryWordRepository, ScoreRepository } from "./ports";
-import type { ScoreWriteData } from "./schema";
+import type { PictionaryWordRepository, SavedRunRepository, ScoreRepository } from "./ports";
+import type { SavedRunWriteData, ScoreWriteData } from "./schema";
 import {
   PICTIONARY_TIERS,
   type PictionaryTier,
   type PictionaryWord,
   type Score,
   type StoredPictionaryWord,
+  type StoredSavedRun,
 } from "./types";
 
 interface ScoreRow {
@@ -220,4 +221,80 @@ export class SqlitePictionaryWordRepository implements PictionaryWordRepository 
       createdAt: row.created_at,
     };
   }
+}
+
+interface SavedRunRow {
+  user_id: number;
+  user_name: string | null;
+  game_key: string;
+  format_version: number;
+  state_json: string;
+  saved_at: string;
+}
+
+const SELECT_SAVED_RUNS = `
+  SELECT r.user_id, u.full_name AS user_name, r.game_key, r.format_version,
+         r.state_json, r.saved_at
+  FROM gam_saved_runs r
+  LEFT JOIN sys_users u ON u.id = r.user_id
+`;
+
+/**
+ * Runs in progress (migration 0171). One row per player per game key, kept unique by
+ * the table's UNIQUE index, so a save is a single upsert.
+ *
+ * Another class in this file, for the reason the word bank has one: a separate port.
+ */
+export class SqliteSavedRunRepository implements SavedRunRepository {
+  constructor(private readonly db: Database.Database) {}
+
+  getSavedRun(userId: number, gameKey: string): StoredSavedRun | undefined {
+    const row = this.db
+      .prepare(`${SELECT_SAVED_RUNS} WHERE r.user_id = ? AND r.game_key = ?`)
+      .get(userId, gameKey) as SavedRunRow | undefined;
+    return row ? toSavedRun(row) : undefined;
+  }
+
+  upsertSavedRun(input: SavedRunWriteData): void {
+    // `created_at` is left as it was on an update, so it still shows when the run began.
+    this.db
+      .prepare(
+        `INSERT INTO gam_saved_runs (user_id, game_key, format_version, state_json, saved_at, created_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT (user_id, game_key) DO UPDATE SET
+           format_version = excluded.format_version,
+           state_json     = excluded.state_json,
+           saved_at       = excluded.saved_at`,
+      )
+      .run(input.userId, input.gameKey, input.formatVersion, input.state, input.savedAt);
+  }
+
+  deleteSavedRun(userId: number, gameKey: string): boolean {
+    return (
+      this.db
+        .prepare(`DELETE FROM gam_saved_runs WHERE user_id = ? AND game_key = ?`)
+        .run(userId, gameKey).changes > 0
+    );
+  }
+
+  listSavedRuns(userId: number | undefined): StoredSavedRun[] {
+    const rows =
+      userId === undefined
+        ? this.db.prepare(`${SELECT_SAVED_RUNS} ORDER BY r.saved_at DESC`).all()
+        : this.db
+            .prepare(`${SELECT_SAVED_RUNS} WHERE r.user_id = ? ORDER BY r.saved_at DESC`)
+            .all(userId);
+    return (rows as SavedRunRow[]).map(toSavedRun);
+  }
+}
+
+function toSavedRun(row: SavedRunRow): StoredSavedRun {
+  return {
+    userId: row.user_id,
+    userName: row.user_name ?? "Unknown player",
+    gameKey: row.game_key,
+    formatVersion: row.format_version,
+    state: row.state_json,
+    savedAt: row.saved_at,
+  };
 }

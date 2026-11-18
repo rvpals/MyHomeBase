@@ -1,5 +1,17 @@
 # Change History
 
+## 2026-11-17 20:25 — Games: Arrow Clearing saves your run (migration 0171)
+
+**One migration (`0171_create_games_saved_runs`), no new package.** A **republish is required**, and **0171 must be applied on the NAS** (`node --env-file-if-exists=.env migrate.cjs`) or the Arrows board fails to save or load with "no such table: gam_saved_runs".
+
+**What was checked: nothing, in this session.** This work was written in an earlier session and was released here without being run, linted, typechecked or seen on screen; no gate was run for it. The older Change History entry lists `games/game-arrows` ×2 among the unit-test failures that predate it, so that folder was already red. **Treat all of it as untested** and work through the Testing List section.
+
+An Arrow Clearing run is now **saved a couple of seconds after each move**, one save per player per tier (`gam_saved_runs`, `UNIQUE (user_id, game_key)`). The next time that tier is opened the board asks **Resume** or **New board**, on any device. The save is deleted when the run is won or lost, and **New board** asks before throwing a run away. A save is the board as dealt plus a move log; restoring replays the moves with the game's own rules, so a damaged or edited row is rejected rather than shown (`arrow-save.ts`, `saved-runs.ts`). Chosen over `localStorage` (one browser only) and `sys_user_preferences` (read in full on every home visit). Details in `migrations/0171_create_games_saved_runs.md`.
+
+- **Web:** `saveArrowRunAction`, `loadArrowRunAction`, `discardArrowRunAction` in `games-actions.ts`; `game-arrows-view.tsx` reworked around them; the Arrows instructions mention it.
+- **CLI:** `game-saves` lists saved runs and `game-saves --discard --user N --game KEY` removes one.
+- **Docs:** `coding-guide.md` (the `gam_` prefix row) and `modules.md` (Games now has three tables); `table-reference.ts` registers `gam_saved_runs` for the SQL Explorer.
+
 ## 2026-11-17 20:17 — Journal: "Ignore locked" in Bulk overwrite
 
 **No migration, no new package.** A **republish is required**.

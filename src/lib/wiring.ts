@@ -39,7 +39,11 @@ import { SqliteClipsRepository } from "./clips/repository";
 import { SharpClipImageProcessor } from "./clips/image-processor";
 import { SqliteDocumentsRepository } from "./documents/repository";
 import { NodeDocumentFileStore } from "./documents/file-store";
-import { SqliteGamesRepository, SqlitePictionaryWordRepository } from "./games/repository";
+import {
+  SqliteGamesRepository,
+  SqlitePictionaryWordRepository,
+  SqliteSavedRunRepository,
+} from "./games/repository";
 import { SqliteHouseholdRepository } from "./household/repository";
 import { SqliteHsaRepository } from "./household/hsa-repository";
 import { NodeBackupFileStore } from "./backup/file-store";
@@ -328,6 +332,9 @@ export const deps = {
   // The custom Pictionary word bank. A separate port from the scoreboard — a word and a
   // score have nothing to do with each other; see `src/lib/games/ports.ts`.
   pictionaryWordsRepo: new SqlitePictionaryWordRepository(db),
+  // Games runs in progress, so a player can leave a board and resume it (migrations/0171).
+  // Private to each player, unlike the shared scoreboard above.
+  savedRunsRepo: new SqliteSavedRunRepository(db),
   // The Clips module (migrations/0155): rich-text notes, their taxonomy, their
   // pasted images and their links into other modules.
   clipsRepo: new SqliteClipsRepository(db),

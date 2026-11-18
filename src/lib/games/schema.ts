@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { isKnownGame } from "./catalogue";
 import {
+  ARROW_DIFFICULTIES,
+  ARROW_MOVE_UNDO,
   BOARD_SIZE,
   DIRECTIONS,
   PICTIONARY_TIERS,
@@ -93,3 +95,66 @@ export type ImportWordsInput = z.infer<typeof importWordsSchema>;
 export const deleteWordSchema = z.object({
   id: z.number().int().positive(),
 });
+
+/* ---------------------------------------------------------------------------------
+   Saved runs (gam_saved_runs, migration 0171).
+--------------------------------------------------------------------------------- */
+
+/**
+ * Size limits for a saved Arrows run. Generous for any real board (the biggest tier is
+ * 1,500 arrows on 2,500 cells) but small enough that one request can't make the server
+ * store or replay something huge.
+ */
+const MAX_SAVED_ARROWS = 5_000;
+const MAX_ARROW_ROW_LENGTH = 64;
+export const MAX_SAVED_ARROW_MOVES = 20_000;
+
+/**
+ * The shape of an `ArrowRunSave`. This only checks the shape. Whether the board is
+ * real and every move was legal is checked by replaying it, in `restoreArrowRun`.
+ */
+export const arrowRunSaveSchema = z.object({
+  version: z.number().int().positive(),
+  difficulty: z.enum(ARROW_DIFFICULTIES),
+  size: z.number().int().positive().max(200),
+  arrows: z
+    .array(z.array(z.number().int().min(0)).min(3).max(MAX_ARROW_ROW_LENGTH))
+    .max(MAX_SAVED_ARROWS),
+  moves: z.array(z.number().int().min(ARROW_MOVE_UNDO)).max(MAX_SAVED_ARROW_MOVES),
+  unlimitedLives: z.boolean(),
+  practiceRun: z.boolean(),
+});
+
+/** Storing a run for the signed-in player. */
+export const saveArrowRunSchema = z.object({
+  userId: z.number().int().positive(),
+  save: arrowRunSaveSchema,
+});
+
+export type SaveArrowRunInput = z.infer<typeof saveArrowRunSchema>;
+
+/** Reading back one player's run for one Arrows tier. */
+export const loadArrowRunSchema = z.object({
+  userId: z.number().int().positive(),
+  difficulty: z.enum(ARROW_DIFFICULTIES),
+});
+
+/** Deleting one player's saved run for one game. */
+export const discardSavedRunSchema = z.object({
+  userId: z.number().int().positive(),
+  gameKey: gameKeySchema,
+});
+
+/** Listing saved runs, for everyone or for one player. */
+export const listSavedRunsSchema = z.object({
+  userId: z.number().int().positive().optional(),
+});
+
+/** What the repository is handed for an upsert. */
+export interface SavedRunWriteData {
+  userId: number;
+  gameKey: string;
+  formatVersion: number;
+  state: string;
+  savedAt: string;
+}

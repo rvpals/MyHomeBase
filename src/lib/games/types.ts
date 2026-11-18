@@ -376,6 +376,106 @@ export interface ArrowPuzzle {
   solution: readonly number[];
 }
 
+/**
+ * One undo step: the board and lives as they were just before an arrow was cleared.
+ *
+ * Lives are kept with the board so undoing a clear also gives back any life lost
+ * *after* it. That is how the view has always behaved, and a restored run has to
+ * rebuild exactly the same stack or Undo would act differently after a resume.
+ */
+export interface ArrowSnapshot {
+  board: ArrowBoard;
+  lives: number;
+}
+
+/**
+ * The save format version. Bump it when `ArrowRunSave` changes shape. A save with a
+ * different version is thrown away rather than migrated, since a run in progress is
+ * cheap to lose and old save formats are not worth keeping code for.
+ */
+export const ARROW_SAVE_VERSION = 1;
+
+/*
+  Moves are stored as plain numbers so a save with 1,500 moves stays small.
+  An arrow id (0 or more) means that arrow was cleared. The negatives below are the
+  other three things a player can do.
+*/
+/** A tap on a blocked arrow that cost a life. */
+export const ARROW_MOVE_MISS = -1;
+/** A tap on a blocked arrow with unlimited lives on: counted as a miss, costs nothing. */
+export const ARROW_MOVE_FREE_MISS = -2;
+/** Undo: puts back the most recent clear. */
+export const ARROW_MOVE_UNDO = -3;
+
+/**
+ * A run in progress, as stored in `gam_saved_runs.state_json`.
+ *
+ * It holds the board **as dealt** plus every move since, not the board as it is now.
+ * Replaying the moves (`restoreArrowRun`) rebuilds the current board and the full undo
+ * history, and checks every clear was legal, so a damaged save is caught rather than
+ * restored.
+ *
+ * Each entry in `arrows` is `[id, directionIndex, ...cellIndices]`: the direction is
+ * an index into `DIRECTIONS`, and each cell is `row * size + col`, head first. This
+ * keeps a 1,500-arrow board to about 25 KB.
+ */
+export interface ArrowRunSave {
+  version: number;
+  difficulty: ArrowDifficulty;
+  size: number;
+  arrows: number[][];
+  moves: number[];
+  /** Whether the unlimited-lives toggle is currently on. */
+  unlimitedLives: boolean;
+  /** Whether unlimited lives was ever used on this board (the run is then unscored). */
+  practiceRun: boolean;
+}
+
+/** A run rebuilt from a save, ready for the view to put back on screen. */
+export interface ArrowRunProgress {
+  difficulty: ArrowDifficulty;
+  /** The board as dealt, which the next save still needs. */
+  dealt: ArrowBoard;
+  board: ArrowBoard;
+  lives: number;
+  cleared: number;
+  misses: number;
+  history: ArrowSnapshot[];
+  moves: number[];
+  unlimitedLives: boolean;
+  practiceRun: boolean;
+}
+
+/** One row of `gam_saved_runs`. `state` is the game's own JSON, not parsed here. */
+export interface StoredSavedRun {
+  userId: number;
+  userName: string;
+  gameKey: string;
+  formatVersion: number;
+  state: string;
+  savedAt: string;
+}
+
+/** A saved Arrows run, as the view's resume prompt receives it. */
+export interface SavedArrowRun {
+  savedAt: string;
+  save: ArrowRunSave;
+  cleared: number;
+  remaining: number;
+}
+
+/** One saved run, as the CLI lists it. */
+export interface SavedRunSummary {
+  userId: number;
+  userName: string;
+  gameKey: string;
+  savedAt: string;
+  cleared: number;
+  remaining: number;
+  /** False when the save can't be restored (old version or damaged). */
+  restorable: boolean;
+}
+
 /* ---------------------------------------------------------------------------------
    Tetris.
 --------------------------------------------------------------------------------- */

@@ -288,6 +288,8 @@ against three bots), **Pac-Man**, **Bridge** and **Pictionary**.
 - The arcade shows each game as a **square tile** — three across on a desktop, two on a phone.
 - **Arrow Clearing** boards can hold arrows up to 36 cells long: short pieces are laid first and
   the long ones hug them, so tails curl around the shorter arrows.
+  A run is **saved as you play** (one per player per tier) and offers **Resume** or **New board** the next
+  time that tier is opened, on any device; a won or lost board's save is deleted.
 - **Pictionary** is pass-and-play on one device under typed names — no accounts — with a
   drawing canvas, a turn timer and a standings screen. Nothing is saved to the scoreboard.
   The drawer can **hide the word** (Start guessing / Peek) before turning the screen round,

@@ -1,9 +1,10 @@
-import type { ScoreWriteData } from "./schema";
+import type { SavedRunWriteData, ScoreWriteData } from "./schema";
 import type {
   PictionaryTier,
   PictionaryWord,
   Score,
   StoredPictionaryWord,
+  StoredSavedRun,
 } from "./types";
 
 /**
@@ -53,4 +54,24 @@ export interface PictionaryWordRepository {
   clearWords(tier: PictionaryTier | undefined): number;
   /** How many custom words exist, per tier. Tiers with none are present and zero. */
   countByTier(): Record<PictionaryTier, number>;
+}
+
+/**
+ * Runs in progress that a player can come back to, in `gam_saved_runs`.
+ *
+ * One row per player per game key: saving again replaces the row. The repository
+ * stores `state` as text and never reads inside it. Each game decodes and checks its
+ * own format (`restoreArrowRun` for Arrows).
+ *
+ * A separate port from the scoreboard: a run in progress is private to one player,
+ * while every score is shared.
+ */
+export interface SavedRunRepository {
+  getSavedRun(userId: number, gameKey: string): StoredSavedRun | undefined;
+  /** Inserts the run, or replaces the player's existing one for that game. */
+  upsertSavedRun(input: SavedRunWriteData): void;
+  /** Returns whether a row was deleted. */
+  deleteSavedRun(userId: number, gameKey: string): boolean;
+  /** Most recently saved first, for everyone or for one player. */
+  listSavedRuns(userId: number | undefined): StoredSavedRun[];
 }

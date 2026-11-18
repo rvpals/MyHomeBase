@@ -7,9 +7,13 @@ import {
   PICTIONARY_TIERS,
   clearCustomWords,
   deleteCustomWord,
+  discardArrowRun,
   importWords,
+  loadArrowRun,
   recordScore,
+  saveArrowRun,
   type PictionaryImportSummary,
+  type SavedArrowRun,
 } from "@/lib/games";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
@@ -154,5 +158,71 @@ export async function clearWordsAction(tier?: string): Promise<ClearWordsResult>
     return { ok: true, removed };
   } catch {
     return { ok: false, error: "Could not clear those words." };
+  }
+}
+
+/* ---------------------------------------------------------------------------------
+   Saved Arrows runs. The player always comes from the session, so nobody can read,
+   write or delete another player's run.
+
+   No `revalidatePath`: a saved run is only read through `loadArrowRunAction`, never
+   by a server-rendered page, so there is nothing to refresh.
+--------------------------------------------------------------------------------- */
+
+/** The signed-in user's id, or undefined when the session has expired. */
+async function sessionUserId(): Promise<number | undefined> {
+  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  return getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo)?.id;
+}
+
+/** A zod error's first message, or the error's own message, or a fallback. */
+function errorText(error: unknown, fallback: string): string {
+  const issues = (error as { issues?: { message?: string }[] }).issues;
+  if (Array.isArray(issues)) return issues[0]?.message ?? fallback;
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+export type SaveArrowRunResult = { ok: true; savedAt: string } | { ok: false; error: string };
+
+/** Stores the player's Arrows run for its tier, replacing any earlier one. */
+export async function saveArrowRunAction(save: unknown): Promise<SaveArrowRunResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: false, error: "Sign in to save your run." };
+    return { ok: true, ...saveArrowRun(deps.savedRunsRepo, { userId, save }) };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not save this run.") };
+  }
+}
+
+export type LoadArrowRunResult =
+  | { ok: true; run: SavedArrowRun | undefined }
+  | { ok: false; error: string };
+
+/** The player's saved run for one Arrows tier, if there is one. */
+export async function loadArrowRunAction(difficulty: string): Promise<LoadArrowRunResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: true, run: undefined };
+    return { ok: true, run: loadArrowRun(deps.savedRunsRepo, { userId, difficulty }) };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not load the saved run.") };
+  }
+}
+
+/** Deletes the player's saved run for one Arrows tier. */
+export async function discardArrowRunAction(
+  difficulty: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: true };
+    discardArrowRun(deps.savedRunsRepo, { userId, difficulty });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not discard the saved run.") };
   }
 }

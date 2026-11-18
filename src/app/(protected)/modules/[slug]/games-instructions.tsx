@@ -76,7 +76,7 @@ export function ArrowClearingRules() {
         the grid, so it stands in front of far more of its neighbours and the order
         matters more. It is also the more satisfying one to clear, since each tap takes a
         whole sweep off the board rather than a stub. Each board keeps its own
-        high score, and switching deals a new one.
+        high score and its own saved run, so switching tiers loses nothing.
       </p>
       <ul className="flex list-disc flex-col gap-1 pl-5">
         <li>
@@ -99,6 +99,14 @@ export function ArrowClearingRules() {
           <strong className="text-ink">Undo</strong> steps back one arrow and refunds a
           life if that move cost one. <strong className="text-ink">Hint</strong>{" "}
           highlights an arrow that can leave right now. Neither costs you anything.
+        </li>
+        <li>
+          <strong className="text-ink">Your run is saved as you play</strong>, a couple
+          of seconds after each move. Close the game, or open it on another device, and
+          it offers to <strong className="text-ink">Resume</strong> where you left off.
+          A finished board&apos;s save is deleted, and{" "}
+          <strong className="text-ink">New board</strong> asks first before throwing a
+          run away.
         </li>
         <li>
           The board is large, so <strong className="text-ink">+</strong> and{" "}

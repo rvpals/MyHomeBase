@@ -152,6 +152,7 @@ const GROUPS: TableReferenceGroup[] = [
     summary: "",
     tables: [
       ["gam_scores", "The shared high-score board, one row per completed game. The list of games is code, not data."],
+      ["gam_saved_runs", "Runs in progress a player can resume, one row per player per game key. Private to each player. Arrow Clearing only so far."],
     ],
   },
   {

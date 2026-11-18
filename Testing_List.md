@@ -146,6 +146,22 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-17 — Release (Games: Arrow Clearing saves your run)
+
+**Needs migration 0171 applied on the NAS first**, and a republish. Nothing here has been run, linted or seen on screen — it was written in an earlier session and released untested. Items 7 and 8 need two devices; item 9 is a CLI check.
+
+- [ ] **1.** Games → Arrow Clearing: make a few moves, wait a couple of seconds, leave the game and reopen the same tier: it offers **Resume** and **New board**
+- [ ] **2.** Resume: the board, the moves made and the undo history are back as you left them
+- [ ] **3.** New board with a run in progress asks before discarding it; confirming deals a fresh board
+- [ ] **4.** Win or lose a board, reopen the tier: no Resume prompt (the save was deleted)
+- [ ] **5.** Each tier keeps its own save: start a run in one tier, switch to another and back, and the first tier still offers Resume
+- [ ] **6.** The instructions panel mentions the run being saved as you play
+- [ ] **7.** Start a board on one device, open the same tier on another signed in as the same player: it offers Resume
+- [ ] **8.** A different player never sees someone else's saved run
+- [ ] **9.** CLI: `game-saves` lists the saved runs; `game-saves --discard --user <id> --game <key>` removes one
+- [ ] **10.** Admin → SQL Explorer lists `gam_saved_runs`
+- [ ] **11.** Phone width: the Resume / New board prompt fits without horizontal scroll
+
 ## 2026-11-17 — Release (Journal: Ignore locked in Bulk overwrite)
 
 Needs no migration; needs a republish. Nothing here has been seen on screen and the browser smoke was not run. Item 6 is a CLI check; item 7 needs debug logging on for `bulk-edit`.
