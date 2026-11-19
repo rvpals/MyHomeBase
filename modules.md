@@ -346,12 +346,23 @@ install with no row resolves to Small. Four choices worth knowing:
   belongs with the journal. A bundle written before the preference existed parses fine and
   restores the floor, via the schema's default.
 
-The **Calendar** section shows those entries as a grid, in one of three ranges —
-week, month or year — with the range, the period and the clicked day all in the URL
-(`?scope=&anchor=&date=`), so a particular month with a day open is a bookmark. It
-**adds no table**: every cell is drawn from `jrn_entries` rows that already exist, read
-by one `listEntriesInDateRange` call bounded by the visible period rather than by
-filtering the whole table in memory.
+The **Calendar** section shows those entries as a grid, in one of four ranges —
+week, `weeks` (the rolling **5 Weeks**: the anchor's week plus four, stepping one week
+at a time, the 1st of each month labelled "Nov" in place of "1"), month or year — with
+the range, the period and the clicked day all in the URL
+(`?scope=&anchor=&date=`), so a particular month with a day open is a bookmark. The
+scope strings are permanent. It **adds no table of its own**: every cell is drawn from
+`jrn_entries` rows that already exist, read by one `listEntriesInDateRange` call bounded
+by the visible period rather than by filtering the whole table in memory.
+
+Each title in a cell starts with a **dot** coloured by the entry's first category (in the
+entry's own order) that has a colour; `jrn_categories.color` (migration 0172) holds a key
+from the shared tint palette `src/lib/shared/tint.ts` — the one Clips cards use — never a
+hex, and is set in Categories → Edit with `TintPicker` or by
+`journal-taxonomy category --set-color`. No coloured category means the theme accent.
+Cells also mark pinned and locked entries. **Display** (desktop) puts the grid on a
+`FullscreenStage`, read-only, refreshing every 15 minutes. The year view has a legend, and
+its shade levels come from `calendarHeatLevel` in the library.
 
 The **Saved Locations** section lists the application-wide location library
 (`sys_locations`, migration 0140) with a count of how many entries were written at each

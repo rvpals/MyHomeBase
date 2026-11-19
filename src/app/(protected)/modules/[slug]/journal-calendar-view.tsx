@@ -19,6 +19,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/button";
 import { Comments } from "@/components/comments";
+import { FullscreenStage } from "@/components/fullscreen-stage";
+import type { TintColor } from "@/lib/shared/tint";
 import { JournalViewer } from "@/components/journal-viewer";
 import { Modal } from "@/components/modal";
 import { PhotoOfTheDayButton } from "@/components/photo-of-the-day";
@@ -28,11 +30,14 @@ import { getIconSlot } from "@/lib/icons";
 import {
   CALENDAR_CELL_TITLE_LIMIT,
   CALENDAR_CELL_TITLE_LIMIT_COMPACT,
+  CALENDAR_CELL_TITLE_LIMIT_DISPLAY,
   DEFAULT_JOURNAL_DATE_FORMAT,
   ENCRYPTED_TITLE_PLACEHOLDER,
   JOURNAL_DATE_FORMATS,
   WEEKDAY_LABELS,
+  calendarHeatLevel,
   buildMonthGrid,
+  buildRollingGrid,
   buildWeekGrid,
   buildYearGrid,
   endOfMonth,
@@ -42,6 +47,7 @@ import {
   parseJumpDate,
   shiftCalendarAnchor,
   startOfMonth,
+  type CalendarCategoryColors,
   type CalendarDay,
   type CalendarWeek,
   type JournalCalendarScope,
@@ -91,7 +97,16 @@ export interface JournalCalendarViewProps {
    * guard that matters is `requireModuleAccess` inside the action behind it.
    */
   canSeeExpense?: boolean;
+  /** Category → tint key, for the entry dots (migration 0172). */
+  categoryColors?: CalendarCategoryColors;
 }
+
+/**
+ * How often Display mode re-reads the period from the server. A wall display is
+ * left up for hours: this is what makes a new entry appear without a touch, and
+ * moves "today" (and the rolling 5-week window) on at midnight.
+ */
+const DISPLAY_REFRESH_MS = 15 * 60 * 1000;
 
 export function JournalCalendarView({
   scope,
@@ -102,6 +117,7 @@ export function JournalCalendarView({
   categoryIcons,
   tagIcons,
   canSeeExpense = false,
+  categoryColors,
 }: JournalCalendarViewProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -132,20 +148,32 @@ export function JournalCalendarView({
   // The three grids come straight from the library; this component never walks a
   // calendar itself. Memoized because the year scope builds 12 × 42 cells and the
   // inputs only change on a navigation.
-  const monthOrWeekGrid = useMemo(
-    () =>
-      scope === "week"
-        ? buildWeekGrid({ anchor, entries, today, selectedDate })
-        : scope === "month"
-          ? buildMonthGrid({ anchor, entries, today, selectedDate })
-          : undefined,
-    [scope, anchor, entries, today, selectedDate],
-  );
+  const monthOrWeekGrid = useMemo(() => {
+    const options = { anchor, entries, today, selectedDate, categoryColors };
+    if (scope === "week") return buildWeekGrid(options);
+    if (scope === "weeks") return buildRollingGrid(options);
+    if (scope === "month") return buildMonthGrid(options);
+    return undefined;
+  }, [scope, anchor, entries, today, selectedDate, categoryColors]);
   const yearGrid = useMemo(
     () =>
-      scope === "year" ? buildYearGrid({ anchor, entries, today, selectedDate }) : undefined,
-    [scope, anchor, entries, today, selectedDate],
+      scope === "year"
+        ? buildYearGrid({ anchor, entries, today, selectedDate, categoryColors })
+        : undefined,
+    [scope, anchor, entries, today, selectedDate, categoryColors],
   );
+
+  /** Whether the grid is on the fullscreen Display stage. */
+  const [isDisplay, setIsDisplay] = useState(false);
+
+  // While on the Display stage, re-read the period every 15 minutes. A server
+  // refresh rather than a client clock: "today" and the entries both come from
+  // the server, so this is the one call that brings both up to date.
+  useEffect(() => {
+    if (!isDisplay) return;
+    const timer = window.setInterval(() => router.refresh(), DISPLAY_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [isDisplay, router]);
 
   const title = monthOrWeekGrid?.title ?? yearGrid?.title ?? "";
   const entryCount = monthOrWeekGrid?.entryCount ?? yearGrid?.entryCount ?? 0;
@@ -259,32 +287,87 @@ export function JournalCalendarView({
         onJumpToEntry={(direction) => void jumpToAdjacentEntry(direction)}
         jumping={jumping}
         exhausted={exhausted}
+        onDisplay={() => setIsDisplay(true)}
       />
 
       {monthOrWeekGrid ? (
         <MonthGrid
           weeks={monthOrWeekGrid.weeks}
           cellTitleLimit={cellTitleLimit}
-          isWeekScope={scope === "week"}
+          variant={monthOrWeekGrid.scope}
           onSelectDay={selectDay}
           onOpenEntry={setOpenEntryId}
           onOpenPhotos={(date) => setPhotoRequest({ kind: "day", date })}
         />
       ) : null}
 
+      {isDisplay ? (
+        // The real Fullscreen API via the shared stage, as the chart and the entry
+        // editor do — no toolbar, no shell, no browser chrome. Escape exits (the
+        // browser owns that key), and the stage reports it. The page's own grid
+        // stays mounted underneath; nothing here is hidden-and-duplicated on the
+        // same screen, because the stage covers the whole display.
+        <FullscreenStage
+          label="Journal calendar"
+          onExit={() => setIsDisplay(false)}
+          className="overflow-auto bg-paper p-6"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <h2 className="font-display text-4xl font-light text-ink">{title}</h2>
+              <p className="text-sm text-muted">Esc to leave</p>
+            </div>
+            {monthOrWeekGrid ? (
+              // Read-only on the stage: the entry viewer, the day panel and the
+              // photo dialog all render outside the fullscreened element, so
+              // opening one here would put it behind the display, unseen.
+              <MonthGrid
+                weeks={monthOrWeekGrid.weeks}
+                cellTitleLimit={CALENDAR_CELL_TITLE_LIMIT_DISPLAY}
+                variant={monthOrWeekGrid.scope}
+                isDisplay
+                onSelectDay={() => undefined}
+                onOpenEntry={() => undefined}
+                onOpenPhotos={() => undefined}
+              />
+            ) : null}
+            {yearGrid ? (
+              <div className="card-grid gap-4">
+                {yearGrid.months.map((month) => (
+                  <MiniMonth
+                    key={month.month}
+                    label={month.label}
+                    weeks={month.weeks}
+                    entryCount={month.entryCount}
+                    maxDayEntryCount={yearGrid.maxDayEntryCount}
+                    onSelectDay={() => undefined}
+                    // Opening a month is a change of scope, which stays on the
+                    // stage — the one navigation that is visible from here.
+                    onOpenMonth={() => navigate({ scope: "month", anchor: `${month.year}-${String(month.month).padStart(2, "0")}-01` })}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </FullscreenStage>
+      ) : null}
+
       {yearGrid ? (
-        <div className="card-grid gap-4">
-          {yearGrid.months.map((month) => (
-            <MiniMonth
-              key={month.month}
-              label={month.label}
-              weeks={month.weeks}
-              entryCount={month.entryCount}
-              maxDayEntryCount={yearGrid.maxDayEntryCount}
-              onSelectDay={selectDay}
-              onOpenMonth={() => navigate({ scope: "month", anchor: `${month.year}-${String(month.month).padStart(2, "0")}-01` })}
-            />
-          ))}
+        <div className="flex flex-col gap-3">
+          <div className="card-grid gap-4">
+            {yearGrid.months.map((month) => (
+              <MiniMonth
+                key={month.month}
+                label={month.label}
+                weeks={month.weeks}
+                entryCount={month.entryCount}
+                maxDayEntryCount={yearGrid.maxDayEntryCount}
+                onSelectDay={selectDay}
+                onOpenMonth={() => navigate({ scope: "month", anchor: `${month.year}-${String(month.month).padStart(2, "0")}-01` })}
+              />
+            ))}
+          </div>
+          <HeatLegend maxDayEntryCount={yearGrid.maxDayEntryCount} />
         </div>
       ) : null}
 
@@ -387,6 +470,7 @@ function CalendarToolbar({
   onJumpToEntry,
   jumping,
   exhausted,
+  onDisplay,
 }: {
   scope: JournalCalendarScope;
   anchor: string;
@@ -401,8 +485,11 @@ function CalendarToolbar({
   onJumpToEntry: (direction: AdjacentEntryDirection) => void;
   jumping?: AdjacentEntryDirection;
   exhausted: Partial<Record<AdjacentEntryDirection, boolean>>;
+  onDisplay: () => void;
 }) {
-  const stepLabel = scope === "week" ? "week" : scope === "year" ? "year" : "month";
+  // 5 Weeks slides one week per press, so its steppers say "week" too.
+  const stepLabel =
+    scope === "week" || scope === "weeks" ? "week" : scope === "year" ? "year" : "month";
 
   return (
     // Three groups: the two period-independent actions anchor left, the period
@@ -489,6 +576,19 @@ function CalendarToolbar({
 
       <div className="flex flex-wrap items-center gap-2">
         <ScopeSwitch scope={scope} onScope={onScope} />
+        {/* Desktop only. An iPhone can't fullscreen part of a page, and a phone is
+            not a wall display. The same text glyph the chart's fullscreen button
+            uses: an action, so no icon slot. */}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={onDisplay}
+          ariaLabel="Show the calendar full screen"
+          title="Show the calendar full screen, as a wall display"
+          className="max-lg:hidden"
+        >
+          ⛶ Display
+        </Button>
         <Comments
           title="Using the calendar"
           content={
@@ -500,8 +600,17 @@ function CalendarToolbar({
               <li>Click a day to list its entries below the grid; click it again to close.</li>
               <li>Click a title to read the entry without leaving the calendar.</li>
               <li>
-                Week, Month and Year are the three ranges; ‹ and › step by whichever one is
-                showing.
+                Week, 5 Weeks, Month and Year are the ranges; ‹ and › step by whichever one
+                is showing — except 5 Weeks, which slides one week at a time. In 5 Weeks the
+                1st of each month shows the month&apos;s name instead of &ldquo;1&rdquo;.
+              </li>
+              <li>
+                The dot before a title takes the colour of the entry&apos;s first coloured
+                category. Pick a category&apos;s colour in Categories → Edit.
+              </li>
+              <li>
+                Display (wide screens) shows the calendar full screen, for a wall. It
+                refreshes itself every 15 minutes; press Esc to leave.
               </li>
               <li>
                 « and » skip to the previous or next day that has an entry, however far
@@ -512,7 +621,15 @@ function CalendarToolbar({
                 The jump button takes a typed date — pick the format it should be read in, or
                 use the picker.
               </li>
-              <li>In the year view a darker square means a busier day.</li>
+              <li>
+                In the year view a darker square means a busier day; the legend underneath
+                says how many entries the darkest shade stands for.
+              </li>
+              <li>A pushpin marks a pinned entry and a padlock a locked one.</li>
+              <li>
+                On a wide screen, hover a day to show its + (a new entry dated that day) and
+                its picture button.
+              </li>
               <li>
                 The picture button on a day shows the photographs filed under that date;
                 the one beside ‹ › does the same for the whole month.
@@ -534,11 +651,12 @@ function ScopeSwitch({
 }) {
   const options: { value: JournalCalendarScope; label: string }[] = [
     { value: "week", label: "Week" },
+    { value: "weeks", label: "5 Weeks" },
     { value: "month", label: "Month" },
     { value: "year", label: "Year" },
   ];
   return (
-    // A segmented control rather than three Buttons: these are one setting's
+    // A segmented control rather than a row of Buttons: these are one setting's
     // states, and a row of switch-styled buttons would read as three actions.
     <div
       role="group"
@@ -551,7 +669,7 @@ function ScopeSwitch({
           type="button"
           aria-pressed={scope === option.value}
           onClick={() => onScope(option.value)}
-          className={`px-3 py-1.5 text-sm transition-colors max-lg:px-4 max-lg:py-2 ${
+          className={`px-3 py-1.5 text-sm transition-colors max-lg:py-2 ${
             scope === option.value
               ? "bg-brass text-paper"
               : "bg-paper-raised text-muted hover:text-ink"
@@ -778,37 +896,57 @@ function JumpIcon() {
   );
 }
 
-// --- Month / week grid -------------------------------------------------------
+// --- Month / week / 5-week grid ----------------------------------------------
+
+/** Which grid shape a MonthGrid is drawing — decides cell height and day labels. */
+type GridVariant = "month" | "week" | "weeks";
+
+/**
+ * The dot class for each tint key. Spelled out, not interpolated: Tailwind and the
+ * CSS bundle are scanned as source text, so `clip-tint-${key}` would never be
+ * emitted. `""` is the default dot, which `.tint-dot` draws in the theme accent.
+ */
+const DOT_CLASS = {
+  "": "tint-dot",
+  rose: "tint-dot clip-tint-rose",
+  amber: "tint-dot clip-tint-amber",
+  sage: "tint-dot clip-tint-sage",
+  ocean: "tint-dot clip-tint-ocean",
+  indigo: "tint-dot clip-tint-indigo",
+  slate: "tint-dot clip-tint-slate",
+} satisfies Record<TintColor | "", string>;
 
 function MonthGrid({
   weeks,
   cellTitleLimit,
-  isWeekScope,
+  variant,
+  isDisplay = false,
   onSelectDay,
   onOpenEntry,
   onOpenPhotos,
 }: {
   weeks: CalendarWeek[];
   cellTitleLimit: number;
-  isWeekScope: boolean;
+  variant: GridVariant;
+  /** Drawn inside the fullscreen Display stage: taller cells, no hover controls. */
+  isDisplay?: boolean;
   onSelectDay: (day: CalendarDay) => void;
   onOpenEntry: (id: number) => void;
   onOpenPhotos: (date: string) => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-line">
-      {/* The weekday strip reads as a bar pinned above the grid, so it takes
-          `.nav-raised-top` — design.md's registered class for a top-pinned bar
-          casting down over content — rather than a hand-rolled shadow.
-          `relative z-10` is what makes the cast visible: the day cells come
-          later in the DOM and paint their own backgrounds over an earlier
-          sibling's shadow otherwise. The wrapper's `overflow-hidden` doesn't
-          clip it, because the cast falls inward onto the grid. */}
-      <div className="relative z-10 grid grid-cols-7 border-b border-line bg-paper-raised nav-raised-top">
+    // The calm layout: no cell borders and no row bands — the days are separated
+    // by space alone, and the large day numbers carry the structure. The only
+    // fills left are the ones that mean something: the open day, and the dimmed
+    // days a month grid borrows from its neighbours.
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-7 gap-1">
         {WEEKDAY_LABELS.map((label) => (
           <div
             key={label}
-            className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wide text-muted"
+            className={`px-2 pb-1 text-center font-medium uppercase tracking-wide text-muted ${
+              isDisplay ? "text-lg" : "text-xs"
+            }`}
           >
             {/* One letter narrow: seven three-letter labels don't fit a phone. */}
             <span className="max-lg:hidden">{label}</span>
@@ -816,17 +954,15 @@ function MonthGrid({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7">
-        {weeks.flatMap((week, weekIndex) =>
+      <div className="grid grid-cols-7 gap-1">
+        {weeks.flatMap((week) =>
           week.days.map((day) => (
             <DayCell
               key={day.date}
               day={day}
               titleLimit={cellTitleLimit}
-              isTall={isWeekScope}
-              // Row banding is a reading aid, not domain data, so the index
-              // stays here rather than going on CalendarWeek.
-              isBandedRow={weekIndex % 2 === 1}
+              variant={variant}
+              isDisplay={isDisplay}
               onSelect={() => onSelectDay(day)}
               onOpenEntry={onOpenEntry}
               onOpenPhotos={() => onOpenPhotos(day.date)}
@@ -838,26 +974,39 @@ function MonthGrid({
   );
 }
 
+/** Cell heights per grid. The 5-week and month grids share a row height. */
+function cellHeightClass(variant: GridVariant, isDisplay: boolean): string {
+  if (isDisplay) {
+    // Fill the screen: a fullscreen stage has no toolbar, so the rows split the
+    // viewport between them (minus the heading and weekday strip).
+    return variant === "week" ? "min-h-[70vh]" : variant === "weeks" ? "min-h-[15vh]" : "min-h-[12.5vh]";
+  }
+  return variant === "week" ? "min-h-40" : "min-h-24 max-lg:min-h-16";
+}
+
 function DayCell({
   day,
   titleLimit,
-  isTall,
-  isBandedRow,
+  variant,
+  isDisplay,
   onSelect,
   onOpenEntry,
   onOpenPhotos,
 }: {
   day: CalendarDay;
   titleLimit: number;
-  isTall: boolean;
-  /** Every other week row carries a faint tint, to help the eye track across. */
-  isBandedRow: boolean;
+  variant: GridVariant;
+  isDisplay: boolean;
   onSelect: () => void;
   onOpenEntry: (id: number) => void;
   onOpenPhotos: () => void;
 }) {
   const shown = day.entries.slice(0, titleLimit);
   const hidden = day.entries.length - shown.length;
+  // The rolling view has no month heading per row, so the 1st says which month
+  // it starts ("Nov") in place of its number — the screenshot's wall-calendar cue.
+  const dayLabel =
+    variant === "weeks" && day.monthLabel !== undefined ? day.monthLabel : String(day.dayOfMonth);
 
   return (
     // The cell itself is the click target for "select this day". The titles
@@ -875,61 +1024,85 @@ function DayCell({
           onSelect();
         }
       }}
-      className={`flex cursor-pointer flex-col gap-1 border-b border-r border-line p-1.5 text-left transition-colors last:border-r-0 ${
-        isTall ? "min-h-40" : "min-h-24 max-lg:min-h-16"
-      } ${
-        // Three things want this background, in priority order: the selection
-        // (loudest), then whether the day belongs to the month on screen — the
-        // only one that carries meaning — then the row band, which is a faint
-        // tint laid over the in-month fill so it never muddies that boundary.
+      // `group` is what the hover-revealed controls (the + and the photo button)
+      // key off on desktop.
+      className={`group flex cursor-pointer flex-col gap-1 rounded-lg p-1.5 text-left transition-colors ${cellHeightClass(
+        variant,
+        isDisplay,
+      )} ${
         day.isSelected
-          ? "bg-brass-soft"
+          ? "bg-brass-soft ring-2 ring-inset ring-brass"
           : day.isCurrentPeriod
-            ? isBandedRow
-              ? "bg-paper-raised/50"
-              : "bg-paper"
-            : isBandedRow
-              ? "bg-paper-raised/30"
-              : "bg-paper-raised/15"
-      } ${
-        day.isSelected
-          ? "ring-[3px] ring-inset ring-brass"
-          : "hover:bg-paper-raised"
+            ? "hover:bg-paper-raised"
+            : "bg-paper-raised/20 hover:bg-paper-raised"
       }`}
     >
-      <div className="flex items-center justify-between gap-1">
+      <div className="flex items-start justify-between gap-1">
         <span
-          className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-xs font-semibold ${
+          className={`inline-flex shrink-0 items-center justify-center rounded-full font-display font-light leading-none ${
+            isDisplay ? "h-14 min-w-14 px-2 text-4xl" : "h-9 min-w-9 px-1 text-2xl max-lg:h-7 max-lg:min-w-7 max-lg:text-base"
+          } ${
             day.isToday
-              ? // Today is a filled accent pip — the one thing on the grid that
-                // must be findable without reading any numbers.
-                "bg-brass text-paper"
+              ? // Today is a large filled accent circle — the one thing on the grid
+                // that must be findable without reading any numbers.
+                "bg-brass font-normal text-paper"
               : day.isCurrentPeriod
                 ? "text-ink"
-                : "text-muted"
+                : "text-muted opacity-60"
           }`}
         >
-          {day.dayOfMonth}
+          {dayLabel}
         </span>
-        <span className="flex shrink-0 items-center gap-1">
-          {day.entries.length > 0 ? (
-            <span className="rounded bg-brass-soft px-1 text-[10px] font-medium text-brass-dark">
-              {day.entries.length}
-            </span>
-          ) : null}
-          {/* On EVERY day, not only days with an entry: the archive is filed by date
-              independently of the journal, so a day with nothing written can still have
-              photographs — which is often exactly why you go looking.
+        {isDisplay ? null : (
+          <span className="flex shrink-0 items-center gap-1">
+            {/* Start a new entry already dated to this day. Desktop only, revealed on
+                hover/focus like the photo button: a phone cell has no room for a
+                fourth control, and the open day's panel already has New entry.
+                A link, so it opens in a new tab like any other. stopPropagation on
+                both click and key: the cell itself selects the day on click AND
+                swallows Enter, which would otherwise eat the link's activation. */}
+            <Link
+              href={`/modules/journal/new-entry?date=${day.date}`}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+              aria-label={`New entry on ${day.date}`}
+              title="New entry on this day"
+              className={`rounded p-0.5 text-muted transition-opacity hover:bg-brass-soft hover:text-brass-dark focus-visible:opacity-100 max-lg:hidden ${
+                day.isSelected ? "" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+              }`}
+            >
+              <TreeIcon name="plus" className="h-3.5 w-3.5" />
+            </Link>
+            {day.entries.length > 0 ? (
+              <span className="rounded bg-brass-soft px-1 text-[10px] font-medium text-brass-dark">
+                {day.entries.length}
+              </span>
+            ) : null}
+            {/* On EVERY day, not only days with an entry: the archive is filed by date
+                independently of the journal, so a day with nothing written can still have
+                photographs — which is often exactly why you go looking.
 
-              It stays visible on a phone rather than being revealed on hover, since a
-              touch screen has no hover and this is the only way to reach the photos
-              there. The narrow cell is 16 units tall, so the button shrinks instead. */}
-          <PhotoOfTheDayButton
-            hint={`Photos from ${day.date}`}
-            onOpen={onOpenPhotos}
-            className="max-lg:h-5 max-lg:w-5"
-          />
-        </span>
+                Desktop hides it until the cell is hovered or focused (or is the open
+                day), so 42 identical buttons don't compete with the titles. A phone
+                always shows it: a touch screen has no hover and this is the only way to
+                reach the photos there. The narrow cell is 16 units tall, so the button
+                shrinks instead. The wrapper carries the visibility because the button
+                only takes a className for its own sizing. */}
+            <span
+              className={`inline-flex transition-opacity ${
+                day.isSelected
+                  ? ""
+                  : "lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100"
+              }`}
+            >
+              <PhotoOfTheDayButton
+                hint={`Photos from ${day.date}`}
+                onOpen={onOpenPhotos}
+                className="max-lg:h-5 max-lg:w-5"
+              />
+            </span>
+          </span>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-col gap-0.5">
@@ -943,14 +1116,41 @@ function DayCell({
               event.stopPropagation();
               onOpenEntry(entry.id);
             }}
-            className="truncate rounded px-1 py-0.5 text-left text-[11px] leading-tight text-ink hover:bg-brass-soft hover:text-brass-dark"
+            className={`truncate rounded px-1 py-0.5 text-left leading-snug text-ink hover:bg-brass-soft hover:text-brass-dark ${
+              isDisplay ? "text-base" : "text-[11px]"
+            }`}
           >
+            {/* The category dot: the entry's first coloured category, or the
+                accent. Decorative — the category itself is in the viewer. */}
+            <span
+              aria-hidden="true"
+              className={`mr-1 inline-block rounded-full align-middle ${
+                isDisplay ? "h-2 w-2" : "h-1.5 w-1.5"
+              } ${DOT_CLASS[entry.color]}`}
+            />
             {entry.time === "" ? "" : <span className="text-muted">{entry.time.slice(0, 5)} </span>}
+            {/* State markers, not slots — coding-guide.md keeps state glyphs out of
+                the icon registry. Inline before the title so they survive the
+                one-title phone cell. */}
+            {entry.isPinned ? (
+              <>
+                <TreeIcon name="pushpin" className="mr-0.5 inline-block h-2.5 w-2.5 align-[-1px] text-brass-dark" />
+                <span className="sr-only">Pinned. </span>
+              </>
+            ) : null}
+            {entry.isLocked ? (
+              <>
+                <TreeIcon name="lock" className="mr-0.5 inline-block h-2.5 w-2.5 align-[-1px] text-muted" />
+                <span className="sr-only">Locked. </span>
+              </>
+            ) : null}
             {entry.shortTitle}
           </button>
         ))}
         {hidden > 0 ? (
-          <span className="px-1 text-[10px] text-muted">+{hidden} more</span>
+          <span className={`px-1 text-muted ${isDisplay ? "text-sm" : "text-[10px]"}`}>
+            +{hidden} more
+          </span>
         ) : null}
       </div>
     </div>
@@ -958,6 +1158,42 @@ function DayCell({
 }
 
 // --- Year grid ---------------------------------------------------------------
+
+/**
+ * The colour for each heat level, indexed 0–CALENDAR_HEAT_LEVELS (so one more
+ * entry than there are levels). Shared by the day squares and the legend, so the
+ * two can't show different scales.
+ */
+const HEAT_SHADES: readonly string[] = [
+  "bg-paper",
+  "bg-brass-soft",
+  "bg-brass/40",
+  "bg-brass/70",
+  "bg-brass",
+];
+
+/**
+ * "Less ▢▢▢▢▢ More" under the year grid. Because the scale is relative to the
+ * busiest day, the swatches alone don't say what "more" means — the count does.
+ */
+function HeatLegend({ maxDayEntryCount }: { maxDayEntryCount: number }) {
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted">
+      <span className="flex items-center gap-1" aria-hidden="true">
+        Less
+        {HEAT_SHADES.map((shade) => (
+          <span key={shade} className={`h-3 w-3 rounded-[3px] border border-line ${shade}`} />
+        ))}
+        More
+      </span>
+      <span>
+        {maxDayEntryCount === 0
+          ? "No entries this year"
+          : `Busiest day: ${maxDayEntryCount} ${maxDayEntryCount === 1 ? "entry" : "entries"}`}
+      </span>
+    </div>
+  );
+}
 
 /**
  * One month of the year view: a 6×7 grid of shaded squares. Titles don't fit at
@@ -1023,30 +1259,25 @@ function MiniDay({
   maxDayEntryCount: number;
   onSelect: () => void;
 }) {
-  // Four steps of shade, scaled to the busiest day of the year rather than a
-  // fixed count — a fixed scale washes out a quiet year and saturates a busy one.
-  // maxDayEntryCount is 0 for an empty year, so the divisor is guarded.
+  // The level (0–4, scaled to the busiest day) comes from the library, which the
+  // legend reads too; only the colour each level maps to lives here.
   const count = day.entries.length;
-  const intensity =
-    count === 0 || maxDayEntryCount === 0 ? 0 : Math.ceil((count / maxDayEntryCount) * 4);
-  const shade =
-    intensity === 0
-      ? "bg-paper"
-      : intensity === 1
-        ? "bg-brass-soft"
-        : intensity === 2
-          ? "bg-brass/40"
-          : intensity === 3
-            ? "bg-brass/70"
-            : "bg-brass";
+  const shade = HEAT_SHADES[calendarHeatLevel(count, maxDayEntryCount)];
 
   // The tooltip carries what the cell is too small to print: the date and every
-  // title on it, full length. This is the year view's answer to "hover shows the
-  // complete title".
+  // title on it, full length, with the same pinned/locked marks the month cells
+  // draw as glyphs. This is the year view's answer to "hover shows the complete
+  // title".
   const hint =
     count === 0
       ? day.date
-      : `${day.date}\n${day.entries.map((entry) => (entry.time === "" ? entry.title : `${entry.time.slice(0, 5)} ${entry.title}`)).join("\n")}`;
+      : `${day.date}\n${day.entries
+          .map(
+            (entry) =>
+              `${entry.isPinned ? "📌 " : ""}${entry.isLocked ? "🔒 " : ""}` +
+              (entry.time === "" ? entry.title : `${entry.time.slice(0, 5)} ${entry.title}`),
+          )
+          .join("\n")}`;
 
   return (
     <button

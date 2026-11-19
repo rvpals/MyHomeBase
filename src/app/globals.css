@@ -4851,6 +4851,14 @@ html[data-shell="tree"][data-viewport="compact"] .nav-progress-track {
   --clip-tint-hue: #475569;
 }
 
+/* The Journal Calendar's entry dot: the same hue keys at full strength, because a
+   6px dot mixed down to 14% would vanish. Paired with a `.clip-tint-<key>` class,
+   which only sets `--clip-tint-hue`. The fallback is the theme accent — the dot an
+   entry with no coloured category draws. See migration 0172. */
+.tint-dot {
+  background-color: var(--clip-tint-hue, var(--brass));
+}
+
 /* ==========================================================================
    Glass theme (id "glass", set on <html> by layout.tsx as data-color-theme).
    The theme row stores opaque hex fallbacks; the translucent values live here

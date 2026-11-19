@@ -1,5 +1,37 @@
 # Change History
 
+## 2026-11-19 11:47 — Journal Calendar: calmer grid, category colour dots, 5 Weeks, Display mode, hover controls, legend, pin/lock marks
+
+**One migration (0172), no new npm package, no paid service.** Apply `migrations/0172_add_color_to_journal_categories.sql` on the NAS (`node --env-file-if-exists=.env migrate.cjs`) and **republish**; without it the Calendar and Categories screens fail with "no such column: color".
+
+**What was checked: nothing, in this session.** No typecheck, lint, library-boundary check, test, migration dry-run or browser run was done, and none of it has been seen on screen. The new tests (`calendar.test.ts`, `tint.test.ts` and the "category colours" block in `journal.test.ts`) were written but **not run**. **Treat all of it as untested** and work through the Testing List section. Riskiest first: the repository change (every category read now selects `color`), the Clips colour picker (moved, not restyled), and Display mode.
+
+### A. Journal Calendar (`journal-calendar-view.tsx`)
+- **Calmer look.** Cell borders and row stripes are gone; days are separated by spacing. Day numbers are large and light, and today is a bigger filled circle (36px, 28px on a phone).
+- **Dots.** Each title starts with a dot in the colour of the entry's first coloured category (in the entry's own category order), or the theme accent if none has one.
+- **5 Weeks.** A new range between Week and Month: the anchor's week plus four more. ‹ › slide one week at a time, and the 1st of each month shows the month's short name in place of "1". URL value `?scope=weeks` (permanent).
+- **Display.** A desktop-only **⛶ Display** button puts the grid on `FullscreenStage`: bigger type, up to 5 titles a day, no toolbar, `router.refresh()` every 15 minutes, Esc to leave. Read-only on the stage, because the entry viewer, day panel and photo dialog render outside the fullscreened element.
+- **Hover controls (desktop).** The photo button now shows only on hover or focus (or on the open day); a **+** beside it starts a new entry dated to that day. Phones keep the photo button always visible and have no +.
+- **Year legend.** "Less ▢▢▢▢▢ More · Busiest day: N entries". The shade level comes from `calendarHeatLevel` in the library, so the squares and the legend share one rule.
+- **Markers.** A pushpin before pinned titles and a padlock before locked ones; the year view's tooltips use 📌/🔒.
+
+### B. Category colours (migration 0172)
+- `jrn_categories.color TEXT NOT NULL DEFAULT ''` holds a tint **key**, never a hex (design.md → *Tinted surfaces*). Existing categories start uncoloured.
+- Set in **Categories → Edit** with a swatch row that saves as soon as you click (`setJournalCategoryColorAction`, guarded by `requireModuleAccess("journal")`), or from the terminal: `journal-taxonomy category --set-color Travel --to ocean` (`--to none` clears).
+- **Library:** `setCategoryColor` and `categoryColorMap` in `journal.ts`; `setCategoryColor` on the repository port; `color` on `JournalCategory` (optional); `setCategoryColorSchema`. Tags carry no colour.
+
+### C. Shared palette and `TintPicker`
+- The six keys moved from `src/lib/clips/schema.ts` to **`src/lib/shared/tint.ts`**; Clips re-exports them under the old names, so stored clip colours are unchanged.
+- Clips' `ClipsColorPicker` became the registered **`TintPicker`** (`src/components/tint-picker.tsx`); the Clips editor and board switched over and the old file is deleted. `components.md` has the entry.
+
+### D. Library and command line
+- `calendar.ts`: `weeks` scope, `buildRollingGrid`, `ROLLING_WEEK_COUNT`, `monthLabel` on a day, `color`/`isPinned`/`isLocked` on an entry label, `calendarHeatLevel`, `CALENDAR_CELL_TITLE_LIMIT_DISPLAY`. The week heading now handles a week that crosses a new year.
+- CLI: `journal-calendar --scope weeks`, and `journal-taxonomy … --set-color`.
+- **Docs:** `modules.md` (Journal → Calendar), `MyHomeBase_feature.md`, `components.md`.
+
+### Not done
+Metadata export/import does not carry category colours, merging categories does not carry a colour over, and the Categories list rows do not show the colour (only the Edit dialog does).
+
 ## 2026-11-18 21:58 — Games: Word Wizard, a crossword tile game against a bot or pass-and-play
 
 **No migration, no new npm package, no paid service.** A **republish is required**, and it must include the new static file `public/games/word-wizard-words.txt` (1.6 MB).

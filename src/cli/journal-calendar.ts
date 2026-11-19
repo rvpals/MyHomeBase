@@ -1,5 +1,6 @@
 import {
   buildMonthGrid,
+  buildRollingGrid,
   buildWeekGrid,
   buildYearGrid,
   findAdjacentEntryDate,
@@ -24,6 +25,7 @@ import { parseFlags } from "./parse-flags";
  *
  *   journal-calendar
  *   journal-calendar --scope week
+ *   journal-calendar --scope weeks        (the rolling 5-week view)
  *   journal-calendar --scope year --date 2025-01-01
  *   journal-calendar --date 08/21/2026 --format MM/DD/YYYY
  *   journal-calendar --date 2026-08-21 --day
@@ -46,7 +48,7 @@ export async function journalCalendarCommand(args: string[]): Promise<void> {
 
   const rawScope = flags.scope ?? "month";
   if (!isJournalCalendarScope(rawScope)) {
-    console.error(`Unknown --scope "${rawScope}". Use month, week, or year.`);
+    console.error(`Unknown --scope "${rawScope}". Use month, week, weeks, or year.`);
     process.exitCode = 1;
     return;
   }
@@ -113,7 +115,9 @@ export async function journalCalendarCommand(args: string[]): Promise<void> {
     const grid =
       scope === "week"
         ? buildWeekGrid({ anchor, entries, today, selectedDate })
-        : buildMonthGrid({ anchor, entries, today, selectedDate });
+        : scope === "weeks"
+          ? buildRollingGrid({ anchor, entries, today, selectedDate })
+          : buildMonthGrid({ anchor, entries, today, selectedDate });
     console.log(`${grid.title} — ${grid.entryCount} entries`);
     console.log("");
     printWeeks(grid.weeks);

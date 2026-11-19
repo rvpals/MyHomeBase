@@ -8,18 +8,21 @@ import { decryptText, encryptText } from "@/lib/shared/encryption";
 import { isSafeGeneratedIconSvg } from "./generated-icons";
 import { fetchIconSvg } from "./icon-fetch";
 import type { JournalRepository } from "./ports";
+import type { TintColor } from "@/lib/shared/tint";
 import {
   MAX_JOURNAL_ICON_BYTES,
   createEntrySchema,
   journalFilterSchema,
   saveJournalFilterSchema,
   updateEntrySchema,
+  setCategoryColorSchema,
   upsertCategorySchema,
   upsertTagSchema,
 } from "./schema";
 import type {
   CreateEntryInput,
   SaveJournalFilterInput,
+  SetCategoryColorInput,
   UpdateEntryInput,
   UpsertCategoryInput,
   UpsertTagInput,
@@ -784,6 +787,32 @@ export function setCategoryIcon(
 ): void {
   if (!repo.getCategoryByName(name)) throw new Error(`No category named "${name}".`);
   repo.setCategoryIcon(name, decodeImageUpload(input, MAX_JOURNAL_ICON_BYTES));
+}
+
+/**
+ * Sets the colour a category's entries wear on the Calendar screen — a tint key,
+ * or `""` to clear it. Same rule as the icon: the category must already exist,
+ * so a typo in the CLI can't create one.
+ */
+export function setCategoryColor(repo: JournalRepository, input: SetCategoryColorInput): void {
+  const { name, color } = setCategoryColorSchema.parse(input);
+  if (!repo.getCategoryByName(name)) throw new Error(`No category named "${name}".`);
+  repo.setCategoryColor(name, color);
+}
+
+/**
+ * Category name → its tint key, for every category that has one. The Calendar
+ * reads this to colour each entry's dot; categories with no colour are left out
+ * rather than mapped to "", so a lookup miss means "use the default".
+ */
+export function categoryColorMap(
+  categories: readonly JournalCategory[],
+): Record<string, TintColor> {
+  const map: Record<string, TintColor> = {};
+  for (const category of categories) {
+    if (category.color !== undefined) map[category.name] = category.color;
+  }
+  return map;
 }
 
 /** Removes a category's icon, leaving the category itself untouched. */

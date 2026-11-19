@@ -1,0 +1,20 @@
+-- Give a journal category a colour, for the dots on the Calendar screen.
+--
+-- The calendar marks each title in a day cell with a small dot. The dot takes the
+-- colour of the entry's first coloured category, so a reader can tell "Travel"
+-- from "Kids" across a month without reading a word.
+--
+-- The column holds a KEY from the shared tint palette (`src/lib/shared/tint.ts`:
+-- rose, amber, sage, ocean, indigo, slate), never a hex value — design.md →
+-- "Tinted surfaces": store a key, mix the hue in at render, so the colour stays
+-- legible in every theme. The same six keys Clips already stores in
+-- `clp_clips.card_color` (migration 0155).
+--
+-- `TEXT NOT NULL DEFAULT ''`, where '' means "no colour" and the dot falls back
+-- to the theme accent. One kind of nothing, as every other blank-means-unset
+-- column in this schema.
+--
+-- No CHECK constraint on the key set: the palette is validated by the zod schema
+-- at the boundary, and a CHECK would turn adding a seventh swatch into a table
+-- rebuild. An unknown key read back renders as the default dot, never an error.
+ALTER TABLE jrn_categories ADD COLUMN color TEXT NOT NULL DEFAULT '';

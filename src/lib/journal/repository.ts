@@ -15,6 +15,7 @@ import {
   journalTagSchema,
 } from "./schema";
 import type { DecodedImage } from "@/lib/shared/image-upload";
+import { toTintColor, type TintColor } from "@/lib/shared/tint";
 import { displayTitle } from "@/lib/shared/encryption";
 import type { JournalBodyScope } from "./body-length";
 import { buildEntriesSql, describeEntriesSql } from "./entries-sql";
@@ -121,6 +122,11 @@ interface TaxonomyRow {
   updated_at: string;
 }
 
+/** A category row also carries its colour (migration 0172); a tag row doesn't. */
+interface CategoryRow extends TaxonomyRow {
+  color: string;
+}
+
 // Spelled out rather than SELECT *, so adding a column later can't silently
 // widen every read of this table.
 const PREFILL_TEMPLATE_COLUMNS =
@@ -192,6 +198,8 @@ function savedFilterToDomain(row: SavedFilterRow): SavedJournalFilter {
 // icon bytes never ride along with a list or a page render. Only
 // getCategoryIcon/setCategoryIcon (and the tag equivalents) touch that column.
 const TAXONOMY_COLUMNS = "name, description, icon_image_mime_type, created_at, updated_at";
+/** Categories add `color` (migration 0172). Tags have no such column. */
+const CATEGORY_COLUMNS = `${TAXONOMY_COLUMNS}, color`;
 
 function locationToDomain(row: LocationRow): EntryLocation {
   return entryLocationSchema.parse({
@@ -206,11 +214,15 @@ function locationToDomain(row: LocationRow): EntryLocation {
   });
 }
 
-function categoryToDomain(row: TaxonomyRow): JournalCategory {
+function categoryToDomain(row: CategoryRow): JournalCategory {
+  // An unknown stored key (a palette entry since removed) reads as no colour
+  // rather than failing the parse and taking the whole category list with it.
+  const color = toTintColor(row.color);
   return journalCategorySchema.parse({
     name: row.name,
     description: row.description,
     iconMimeType: row.icon_image_mime_type ?? undefined,
+    color: color === "" ? undefined : color,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   });
@@ -784,16 +796,20 @@ export class SqliteJournalRepository implements JournalRepository {
 
   listCategories(): JournalCategory[] {
     const rows = this.db
-      .prepare(`SELECT ${TAXONOMY_COLUMNS} FROM jrn_categories ORDER BY name ASC`)
-      .all() as TaxonomyRow[];
+      .prepare(`SELECT ${CATEGORY_COLUMNS} FROM jrn_categories ORDER BY name ASC`)
+      .all() as CategoryRow[];
     return rows.map(categoryToDomain);
   }
 
   getCategoryByName(name: string): JournalCategory | undefined {
     const row = this.db
-      .prepare(`SELECT ${TAXONOMY_COLUMNS} FROM jrn_categories WHERE name = ?`)
-      .get(name) as TaxonomyRow | undefined;
+      .prepare(`SELECT ${CATEGORY_COLUMNS} FROM jrn_categories WHERE name = ?`)
+      .get(name) as CategoryRow | undefined;
     return row ? categoryToDomain(row) : undefined;
+  }
+
+  setCategoryColor(name: string, color: TintColor | ""): void {
+    this.db.prepare("UPDATE jrn_categories SET color = ? WHERE name = ?").run(color, name);
   }
 
   getCategoryIcon(name: string): JournalTaxonomyIcon | undefined {

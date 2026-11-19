@@ -147,6 +147,7 @@ pattern instead of inventing one.
 | [`AppVersionWatch`](#appversionwatch) | Prompts a stale installed PWA to reload after a deploy — mount in the layout | [src/components/app-version-watch.tsx](src/components/app-version-watch.tsx) | yes |
 | [`AudioSpectrum`](#audiospectrum) | **Audio visualizer** — frequency bars or a waveform, driven by an analyser | [src/components/audio-spectrum.tsx](src/components/audio-spectrum.tsx) | yes |
 | [`UtcTime`](#utctime) | **A stored UTC timestamp plus the reader's local time** — `2026-08-16 14:48:00 UTC (10:48 AM EDT)` | [src/components/utc-time.tsx](src/components/utc-time.tsx) | yes |
+| [`TintPicker`](#tintpicker) | **Pick a record colour** — Default plus the six shared tint swatches (Clips cards, Journal categories) | [src/components/tint-picker.tsx](src/components/tint-picker.tsx) | yes |
 
 Small helpers that are not full components: [see below](#unregistered-helpers).
 
@@ -6622,3 +6623,38 @@ Three things about it:
   that a full-page opacity reads as nothing; see migration 0130. It always tiles,
   for the same reason.
 
+
+## TintPicker
+
+**Source:** [src/components/tint-picker.tsx](src/components/tint-picker.tsx)
+
+A row of round swatches: **Default**, then the shared tint palette from
+[`@/lib/shared/tint`](src/lib/shared/tint.ts) — rose, amber, sage, ocean, indigo, slate.
+Raises the chosen key; it never saves anything itself.
+
+```tsx
+import { TintPicker } from "@/components/tint-picker";
+
+<TintPicker value={color} onChange={setColor} ariaLabel="Category colour" />
+```
+
+| Prop | Type | Notes |
+|---|---|---|
+| `value` | `TintColor \| ""` | The current key; `""` is Default. |
+| `onChange` | `(color: TintColor \| "") => void` | Typed as the union so an arbitrary string can't reach an action. |
+| `ariaLabel` | `string` | Names the radio group, e.g. "Card colour". |
+| `disabled?` | `boolean` | Greys every swatch while a save runs. |
+| `className?` | `string` | Merged last. |
+
+**Used by:** the Clips editor and the Clips board's recolour card
+([clips-editor.tsx](src/app/(protected)/modules/[slug]/clips-editor.tsx),
+[clips-main-view.tsx](src/app/(protected)/modules/[slug]/clips-main-view.tsx)), and
+Journal → Categories → Edit
+([journal-taxonomy-view.tsx](src/app/(protected)/modules/[slug]/journal-taxonomy-view.tsx)).
+
+**Notes:** a key is stored, never a hex — design.md → *Tinted surfaces*. The swatches use
+the `clip-tint-*` classes in `globals.css`; that name predates the palette being shared
+and is kept so stored Clips colours render unchanged. Adding a palette key means adding
+it to `TINT_COLORS`, a `.clip-tint-<key>` hue class, and this component's two tables
+(the `satisfies` makes the last one a compile error until done). Promoted from Clips'
+`ClipsColorPicker` (migration 0172), which no longer exists.

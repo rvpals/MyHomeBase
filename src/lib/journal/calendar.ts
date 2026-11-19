@@ -13,15 +13,26 @@
 // the wrong cell. `Date.UTC` in, `toISOString().slice(0, 10)` out.
 
 import { ENCRYPTED_TITLE_PLACEHOLDER } from "@/lib/shared/encryption";
+import type { TintColor } from "@/lib/shared/tint";
 
-/** Which of the three grids the screen is showing. */
-export type JournalCalendarScope = "month" | "week" | "year";
+/**
+ * Which grid the screen is showing. `weeks` is the rolling "5 Weeks" view: the
+ * anchor's week plus the four after it, ignoring month boundaries — the shape of
+ * a wall calendar that always starts at "now".
+ *
+ * These strings are written into URLs (`?scope=`), so they are permanent.
+ */
+export type JournalCalendarScope = "month" | "week" | "weeks" | "year";
 
 export const JOURNAL_CALENDAR_SCOPES: readonly JournalCalendarScope[] = [
   "month",
   "week",
+  "weeks",
   "year",
 ] as const;
+
+/** How many week rows the rolling `weeks` scope shows. */
+export const ROLLING_WEEK_COUNT = 5;
 
 export function isJournalCalendarScope(value: string): value is JournalCalendarScope {
   return (JOURNAL_CALENDAR_SCOPES as readonly string[]).includes(value);
@@ -55,6 +66,9 @@ export const CALENDAR_CELL_TITLE_LIMIT = 3;
 /** Same, below 1024px, where a cell has room for one line. */
 export const CALENDAR_CELL_TITLE_LIMIT_COMPACT = 1;
 
+/** Same, on the fullscreen Display stage, where a cell is a sixth of a screen. */
+export const CALENDAR_CELL_TITLE_LIMIT_DISPLAY = 5;
+
 /**
  * One entry as a calendar cell shows it: the elided label for the cell, and the
  * full title for the tooltip. Carries the id so a click can open the viewer.
@@ -70,6 +84,15 @@ export interface CalendarEntryLabel {
   /** Whether shortTitle is actually shorter than title — the view uses this to
    *  decide whether a tooltip adds anything. */
   isTruncated: boolean;
+  /** Pinned to the top of the entry list — the cell marks it with a pushpin. */
+  isPinned: boolean;
+  /** Locked against edits — the cell marks it with a padlock. */
+  isLocked: boolean;
+  /**
+   * The dot's colour: the tint of the entry's first category (in the entry's own
+   * order) that has one, or `""` for the default accent dot.
+   */
+  color: TintColor | "";
 }
 
 /** One day cell in any of the three grids. */
@@ -80,6 +103,12 @@ export interface CalendarDay {
   dayOfMonth: number;
   /** 0 (Sunday) – 6 (Saturday). */
   dayOfWeek: number;
+  /**
+   * "Nov" on the 1st of a month, otherwise undefined. The rolling 5-week view
+   * draws it in place of the "1" so the reader sees where a new month starts
+   * without a heading row; the other grids ignore it.
+   */
+  monthLabel?: string;
   /**
    * False for the leading/trailing days a month grid borrows from its
    * neighbours, so the view can dim them. Always true in a week grid.
@@ -110,9 +139,9 @@ export interface CalendarMonth {
   entryCount: number;
 }
 
-/** What the Month and Week scopes render. */
+/** What the Month, Week and 5 Weeks scopes render. */
 export interface CalendarGrid {
-  scope: "month" | "week";
+  scope: "month" | "week" | "weeks";
   /** The anchor's own month/year, for the heading. */
   title: string;
   weeks: CalendarWeek[];
@@ -151,6 +180,34 @@ export interface CalendarEntryLike {
    * entry written before the migration is.
    */
   isEncrypted?: boolean;
+  /** Optional for the same reason; absent reads as "not pinned" / "not locked". */
+  isPinned?: boolean;
+  isLocked?: boolean;
+  /** In the entry's own order — the first one with a colour colours the dot. */
+  categories?: readonly string[];
+}
+
+/** Category name → tint key, from `categoryColorMap`. Missing = no colour. */
+export type CalendarCategoryColors = Readonly<Record<string, TintColor>>;
+
+/**
+ * How many shades of brass the year view uses above "empty". The legend draws
+ * one swatch per level, 0 through this, so it can't drift from the cells.
+ */
+export const CALENDAR_HEAT_LEVELS = 4;
+
+/**
+ * A day's shade in the year view: 0 for no entries, otherwise 1–CALENDAR_HEAT_LEVELS
+ * scaled against the busiest day of the year. Scaled rather than fixed because a
+ * fixed scale washes out a quiet year and saturates a busy one. Rounds up, so any
+ * day with an entry is at least level 1 and never reads as empty.
+ */
+export function calendarHeatLevel(count: number, maxDayEntryCount: number): number {
+  if (count <= 0 || maxDayEntryCount <= 0) return 0;
+  return Math.min(
+    CALENDAR_HEAT_LEVELS,
+    Math.ceil((count / maxDayEntryCount) * CALENDAR_HEAT_LEVELS),
+  );
 }
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -241,6 +298,11 @@ export function journalCalendarRange(scope: JournalCalendarScope, anchor: string
     return { start, end: addDays(start, DAYS_IN_WEEK - 1) };
   }
 
+  if (scope === "weeks") {
+    const start = startOfWeek(anchor);
+    return { start, end: addDays(start, ROLLING_WEEK_COUNT * DAYS_IN_WEEK - 1) };
+  }
+
   if (scope === "year") {
     const { year } = parseIsoParts(anchor, "journalCalendarRange");
     // A year's 12 grids pad into the previous December and the next January.
@@ -262,7 +324,10 @@ export function journalCalendarRange(scope: JournalCalendarScope, anchor: string
  * per row, which reads as ragged in a narrow column. An untitled entry gets a
  * placeholder rather than an empty row you can't click with confidence.
  */
-export function calendarEntryLabel(entry: CalendarEntryLike): CalendarEntryLabel {
+export function calendarEntryLabel(
+  entry: CalendarEntryLike,
+  categoryColors: CalendarCategoryColors = {},
+): CalendarEntryLabel {
   const title = entry.title.trim();
   // An encrypted entry still occupies its day and still has to be clickable, so
   // it gets a placeholder rather than being hidden — the cell says the entry is
@@ -281,7 +346,26 @@ export function calendarEntryLabel(entry: CalendarEntryLike): CalendarEntryLabel
     // most and every truncated row cuts at the same column.
     shortTitle: isTruncated ? `${display.slice(0, CALENDAR_TITLE_MAX_LENGTH)}…` : display,
     isTruncated,
+    isPinned: entry.isPinned === true,
+    isLocked: entry.isLocked === true,
+    color: entryDotColor(entry.categories ?? [], categoryColors),
   };
+}
+
+/**
+ * The first of `categories` (in the entry's own order) that has a colour, or
+ * `""`. The entry's order rather than alphabetical, so the category the writer
+ * put first — usually the one they think of it as — wins.
+ */
+function entryDotColor(
+  categories: readonly string[],
+  categoryColors: CalendarCategoryColors,
+): TintColor | "" {
+  for (const name of categories) {
+    const color = categoryColors[name];
+    if (color !== undefined) return color;
+  }
+  return "";
 }
 
 /**
@@ -291,6 +375,7 @@ export function calendarEntryLabel(entry: CalendarEntryLike): CalendarEntryLabel
  */
 export function groupEntriesByDate(
   entries: readonly CalendarEntryLike[],
+  categoryColors: CalendarCategoryColors = {},
 ): Map<string, CalendarEntryLabel[]> {
   const byDate = new Map<string, CalendarEntryLike[]>();
   for (const entry of entries) {
@@ -309,7 +394,10 @@ export function groupEntriesByDate(
       if (bTime === "") return -1;
       return aTime === bTime ? a.id - b.id : aTime.localeCompare(bTime);
     });
-    labelled.set(date, sorted.map(calendarEntryLabel));
+    labelled.set(
+      date,
+      sorted.map((entry) => calendarEntryLabel(entry, categoryColors)),
+    );
   }
   return labelled;
 }
@@ -329,6 +417,7 @@ function buildDay(
     date,
     dayOfMonth: day,
     dayOfWeek: dayOfWeek(date),
+    monthLabel: day === 1 ? MONTH_LABELS[month - 1].slice(0, 3) : undefined,
     isCurrentPeriod: options.currentMonth === undefined || month === options.currentMonth,
     isToday: date === options.today,
     isSelected: options.selectedDate !== undefined && date === options.selectedDate,
@@ -380,6 +469,8 @@ export interface BuildGridOptions {
   today: string;
   /** The clicked day, if any. */
   selectedDate?: string;
+  /** Category → tint, for the entry dots. Omit for all-default dots. */
+  categoryColors?: CalendarCategoryColors;
 }
 
 /**
@@ -392,9 +483,10 @@ export function buildMonthGrid({
   entries,
   today,
   selectedDate,
+  categoryColors,
 }: BuildGridOptions): CalendarGrid {
   const { year, month } = parseIsoParts(anchor, "buildMonthGrid");
-  const byDate = groupEntriesByDate(entries);
+  const byDate = groupEntriesByDate(entries, categoryColors);
   const weeks = buildWeeks(startOfWeek(startOfMonth(anchor)), WEEKS_IN_MONTH_GRID, {
     currentMonth: month,
     today,
@@ -418,22 +510,47 @@ export function buildWeekGrid({
   entries,
   today,
   selectedDate,
+  categoryColors,
 }: BuildGridOptions): CalendarGrid {
-  const byDate = groupEntriesByDate(entries);
+  const byDate = groupEntriesByDate(entries, categoryColors);
   const start = startOfWeek(anchor);
   const weeks = buildWeeks(start, 1, { today, selectedDate, byDate });
-  const end = addDays(start, DAYS_IN_WEEK - 1);
-  const startParts = parseIsoParts(start, "buildWeekGrid");
-  const endParts = parseIsoParts(end, "buildWeekGrid");
-  // "Mar 29 – Apr 4, 2026" when the week straddles two months, and the shorter
-  // "Apr 5 – 11, 2026" when it doesn't.
-  const title =
-    startParts.month === endParts.month
-      ? `${MONTH_LABELS[startParts.month - 1]} ${startParts.day} – ${endParts.day}, ${endParts.year}`
-      : `${MONTH_LABELS[startParts.month - 1].slice(0, 3)} ${startParts.day} – ` +
+  const title = spanTitle(start, addDays(start, DAYS_IN_WEEK - 1));
+  return { scope: "week", title, weeks, entryCount: countEntries(weeks) };
+}
+
+/**
+ * The rolling "5 Weeks" grid: the anchor's week and the four after it, with no
+ * month padding — every day is "current", so nothing is dimmed, and the 1st of
+ * each month carries a `monthLabel` the view draws in place of the number.
+ */
+export function buildRollingGrid({
+  anchor,
+  entries,
+  today,
+  selectedDate,
+  categoryColors,
+}: BuildGridOptions): CalendarGrid {
+  const byDate = groupEntriesByDate(entries, categoryColors);
+  const start = startOfWeek(anchor);
+  const weeks = buildWeeks(start, ROLLING_WEEK_COUNT, { today, selectedDate, byDate });
+  const title = spanTitle(start, addDays(start, ROLLING_WEEK_COUNT * DAYS_IN_WEEK - 1));
+  return { scope: "weeks", title, weeks, entryCount: countEntries(weeks) };
+}
+
+/**
+ * A heading for a date span: "Mar 29 – Apr 4, 2026" when it straddles two months,
+ * the shorter "April 5 – 11, 2026" when it doesn't, and "(from 2025)" when it
+ * crosses a new year.
+ */
+function spanTitle(start: string, end: string): string {
+  const startParts = parseIsoParts(start, "spanTitle");
+  const endParts = parseIsoParts(end, "spanTitle");
+  return startParts.month === endParts.month && startParts.year === endParts.year
+    ? `${MONTH_LABELS[startParts.month - 1]} ${startParts.day} – ${endParts.day}, ${endParts.year}`
+    : `${MONTH_LABELS[startParts.month - 1].slice(0, 3)} ${startParts.day} – ` +
         `${MONTH_LABELS[endParts.month - 1].slice(0, 3)} ${endParts.day}, ${endParts.year}` +
         (startParts.year === endParts.year ? "" : ` (from ${startParts.year})`);
-  return { scope: "week", title, weeks, entryCount: countEntries(weeks) };
 }
 
 /**
@@ -446,9 +563,10 @@ export function buildYearGrid({
   entries,
   today,
   selectedDate,
+  categoryColors,
 }: BuildGridOptions): CalendarYearGrid {
   const { year } = parseIsoParts(anchor, "buildYearGrid");
-  const byDate = groupEntriesByDate(entries);
+  const byDate = groupEntriesByDate(entries, categoryColors);
 
   const months: CalendarMonth[] = [];
   for (let month = 1; month <= 12; month += 1) {
@@ -485,7 +603,7 @@ export function buildYearGrid({
 
 /**
  * The anchor moved `delta` periods, in the units of the current scope: months,
- * weeks, or years. `delta` 0 returns the anchor unchanged.
+ * weeks (for both Week and 5 Weeks), or years. `delta` 0 returns the anchor unchanged.
  *
  * Month and year steps clamp the day rather than rolling over — stepping from
  * Jan 31 lands on Feb 28, not Mar 3. Rolling over would let ‹ then › fail to
@@ -502,7 +620,9 @@ export function shiftCalendarAnchor(
   }
   if (delta === 0) return anchor;
 
-  if (scope === "week") return addDays(anchor, delta * DAYS_IN_WEEK);
+  // The rolling view steps one week at a time too, not five: it is a window that
+  // slides, so ‹ › nudge it along rather than jumping to an unrelated block.
+  if (scope === "week" || scope === "weeks") return addDays(anchor, delta * DAYS_IN_WEEK);
 
   const targetMonth = scope === "year" ? month : month + delta;
   const targetYear = scope === "year" ? year + delta : year;

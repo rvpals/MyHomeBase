@@ -26,7 +26,7 @@ import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-swit
 import type { ClipCardColor, ClipItem, ClipSummary, ClipTaxonomyItem } from "@/lib/clips";
 import { ClipsBoardView } from "./clips-board-view";
 import { ClipsCard } from "./clips-card";
-import { ClipsColorPicker } from "./clips-color-picker";
+import { TintPicker } from "@/components/tint-picker";
 import { ClipsEditor } from "./clips-editor";
 import { ClipsViewer } from "./clips-viewer";
 import {
@@ -273,7 +273,8 @@ export function ClipsMainView({
 
       {recolouringClip && (
         <CollapsibleCard title={`Colour — ${recolouringClip.title || "(untitled)"}`} defaultOpen>
-          <ClipsColorPicker
+          <TintPicker
+            ariaLabel="Card colour"
             value={recolouringClip.color}
             onChange={(color) => void handleRecolour(recolouringClip.id, color)}
           />

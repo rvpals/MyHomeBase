@@ -59,6 +59,8 @@ import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
 import { Tabs } from "@/components/tabs";
 import { TreeIcon } from "@/components/tree-icons";
+import { TintPicker, type TintChoice } from "@/components/tint-picker";
+import type { TintColor } from "@/lib/shared/tint";
 import {
   JOURNAL_IMAGE_MIME_TYPES,
   MAX_JOURNAL_ICON_BYTES,
@@ -84,6 +86,7 @@ import {
   saveJournalCategoryIconAction,
   saveJournalTagAction,
   saveJournalTagIconAction,
+  setJournalCategoryColorAction,
 } from "./journal-actions";
 import {
   TaxonomyIconThumbnail,
@@ -99,6 +102,8 @@ interface TaxonomyItem {
   name: string;
   description: string;
   iconMimeType?: string;
+  /** Categories only (migration 0172); a tag never has one. */
+  color?: TintColor;
 }
 
 type Kind = "category" | "tag";
@@ -167,8 +172,32 @@ function EditTaxonomyModal({
 }) {
   const router = useRouter();
   const [description, setDescription] = useState(item.description);
+  /**
+   * Held locally so the ring moves on the click rather than after the refresh;
+   * the swatch saves straight away, like the icon, rather than waiting for the
+   * footer's "Save description".
+   */
+  const [color, setColor] = useState<TintChoice>(item.color ?? "");
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+
+  async function handleColor(next: TintChoice) {
+    setError(undefined);
+    const previous = color;
+    setColor(next);
+    setIsBusy(true);
+    try {
+      const result = await setJournalCategoryColorAction({ name: item.name, color: next });
+      if (!result.ok) {
+        setColor(previous);
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
   const saveAction = kind === "category" ? saveJournalCategoryAction : saveJournalTagAction;
   const saveIconAction = kind === "category" ? saveJournalCategoryIconAction : saveJournalTagIconAction;
@@ -264,6 +293,22 @@ function EditTaxonomyModal({
             className={INPUT_CLASS}
           />
         </label>
+
+        {kind === "category" && (
+          <div>
+            <span className="mb-1 block text-sm font-medium text-ink">Colour</span>
+            <TintPicker
+              value={color}
+              onChange={(next) => void handleColor(next)}
+              ariaLabel="Category colour"
+              disabled={isBusy}
+            />
+            <p className="mt-1 text-xs text-muted">
+              Colours the dot before this category&apos;s entries on the Calendar. Saved as
+              soon as you pick.
+            </p>
+          </div>
+        )}
 
         <div>
           <span className="mb-1 block text-sm font-medium text-ink">Icon</span>

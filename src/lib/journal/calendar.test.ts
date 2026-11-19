@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  CALENDAR_HEAT_LEVELS,
   CALENDAR_TITLE_MAX_LENGTH,
+  calendarHeatLevel,
+  ROLLING_WEEK_COUNT,
   buildMonthGrid,
+  buildRollingGrid,
   buildWeekGrid,
   buildYearGrid,
   calendarEntryLabel,
@@ -114,6 +118,47 @@ describe("calendarEntryLabel", () => {
     expect(label.shortTitle).toBe("(untitled)");
     expect(label.title).toBe("(untitled)");
   });
+
+  it("carries the pinned and locked flags through to the label", () => {
+    const label = calendarEntryLabel({ ...entry(1, TODAY), isPinned: true, isLocked: true });
+    expect(label.isPinned).toBe(true);
+    expect(label.isLocked).toBe(true);
+  });
+
+  it("reads absent pinned/locked flags as false", () => {
+    const label = calendarEntryLabel(entry(1, TODAY));
+    expect(label.isPinned).toBe(false);
+    expect(label.isLocked).toBe(false);
+  });
+});
+
+describe("calendarHeatLevel", () => {
+  it("is 0 for a day with no entries", () => {
+    expect(calendarHeatLevel(0, 5)).toBe(0);
+  });
+
+  it("is 0 when the whole year is empty, rather than dividing by zero", () => {
+    expect(calendarHeatLevel(0, 0)).toBe(0);
+    expect(calendarHeatLevel(3, 0)).toBe(0);
+  });
+
+  it("puts the busiest day at the top level", () => {
+    expect(calendarHeatLevel(7, 7)).toBe(CALENDAR_HEAT_LEVELS);
+  });
+
+  it("rounds up, so a single entry in a busy year is never shaded as empty", () => {
+    expect(calendarHeatLevel(1, 100)).toBe(1);
+  });
+
+  it("scales between the ends", () => {
+    // 2 of 4 → half of 4 levels.
+    expect(calendarHeatLevel(2, 4)).toBe(2);
+    expect(calendarHeatLevel(3, 4)).toBe(3);
+  });
+
+  it("never exceeds the top level for a count above the stated max", () => {
+    expect(calendarHeatLevel(9, 4)).toBe(CALENDAR_HEAT_LEVELS);
+  });
 });
 
 describe("groupEntriesByDate", () => {
@@ -148,6 +193,81 @@ describe("groupEntriesByDate", () => {
       entry(4, "2026-08-21", "Earlier id", "08:00"),
     ]);
     expect(grouped.get("2026-08-21")?.map((label) => label.id)).toEqual([4, 9]);
+  });
+});
+
+describe("entry dot colour", () => {
+  it("takes the first coloured category in the entry's own order", () => {
+    const label = calendarEntryLabel(
+      { ...entry(1, TODAY), categories: ["Work", "Travel", "Kids"] },
+      { Travel: "ocean", Kids: "rose" },
+    );
+    // Work has no colour, so Travel (second) wins over Kids (third).
+    expect(label.color).toBe("ocean");
+  });
+
+  it("is blank when no category has a colour, or there are none", () => {
+    expect(calendarEntryLabel({ ...entry(1, TODAY), categories: ["Work"] }, {}).color).toBe("");
+    expect(calendarEntryLabel(entry(1, TODAY), { Travel: "ocean" }).color).toBe("");
+  });
+
+  it("flows through the grid builders", () => {
+    const grid = buildMonthGrid({
+      anchor: TODAY,
+      entries: [{ ...entry(1, TODAY), categories: ["Travel"] }],
+      today: TODAY,
+      categoryColors: { Travel: "sage" },
+    });
+    const day = grid.weeks.flatMap((week) => week.days).find((d) => d.date === TODAY);
+    expect(day?.entries[0].color).toBe("sage");
+  });
+});
+
+describe("monthLabel", () => {
+  it("names the month on the 1st and nowhere else", () => {
+    const grid = buildMonthGrid({ anchor: "2026-08-10", entries: [], today: TODAY });
+    const days = grid.weeks.flatMap((week) => week.days);
+    expect(days.find((d) => d.date === "2026-08-01")?.monthLabel).toBe("Aug");
+    expect(days.find((d) => d.date === "2026-09-01")?.monthLabel).toBe("Sep");
+    expect(days.find((d) => d.date === "2026-08-02")?.monthLabel).toBeUndefined();
+  });
+});
+
+describe("buildRollingGrid", () => {
+  it("shows the anchor's week and the four after it, starting on Sunday", () => {
+    // 2026-10-14 is a Wednesday; its week starts Sunday the 11th.
+    const grid = buildRollingGrid({ anchor: "2026-10-14", entries: [], today: TODAY });
+    expect(grid.scope).toBe("weeks");
+    expect(grid.weeks).toHaveLength(ROLLING_WEEK_COUNT);
+    const flat = cells(grid.weeks);
+    expect(flat[0]).toBe("2026-10-11");
+    expect(flat.at(-1)).toBe("2026-11-14");
+    expect(grid.title).toBe("Oct 11 – Nov 14, 2026");
+  });
+
+  it("dims nothing, and counts every day's entries, across a month boundary", () => {
+    const grid = buildRollingGrid({
+      anchor: "2026-10-14",
+      entries: [entry(1, "2026-10-20"), entry(2, "2026-11-02")],
+      today: TODAY,
+    });
+    const days = grid.weeks.flatMap((week) => week.days);
+    expect(days.every((day) => day.isCurrentPeriod)).toBe(true);
+    expect(grid.entryCount).toBe(2);
+  });
+
+  it("reads exactly the range journalCalendarRange asks for", () => {
+    const range = journalCalendarRange("weeks", "2026-10-14");
+    expect(range).toEqual({ start: "2026-10-11", end: "2026-11-14" });
+  });
+
+  it("steps one week at a time", () => {
+    expect(shiftCalendarAnchor("weeks", "2026-10-14", 1)).toBe("2026-10-21");
+    expect(shiftCalendarAnchor("weeks", "2026-10-14", -1)).toBe("2026-10-07");
+  });
+
+  it("is a recognised scope", () => {
+    expect(isJournalCalendarScope("weeks")).toBe(true);
   });
 });
 

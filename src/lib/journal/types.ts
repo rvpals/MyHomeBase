@@ -4,6 +4,7 @@
 // The seven theme faces. Imported rather than re-declared so the Content
 // field's font preference cannot drift from the set the app actually loads.
 import type { FontKey } from "@/lib/settings/themes";
+import type { TintColor } from "@/lib/shared/tint";
 
 // Weather is stored as four flattened columns on jrn_entries but modeled here as
 // a single optional object: an entry either has weather or it doesn't.
@@ -174,6 +175,13 @@ export interface JournalCategory {
    * travel with a category list.
    */
   iconMimeType?: string;
+  /**
+   * A key from the shared tint palette (`@/lib/shared/tint`), or absent for "no
+   * colour". Drives the dot before the category's entries on the Calendar
+   * screen. Migration 0172. Optional so code that builds a category by hand
+   * needn't mention it.
+   */
+  color?: TintColor;
   createdAt: string;
   updatedAt: string;
 }

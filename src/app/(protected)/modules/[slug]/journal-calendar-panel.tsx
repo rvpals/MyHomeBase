@@ -10,6 +10,7 @@
 // dates were saved against.
 
 import {
+  categoryColorMap,
   isJournalCalendarScope,
   journalCalendarRange,
   listCategories,
@@ -104,6 +105,7 @@ export async function JournalCalendarPanel({
       categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
       tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
       canSeeExpense={canSeeExpense}
+      categoryColors={categoryColorMap(categories)}
     />
   );
 }

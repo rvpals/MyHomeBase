@@ -158,9 +158,15 @@ The largest module — fifteen sections.
   **Handwriting** (cursive, announced as a toggle) — so neither sits on the text.
 - **Home-screen Top Words** card whose length — 1 to 100 words, ten by default — is a
   Preferences setting, alongside the words you have excluded from it.
-- **Calendar** view with per-day entry lists, Delete (to the recycle bin) from the day
-  list, **jump to the next day that has an entry**, and a **New entry** button that opens
-  the form on the day you are looking at.
+- **Calendar** view in Week, **5 Weeks** (a rolling window that starts at the current
+  week), Month and Year ranges, with per-day entry lists, Delete (to the recycle bin)
+  from the day list, **jump to the next day that has an entry**, and a **New entry**
+  button that opens the form on the day you are looking at. Days are laid out with large
+  light numbers and no grid lines; each title carries a **dot in its category's colour**
+  (set per category in Categories → Edit), and pinned and locked entries are marked. On a
+  wide screen a **+** on each day starts an entry for it, the photo button appears on
+  hover, and **Display** shows the calendar full screen as a self-refreshing wall display.
+  The Year view has a legend for its shading.
 
 ### Entries
 

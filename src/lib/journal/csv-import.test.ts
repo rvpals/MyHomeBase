@@ -200,6 +200,9 @@ function fakeRepo(): JournalRepository {
     setCategoryIcon: () => {
       throw new Error("not used");
     },
+    setCategoryColor: () => {
+      throw new Error("not used");
+    },
     listTags: () => [...tags],
     getTagByName: (name) => tags.find((tag) => tag.name === name),
     upsertTag: () => {

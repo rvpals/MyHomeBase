@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import { IMAGE_UPLOAD_MIME_TYPES } from "@/lib/shared/image-upload";
+import { TINT_COLORS, tintColorSchema, type TintColor } from "@/lib/shared/tint";
 import { CLIP_EXCERPT_LENGTH } from "./sanitize-html";
 
 /** A clip's title. Optional — an untitled clip is a normal thing to jot. */
@@ -52,21 +53,16 @@ export const CLIP_IMAGE_MAX_EDGE = 1600;
  * tokens in `globals.css` — see `Clip.color` for why a stored hex would be wrong in
  * eight themes at once.
  */
-export const CLIP_CARD_COLORS = [
-  "rose",
-  "amber",
-  "sage",
-  "ocean",
-  "indigo",
-  "slate",
-] as const;
+//
+// The list itself now lives in `@/lib/shared/tint` (Journal categories wear the
+// same palette, migration 0172). These names are kept as aliases so nothing in
+// Clips changes.
+export const CLIP_CARD_COLORS = TINT_COLORS;
 
-export type ClipCardColor = (typeof CLIP_CARD_COLORS)[number];
+export type ClipCardColor = TintColor;
 
 /** A card tint, or `""` for the default surface. */
-export const clipCardColorSchema = z
-  .union([z.literal(""), z.enum(CLIP_CARD_COLORS)])
-  .default("");
+export const clipCardColorSchema = tintColorSchema;
 
 /**
  * One checklist line.

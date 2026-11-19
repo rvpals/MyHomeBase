@@ -32,6 +32,8 @@ import {
   listTopCategories,
   listTopTags,
   setCategoryIcon,
+  setCategoryColor,
+  categoryColorMap,
   setLocked,
   setPinned,
   setTagIcon,
@@ -396,6 +398,10 @@ function fakeRepo(recycledCount = 0): JournalRepository {
       else categoryIcons.delete(name);
       const category = categories.find((candidate) => candidate.name === name);
       if (category) category.iconMimeType = icon?.mimeType;
+    },
+    setCategoryColor(name, color) {
+      const category = categories.find((candidate) => candidate.name === name);
+      if (category) category.color = color === "" ? undefined : color;
     },
     listTags() {
       return [...tags];
@@ -1460,6 +1466,43 @@ describe("saved filter management", () => {
     // is the documented cost of free text: renaming is per-filter, and the old
     // label disappears when the last one carrying it moves off.
     expect(listFilterCategories(repo)).toEqual(["VEHICLE"]);
+  });
+});
+
+describe("category colours", () => {
+  it("sets a palette colour on an existing category, and clears it again", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "Travel", description: "" });
+
+    setCategoryColor(repo, { name: "Travel", color: "ocean" });
+    expect(repo.getCategoryByName("Travel")?.color).toBe("ocean");
+
+    setCategoryColor(repo, { name: "Travel", color: "" });
+    expect(repo.getCategoryByName("Travel")?.color).toBeUndefined();
+  });
+
+  it("rejects a colour outside the palette", () => {
+    const repo = fakeRepo();
+    upsertCategory(repo, { name: "Travel", description: "" });
+    expect(() =>
+      setCategoryColor(repo, { name: "Travel", color: "#ff0000" as never }),
+    ).toThrow();
+  });
+
+  it("refuses a colour for a category that doesn't exist", () => {
+    const repo = fakeRepo();
+    expect(() => setCategoryColor(repo, { name: "Nope", color: "rose" })).toThrow(
+      /No category named/,
+    );
+  });
+
+  it("maps only the coloured categories", () => {
+    expect(
+      categoryColorMap([
+        { name: "Travel", description: "", color: "ocean", createdAt: "", updatedAt: "" },
+        { name: "Work", description: "", createdAt: "", updatedAt: "" },
+      ]),
+    ).toEqual({ Travel: "ocean" });
   });
 });
 

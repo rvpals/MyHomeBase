@@ -23,6 +23,7 @@ import type {
 } from "./types";
 import type { JournalBodyScope } from "./body-length";
 import type { DecodedImage } from "@/lib/shared/image-upload";
+import type { TintColor } from "@/lib/shared/tint";
 
 /**
  * The fields that make two journal entries the same entry on import.
@@ -306,6 +307,8 @@ export interface JournalRepository {
   getCategoryIcon(name: string): JournalTaxonomyIcon | undefined;
   /** `undefined` clears the icon, leaving the category itself untouched. */
   setCategoryIcon(name: string, icon: DecodedImage | undefined): void;
+  /** A tint key, or `""` to clear it. Leaves everything else on the category alone. */
+  setCategoryColor(name: string, color: TintColor | ""): void;
 
   // Managed tag list.
   listTags(): JournalTag[];

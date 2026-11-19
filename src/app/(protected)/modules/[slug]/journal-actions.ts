@@ -9,6 +9,8 @@ import { executeReadOnlyQuery } from "@/lib/sql-explorer";
 import { locationTaxonomyIconMap } from "@/app/(protected)/admin/locations/icon-map";
 import { isAdmin } from "@/lib/user";
 import {
+  setCategoryColor,
+  type SetCategoryColorInput,
   clearCategoryIcon,
   clearTagIcon,
   createEncryptedEntry,
@@ -511,6 +513,20 @@ export async function clearJournalCategoryIconAction(name: string): Promise<Acti
     clearCategoryIcon(deps.journalRepo, name);
   } catch (error) {
     return toErrorResult(error, "Failed to remove the category icon.");
+  }
+  revalidatePath(JOURNAL_MODULE_PATH);
+  return { ok: true };
+}
+
+/** The colour a category's entries wear on the Calendar — a tint key, or "" to clear. */
+export async function setJournalCategoryColorAction(
+  input: SetCategoryColorInput,
+): Promise<ActionResult> {
+  await requireModuleAccess(JOURNAL_MODULE_SLUG);
+  try {
+    setCategoryColor(deps.journalRepo, input);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the category colour.");
   }
   revalidatePath(JOURNAL_MODULE_PATH);
   return { ok: true };

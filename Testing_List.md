@@ -146,6 +146,28 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-19 — Release (Journal Calendar redesign)
+
+**Needs migration 0172 applied on the NAS; republish needed.** Nothing here has been run, linted or seen on screen, and the new unit tests were never run. Items 9–11 need a category with a colour set first; item 14 is desktop-only; items 7 and 15 are phone-width; item 16 is worth checking in a light theme and in a themed icon set.
+
+- [ ] **1.** Journal → Calendar (Month): no cell borders or row stripes; day numbers are large and light; today is a bigger filled circle
+- [ ] **2.** Journal → Calendar: the range switch shows Week, 5 Weeks, Month, Year
+- [ ] **3.** 5 Weeks: starts on the Sunday of the current week and shows five rows; ‹ › move it one week; the 1st of each month shows the month's name ("Nov") in place of "1"
+- [ ] **4.** 5 Weeks: reloading with `?scope=weeks` in the URL keeps the range
+- [ ] **5.** Desktop: hovering a day shows a + and the photo button; neither shows on idle days; the open day always shows both
+- [ ] **6.** Desktop: the + opens New entry with that day's date filled in, and pressing Enter on it from the keyboard follows the link instead of selecting the day
+- [ ] **7.** Phone: the photo button is always visible in each day, there is no +, and the four-way range switch fits on one line
+- [ ] **8.** Year: a legend under the 12 months shows Less → More swatches and "Busiest day: N entries"; its darkest swatch matches the busiest day's square
+- [ ] **9.** Categories → Edit on a category: a Colour row of swatches; clicking one saves straight away and the ring moves
+- [ ] **10.** Calendar: an entry in a coloured category gets a dot of that colour before its title; an entry with no coloured category gets the accent dot
+- [ ] **11.** An entry with two categories uses the first one (in its own order) that has a colour
+- [ ] **12.** Categories → Edit on a **tag**: no Colour row
+- [ ] **13.** Pinned entries show a pushpin and locked entries a padlock before the title; the Year view's hover text shows 📌/🔒
+- [ ] **14.** Desktop: ⛶ Display fills the screen with the grid, bigger type, up to 5 titles a day; Esc leaves; clicking a day or title does nothing; the button is not offered on a phone
+- [ ] **15.** Phone: Month still shows one title per day with its dot, and the day number is a readable size
+- [ ] **16.** Clips: the card-colour swatches (new clip, and recolour on the board) look and behave exactly as before; an existing coloured clip is unchanged
+- [ ] **17.** Terminal: `journal-taxonomy category --set-color <name> --to ocean` sets it and the Calendar shows it; `--to none` clears it; `journal-calendar --scope weeks` prints five rows
+
 ## 2026-11-18 — Release (Games: Word Wizard)
 
 **No migration; republish needed**, including `public/games/word-wizard-words.txt`. Nothing here has been run, linted or seen on screen, and the new unit tests were never run. Items 12 and 13 need two or more people; items 15 and 16 are phone-width; item 14 is worth checking in a light theme.

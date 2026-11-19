@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { IMAGE_UPLOAD_MIME_TYPES, imageUploadSchema } from "@/lib/shared/image-upload";
+import { TINT_COLORS, tintColorSchema } from "@/lib/shared/tint";
 import { normalizeEntryTime } from "./time";
 
 // zod is the single source of truth for the shapes crossing every boundary
@@ -242,11 +243,24 @@ export const journalCategorySchema = z.object({
   name: z.string().min(1),
   description: z.string(),
   iconMimeType: z.string().optional(),
+  color: z.enum(TINT_COLORS).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
-export const journalTagSchema = journalCategorySchema;
+/**
+ * Recolouring a category — the Categories screen's swatch row, or the CLI.
+ * `""` clears the colour back to the default dot.
+ */
+export const setCategoryColorSchema = z.object({
+  name: z.string().min(1),
+  color: tintColorSchema,
+});
+
+export type SetCategoryColorInput = z.input<typeof setCategoryColorSchema>;
+
+// Tags keep the colourless shape: only categories carry a colour (migration 0172).
+export const journalTagSchema = journalCategorySchema.omit({ color: true });
 
 export const upsertCategorySchema = z.object({
   name: z.string().min(1),

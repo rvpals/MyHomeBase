@@ -2,10 +2,12 @@ import {
   findUnusedTaxonomy,
   mergeTaxonomy,
   planTaxonomyMerge,
+  setCategoryColor,
   taxonomyInUseAmong,
   taxonomyUsageCounts,
   type TaxonomyUsageKind,
 } from "@/lib/journal";
+import { TINT_COLORS, type TintColor } from "@/lib/shared/tint";
 import { deps } from "@/lib/wiring";
 import { parseFlags } from "./parse-flags";
 
@@ -20,6 +22,8 @@ import { parseFlags } from "./parse-flags";
  *   journal-taxonomy tag --unused --delete
  *   journal-taxonomy category --merge "Trips,Vacation" --into Travel
  *   journal-taxonomy category --merge "Trips,Vacation" --into Travel --apply
+ *   journal-taxonomy category --set-color Travel --to ocean
+ *   journal-taxonomy category --set-color Travel --to none
  *
  * Same use-cases the web buttons call — `findUnusedTaxonomy` for the scan and
  * `deleteCategory`/`deleteTag` for the removal — so the two front-ends cannot
@@ -49,6 +53,11 @@ export function journalTaxonomyCommand(args: string[]): void {
 
   if (flags.merge !== undefined) {
     mergeSelection(kind, flags.merge, flags.into, args.includes("--apply"));
+    return;
+  }
+
+  if (flags["set-color"] !== undefined) {
+    setColor(kind, flags["set-color"], flags.to);
     return;
   }
 
@@ -231,6 +240,38 @@ function mergeSelection(
 }
 
 /**
+ * `--set-color "Travel" --to ocean` — the colour a category's entries wear on the
+ * Calendar. `--to none` clears it. Categories only; tags carry no colour.
+ *
+ * The same `setCategoryColor` use-case, and so the same zod check, as the web
+ * swatch row.
+ */
+function setColor(kind: TaxonomyUsageKind, name: string, rawColor: string | undefined): void {
+  if (kind !== "category") {
+    console.error("Only categories have a colour. Run it as: journal-taxonomy category --set-color …");
+    process.exitCode = 1;
+    return;
+  }
+  if (rawColor === undefined) {
+    console.error(`--set-color needs --to <${TINT_COLORS.join("|")}|none>.`);
+    process.exitCode = 1;
+    return;
+  }
+  const color = rawColor === "none" ? "" : rawColor;
+  try {
+    setCategoryColor(deps.journalRepo, { name, color: color as TintColor | "" });
+    console.log(color === "" ? `Cleared the colour on "${name}".` : `"${name}" is now ${color}.`);
+  } catch (error) {
+    console.error(
+      error instanceof Error && error.message.startsWith("No category")
+        ? error.message
+        : `"${rawColor}" is not a colour. Use one of: ${TINT_COLORS.join(", ")}, or none.`,
+    );
+    process.exitCode = 1;
+  }
+}
+
+/**
  * The bare argument naming the list: "category" or "tag".
  *
  * Skips the token after every `--flag`, because `parseFlags` treats that as the
@@ -254,7 +295,8 @@ function parseKind(args: string[]): TaxonomyUsageKind | undefined {
   console.error(
     `Expected "category" or "tag", got ${bare === undefined ? "nothing" : `"${bare}"`}.` +
       `\nUsage: journal-taxonomy <category|tag> [--unused [--delete]]` +
-      ` [--merge "a,b" --into "New" [--apply]]`,
+      ` [--merge "a,b" --into "New" [--apply]]` +
+      ` [--set-color "Name" --to <colour|none>]`,
   );
   process.exitCode = 1;
   return undefined;

@@ -24,7 +24,7 @@ import {
   type ClipItem,
   type ClipSummary,
 } from "@/lib/clips";
-import { ClipsColorPicker } from "./clips-color-picker";
+import { TintPicker } from "@/components/tint-picker";
 import {
   addClipImageAction,
   createClipAction,
@@ -251,7 +251,7 @@ export function ClipsEditor({
 
       <div>
         <p className="mb-1 text-sm font-medium text-ink">Card colour</p>
-        <ClipsColorPicker value={color} onChange={setColor} />
+        <TintPicker value={color} onChange={setColor} ariaLabel="Card colour" />
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}
