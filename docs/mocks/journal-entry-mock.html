@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JournalEntry mock</title>
+<!--
+  Mock for the proposed `JournalEntry` component: one form for New and Edit,
+  three tabs, and a sticky Save / Close strip. Static HTML — nothing here is
+  wired to the app. Colours are the app's theme tokens (globals.css :root), so
+  it reads the way the real screen would on the default theme.
+
+  The bar above the page ("Mock controls") is not part of the design; it only
+  flips the mode so both can be reviewed.
+-->
+<style>
+  :root {
+    --paper: #12161a;
+    --paper-raised: #1a1f26;
+    --ink: #eef2f3;
+    --line: #2b323b;
+    --muted: #8b96a1;
+    --brass: #33e2b8;
+    --brass-dark: #1c8a71;
+    --brass-soft: #15332d;
+    --danger: #f87171;
+    /* Stand-ins for the shell's real variables. Desktop: no bottom chrome. */
+    --nav-tree-width: 260px;
+    --section-trigger-height: 0px;
+    --music-player-height: 0px;
+  }
+  @media (max-width: 1023.98px) {
+    :root { --nav-tree-width: 0px; --section-trigger-height: 3.5rem; }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  /* ---- mock-only controls ---------------------------------------------- */
+  .mock-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
+    padding: .5rem 1rem; background: #000; color: #bbb; font-size: 12px;
+    border-bottom: 1px dashed #444;
+  }
+  .mock-bar b { color: #fff; }
+  .seg { display: inline-flex; border: 1px solid #555; border-radius: 6px; overflow: hidden; }
+  .seg button { background: none; border: 0; padding: .25rem .75rem; cursor: pointer; color: #bbb; }
+  .seg button[aria-pressed="true"] { background: #333; color: #fff; }
+
+  /* ---- fake shell --------------------------------------------------------- */
+  .tree {
+    position: fixed; top: 0; bottom: 0; left: 0; width: var(--nav-tree-width);
+    border-right: 1px solid var(--line); background: var(--paper-raised);
+    padding: 3rem 1rem; color: var(--muted); font-size: 12px;
+  }
+  @media (max-width: 1023.98px) { .tree { display: none; } }
+  .compact-bar {
+    display: none; position: fixed; left: 0; right: 0; bottom: 0;
+    height: var(--section-trigger-height); z-index: 30;
+    background: var(--paper-raised); border-top: 1px solid var(--line);
+    align-items: center; justify-content: center; color: var(--muted); font-size: 12px;
+  }
+  @media (max-width: 1023.98px) { .compact-bar { display: flex; } }
+  main {
+    padding: 1.5rem 1.5rem 2rem calc(var(--nav-tree-width) + 1.5rem);
+    padding-bottom: calc(2rem + var(--section-trigger-height));
+  }
+  @media (max-width: 1023.98px) { main { padding-left: 1rem; padding-right: 1rem; } }
+
+  /* ---- the component ------------------------------------------------------ */
+  .entry { max-width: 56rem; display: flex; flex-direction: column; gap: 1rem; }
+  .entry-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+  .entry-head h1 { margin: 0; font-size: 1.35rem; font-weight: 600; }
+  .entry-head .sub { color: var(--muted); font-size: 12px; margin-top: .15rem; }
+  .icon-btn {
+    width: 2.25rem; height: 2.25rem; display: inline-grid; place-items: center;
+    border-radius: 8px; border: 1px solid var(--line); background: var(--paper-raised);
+    cursor: pointer; color: var(--muted);
+  }
+  .icon-btn[aria-pressed="true"] { background: var(--brass); color: var(--paper); border-color: var(--brass); }
+
+  .tabs { display: flex; gap: .25rem; border-bottom: 1px solid var(--line); }
+  .tab {
+    background: none; border: 0; border-bottom: 2px solid transparent;
+    padding: .6rem 1rem; cursor: pointer; color: var(--muted); font-weight: 500;
+    margin-bottom: -1px;
+  }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--brass); }
+  @media (max-width: 1023.98px) {
+    .tabs { overflow-x: auto; }
+    .tab { flex: 1; white-space: nowrap; padding: .6rem .5rem; }
+  }
+  .panel { display: none; flex-direction: column; gap: 1rem; min-height: 12rem; }
+  .panel.active { display: flex; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .span2 { grid-column: span 2; }
+  @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .span2 { grid-column: auto; } }
+
+  label.field { display: block; }
+  .lbl { display: block; font-weight: 500; margin-bottom: .25rem; }
+  .hint { display: block; color: var(--muted); font-size: 12px; margin-top: .25rem; }
+  .input {
+    width: 100%; padding: .4rem .75rem; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--paper);
+  }
+  .input:focus { outline: 2px solid var(--brass); outline-offset: 0; }
+  textarea.input { resize: vertical; min-height: 14rem; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: .35rem; padding: .35rem; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+  .chip { display: inline-flex; align-items: center; gap: .3rem; padding: .1rem .55rem; border-radius: 999px; background: var(--brass-soft); color: var(--ink); font-size: 12px; }
+  .chip i { font-style: normal; color: var(--muted); cursor: pointer; }
+  .chips input { flex: 1; min-width: 8rem; border: 0; background: none; padding: .15rem .25rem; outline: none; }
+
+  .section { border: 1px solid var(--line); border-radius: 12px; background: var(--paper-raised); padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
+  .section h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  .row .grow { flex: 1; }
+
+  .btn {
+    padding: .45rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 500;
+    border: 1px solid var(--line); background: var(--paper-raised);
+  }
+  .btn.sm { padding: .25rem .65rem; font-size: 12px; }
+  .btn.primary { background: var(--brass); color: var(--paper); border-color: var(--brass); }
+
+  .weather { display: grid; grid-template-columns: 6rem 6rem 1fr; gap: .75rem; }
+  @media (max-width: 640px) { .weather { grid-template-columns: 1fr 1fr; } .weather .desc { grid-column: span 2; } }
+
+  .loc-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; }
+  .loc-list li { display: flex; align-items: center; gap: .75rem; padding: .5rem .75rem; border-top: 1px solid var(--line); }
+  .loc-list li:first-child { border-top: 0; }
+  .loc-num { width: 1.5rem; height: 1.5rem; border-radius: 50%; display: grid; place-items: center; background: var(--brass); color: var(--paper); font-size: 11px; font-weight: 700; flex: none; }
+  .mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+  .link { color: var(--brass); background: none; border: 0; cursor: pointer; font-size: 12px; padding: 0; }
+  .link.danger { color: var(--danger); }
+
+  .map {
+    height: 18rem; border-radius: 8px; border: 1px solid var(--line); position: relative; overflow: hidden;
+    background:
+      linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 48px 48px,
+      linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 48px 48px,
+      #0f1418;
+  }
+  @media (max-width: 1023.98px) { .map { height: 14rem; } }
+  .map .pin { position: absolute; transform: translate(-50%, -100%); }
+  .map .zoom { position: absolute; top: .5rem; left: .5rem; display: flex; flex-direction: column; }
+  .map .zoom span { width: 1.75rem; height: 1.75rem; display: grid; place-items: center; background: var(--paper-raised); border: 1px solid var(--line); }
+  .map .cap { position: absolute; right: .5rem; bottom: .4rem; font-size: 10px; color: var(--muted); }
+
+  dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; margin: 0; }
+  dl.meta dt { color: var(--muted); }
+  dl.meta dd { margin: 0; }
+
+  details.template summary { cursor: pointer; color: var(--muted); }
+
+  /* The strip. sticky, not fixed: stays in the form's flow so it never covers the
+     last field, and pins above the compact bar + music player on a phone. */
+  .toolbar {
+    position: sticky; z-index: 20;
+    bottom: calc(var(--section-trigger-height) + var(--music-player-height) + env(safe-area-inset-bottom));
+    display: flex; align-items: center; gap: .5rem;
+    padding: .5rem .75rem; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--paper-raised); box-shadow: 0 8px 24px rgba(0,0,0,.45);
+  }
+  .toolbar .status { margin-left: auto; color: var(--muted); font-size: 12px; }
+  @media (max-width: 640px) {
+    .toolbar .btn { flex: 1; }
+    .toolbar .status { display: none; }
+  }
+
+  .note {
+    border: 1px dashed #555; border-radius: 8px; padding: .5rem .75rem;
+    color: #aaa; font-size: 12px; background: #0b0d10;
+  }
+
+  [data-mode="new"] .edit-only { display: none !important; }
+  [data-mode="edit"] .new-only { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="mock-bar">
+  <b>Mock controls</b>
+  <span>Mode:</span>
+  <div class="seg" role="group" aria-label="Mode">
+    <button type="button" data-set-mode="new">New</button>
+    <button type="button" data-set-mode="edit" aria-pressed="true">Edit</button>
+  </div>
+  <span>Narrow the window below 1024px to see the phone layout.</span>
+</div>
+
+<nav class="tree" aria-hidden="true">Navigation tree (260px)</nav>
+<div class="compact-bar" aria-hidden="true">Section bar (compact)</div>
+
+<main>
+  <div class="entry" id="entry" data-mode="edit">
+
+    <header class="entry-head">
+      <div>
+        <h1><span class="new-only">New entry</span><span class="edit-only">Edit entry</span></h1>
+        <div class="sub edit-only">Wed 18 Nov 2026 · #4821</div>
+      </div>
+      <!-- Pin stays on the title line in both modes: it is a property of the
+           whole entry, and it saves with the form like everything else. -->
+      <button type="button" class="icon-btn" aria-pressed="false" title="Pin" id="pin">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5M9 3h6l-1 6 3 3H7l3-3z"/></svg>
+      </button>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="main">Main</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="loc">Location &amp; Weather</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="misc">Misc</button>
+    </div>
+
+    <!-- =================== MAIN =================== -->
+    <section class="panel active" data-panel="main">
+
+      <details class="template new-only">
+        <summary>Prefill from a template</summary>
+        <label class="field" style="margin-top:.5rem">
+          <select class="input"><option>Start from a template…</option><option>Swim practice</option><option>Weekly class</option></select>
+          <span class="hint">Fills the fields you have left blank. Anything you have already typed is kept.</span>
+        </label>
+      </details>
+
+      <div class="grid2">
+        <label class="field">
+          <span class="lbl">Date</span>
+          <input class="input" type="date" value="2026-11-18" />
+        </label>
+        <label class="field">
+          <span class="lbl">Time</span>
+          <input class="input" type="time" step="1" value="18:30:00" />
+          <span class="hint">Optional. Double-click to set the current time.</span>
+        </label>
+
+        <label class="field span2">
+          <span class="lbl">Title</span>
+          <input class="input" type="text" value="Evening walk by the lake" placeholder="A short headline for the entry" />
+        </label>
+
+        <div class="field">
+          <span class="lbl">Categories</span>
+          <div class="chips"><span class="chip">Outdoors <i>×</i></span><input placeholder="Filter or add a category…" /></div>
+        </div>
+        <div class="field">
+          <span class="lbl">Tags</span>
+          <div class="chips"><span class="chip">family <i>×</i></span><span class="chip">autumn <i>×</i></span><input placeholder="Filter or add a tag…" /></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="row" style="justify-content:space-between;margin-bottom:.25rem">
+          <span class="lbl" style="margin:0">Content</span>
+          <span class="row">
+            <button type="button" class="icon-btn" title="Full screen" style="width:2rem;height:2rem">⤢</button>
+            <button type="button" class="icon-btn" title="Handwriting" style="width:2rem;height:2rem">✒</button>
+          </span>
+        </div>
+        <textarea class="input" rows="12" placeholder="What happened today…">Walked the long loop around Carnegie Lake after dinner. The leaves are nearly all down now…</textarea>
+      </div>
+    </section>
+
+    <!-- =========== LOCATION & WEATHER =========== -->
+    <section class="panel" data-panel="loc">
+
+      <div class="section">
+        <h2>Weather</h2>
+        <div class="row">
+          <button type="button" class="btn sm">GPS + Weather</button>
+          <button type="button" class="btn sm">Fetch this date's weather</button>
+          <span class="hint" style="margin:0">Uses the entry's first location, or your default location.</span>
+        </div>
+        <div class="weather">
+          <label class="field"><span class="hint" style="margin:0 0 .25rem">Temperature</span><input class="input" inputmode="decimal" value="9" placeholder="18" /></label>
+          <label class="field"><span class="hint" style="margin:0 0 .25rem">Unit</span><input class="input" value="°C" placeholder="°C" /></label>
+          <label class="field desc"><span class="hint" style="margin:0 0 .25rem">Description</span><input class="input" value="Clear sky" placeholder="Light rain" /></label>
+        </div>
+        <span class="hint" style="margin:0">Clear the temperature to record no weather for this entry.</span>
+      </div>
+
+      <div class="section">
+        <h2>Locations</h2>
+        <label class="field">
+          <span class="lbl">Place name</span>
+          <input class="input" value="Carnegie Lake" placeholder="e.g. Princeton University" />
+        </label>
+
+        <ul class="loc-list">
+          <li>
+            <span class="loc-num">1</span>
+            <span class="grow"><div>Carnegie Lake towpath</div><div class="mono">40.33712, -74.63881</div></span>
+            <button class="link">Save to library</button>
+            <button class="link danger">Remove</button>
+          </li>
+          <li>
+            <span class="loc-num">2</span>
+            <span class="grow"><div>Harrison St bridge</div><div class="mono">40.34530, -74.64612</div></span>
+            <button class="link">Save to library</button>
+            <button class="link danger">Remove</button>
+          </li>
+        </ul>
+
+        <div class="row">
+          <input class="input grow" placeholder="Search for a place or address…" />
+          <button type="button" class="btn sm">Use my location</button>
+          <button type="button" class="btn sm">From library</button>
+        </div>
+
+        <div class="map" aria-label="Map">
+          <div class="zoom"><span>+</span><span>−</span></div>
+          <svg class="pin" style="left:38%;top:55%" width="30" height="44" viewBox="0 0 26 38"><path d="M13 0C5.8 0 0 5.8 0 13c0 9.3 13 25 13 25s13-15.7 13-25C26 5.8 20.2 0 13 0z" fill="#33e2b8"/><circle cx="13" cy="13" r="8.5" fill="#fff"/><text x="13" y="13" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="700" fill="#1c8a71">1</text></svg>
+          <svg class="pin" style="left:62%;top:38%" width="30" height="44" viewBox="0 0 26 38"><path d="M13 0C5.8 0 0 5.8 0 13c0 9.3 13 25 13 25s13-15.7 13-25C26 5.8 20.2 0 13 0z" fill="#33e2b8"/><circle cx="13" cy="13" r="8.5" fill="#fff"/><text x="13" y="13" text-anchor="middle" dominant-baseline="central" font-size="11" font-weight="700" fill="#1c8a71">2</text></svg>
+          <span class="cap">Click the map to drop a pin · Ctrl + wheel to zoom</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================== MISC =================== -->
+    <!-- New mode: the panel is intentionally empty. -->
+    <section class="panel" data-panel="misc">
+      <div class="section edit-only">
+        <div class="row" style="justify-content:space-between">
+          <h2>Clips <span class="mono">(2)</span></h2>
+          <span class="row">
+            <button type="button" class="btn sm">+ Attach clip</button>
+            <button type="button" class="btn sm">+ New clip</button>
+          </span>
+        </div>
+        <ul class="loc-list">
+          <li><span class="grow"><div>Geese landing at dusk</div><div class="mono">video · 0:42</div></span><button class="link danger">Detach</button></li>
+          <li><span class="grow"><div>Wind in the reeds</div><div class="mono">audio · 1:10</div></span><button class="link danger">Detach</button></li>
+        </ul>
+        <span class="hint" style="margin:0">Attaching and detaching take effect immediately — they are not part of Save.</span>
+      </div>
+
+      <div class="section edit-only">
+        <h2>Entry details</h2>
+        <dl class="meta">
+          <dt>Entry ID</dt><dd class="mono">4821</dd>
+          <dt>Status</dt><dd>Not locked · Not encrypted</dd>
+          <dt>Source</dt><dd>Written by hand</dd>
+          <dt>External ID</dt><dd class="mono">—</dd>
+          <dt>Created</dt><dd>18 Nov 2026, 19:02</dd>
+          <dt>Last updated</dt><dd>18 Nov 2026, 21:47</dd>
+        </dl>
+      </div>
+    </section>
+
+    <!-- The sticky strip: outside the tabs so Save is reachable from every tab. -->
+    <div class="toolbar">
+      <button type="button" class="btn primary"><span class="new-only">Save entry</span><span class="edit-only">Save changes</span></button>
+      <button type="button" class="btn">Close</button>
+      <span class="status">Unsaved changes</span>
+    </div>
+
+    <div class="note">
+      Filler below so the page scrolls and the strip can be seen sticking.
+      <div style="height:40vh"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const entry = document.getElementById("entry");
+  document.querySelectorAll("[data-set-mode]").forEach((b) =>
+    b.addEventListener("click", () => {
+      entry.dataset.mode = b.dataset.setMode;
+      document.querySelectorAll("[data-set-mode]").forEach((x) =>
+        x.setAttribute("aria-pressed", String(x === b)));
+    }));
+  document.querySelectorAll(".tab").forEach((t) =>
+    t.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", String(x === t)));
+      document.querySelectorAll(".panel").forEach((p) =>
+        p.classList.toggle("active", p.dataset.panel === t.dataset.tab));
+    }));
+  const pin = document.getElementById("pin");
+  pin.addEventListener("click", () =>
+    pin.setAttribute("aria-pressed", String(pin.getAttribute("aria-pressed") !== "true")));
+</script>
+</body>
+</html>

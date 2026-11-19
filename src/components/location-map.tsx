@@ -199,6 +199,35 @@ function Recenter({ center }: { center: LatLng | null }) {
   return null;
 }
 
+// Wheel distance per zoom step. One mouse-wheel notch is ~100, so a notch is one
+// level; a trackpad pinch sends many small deltas and accumulates to the same.
+const WHEEL_PER_ZOOM_STEP = 60;
+
+/**
+ * Zooms on Ctrl/⌘ + wheel only, around the cursor. Leaflet's own
+ * `scrollWheelZoom` is off so an unmodified wheel falls through to the page.
+ */
+function ModifierWheelZoom() {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    let accumulated = 0;
+    function handleWheel(event: WheelEvent) {
+      if (!event.ctrlKey && !event.metaKey) return;
+      // Stops the browser's own page zoom on ctrl+wheel; needs `passive: false`.
+      event.preventDefault();
+      accumulated += event.deltaY;
+      if (Math.abs(accumulated) < WHEEL_PER_ZOOM_STEP) return;
+      const step = accumulated < 0 ? 1 : -1;
+      accumulated = 0;
+      map.setZoomAround(map.mouseEventToContainerPoint(event), map.getZoom() + step);
+    }
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, [map]);
+  return null;
+}
+
 /**
  * Zooms out to whatever window holds every numbered pin. Runs after mount
  * because the container has no size until then and `fitBounds` needs one.
@@ -258,9 +287,14 @@ export function LocationMap({
       <MapContainer
         center={initialCenter}
         zoom={hasMany || marker || center ? PICK_ZOOM : DEFAULT_ZOOM}
-        scrollWheelZoom
+        // Plain wheel scrolls the page, not the map — a map in the middle of a
+        // long form otherwise swallows the scroll and the page feels stuck.
+        // Ctrl/⌘ + wheel (and a trackpad pinch, which browsers report as
+        // ctrl+wheel) zooms instead; see `ModifierWheelZoom`.
+        scrollWheelZoom={false}
         style={{ height: "100%", width: "100%" }}
       >
+        <ModifierWheelZoom />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"

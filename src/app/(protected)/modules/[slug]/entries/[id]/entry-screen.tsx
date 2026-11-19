@@ -6,7 +6,13 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { EncryptionPrompt } from "@/components/encryption-prompt";
 import { JournalViewer } from "@/components/journal-viewer";
-import type { EntryLocation, JournalEntry, JournalEntryNeighbors } from "@/lib/journal";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
+import type {
+  EntryLocation,
+  JournalEntry,
+  JournalEntryNeighbors,
+  JournalPreferences,
+} from "@/lib/journal";
 import {
   decryptJournalEntryAction,
   deleteJournalEntryAction,
@@ -20,7 +26,7 @@ import { journalEntriesFilterHref } from "../../journal-shared";
 import { listClipsForEntryAction } from "../../clips-actions";
 import { EntryClipsDialog } from "../../clips-entry-clips-dialog";
 import { JournalDayExpenses } from "../../journal-day-expenses";
-import { JournalEntryEditForm } from "./entry-edit-form";
+import { JournalEntryEditor } from "../../journal-entry-editor";
 import { JournalPhotosCard } from "./journal-photos-card";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
@@ -88,7 +94,13 @@ export function JournalEntryScreen({
   locationCategoryOptions = [],
   locationTagOptions = [],
   canSeeExpense = false,
+  preferences,
+  contentTextures = [],
 }: {
+  /** The Journal's preferences — the editor's content font, handwriting and weather units. */
+  preferences: JournalPreferences;
+  /** The app texture library, so the editor's Content background resolves. */
+  contentTextures?: DashboardTextureItem[];
   entry: JournalEntry;
   neighbors: JournalEntryNeighbors;
   categoryIcons?: Record<string, string>;
@@ -365,14 +377,17 @@ export function JournalEntryScreen({
       )}
 
       {entry.isEncrypted && !isUnlocked ? null : isEditing ? (
-        <JournalEntryEditForm
+        <JournalEntryEditor
+          mode="edit"
           entry={shownEntry}
           encryptionPassword={password}
           categoryOptions={categoryOptions}
           tagOptions={tagOptions}
+          preferences={preferences}
+          contentTextures={contentTextures}
           locationCategoryOptions={locationCategoryOptions}
           locationTagOptions={locationTagOptions}
-          onCancel={() => setIsEditing(false)}
+          onClose={() => setIsEditing(false)}
           onSaved={() => {
             setIsEditing(false);
             router.refresh(); // pull the saved entry back from the server

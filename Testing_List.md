@@ -146,6 +146,28 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-18 — Release (Journal: one entry form for New and Edit)
+
+**No migration; republish needed.** Nothing here has been run, linted or seen on screen; it was written in an earlier session. Items 1–13 need a Journal with a few entries; items 5, 6 and 9 need a saved entry; item 11 needs an entry with a photo; item 17 is phone-width; items 14 and 15 need a mouse or trackpad.
+
+- [ ] **1.** Journal → New Entry: the form has three tabs, **Main**, **Location & Weather** and **Misc**; Main holds Date, Time, Title, Categories, Tags and Content
+- [ ] **2.** New Entry: Save and Close (and Clear) stay pinned at the bottom on every tab; switching tabs and back keeps what was typed
+- [ ] **3.** New Entry: Lock, Pin and Encrypt are in the header, and Encrypt shows its explainer; a saved entry honours the ones chosen
+- [ ] **4.** New Entry: **Close** with typed changes asks before discarding; with nothing typed it just closes; **Clear** empties the form
+- [ ] **5.** Open an existing entry (the entry screen): the same form appears as **Edit entry** with the date and id in the header and only **Pin** there; saving updates the entry
+- [ ] **6.** Edit → Misc: clips can be attached and detached straight away, and the read-only entry details are shown; in New the Misc tab is empty
+- [ ] **7.** Location & Weather: the GPS + Weather button fills the locations list and Place name, and the weather reading appears on the same tab
+- [ ] **8.** Location & Weather: the locations picker (list, search, library, map) works as before in both New and Edit
+- [ ] **9.** Review (Journal): clicking a row opens the viewer, and Edit opens the same editor and saves; a locked entry's Edit button is disabled
+- [ ] **10.** Merge: choosing entries to merge opens the editor prefilled with the proposal; saving creates one entry and then asks whether to delete the originals, with **Keep them** as the safe choice
+- [ ] **11.** Open a photo viewer from inside the entry editor and close it, then close the editor: the page scrolls again (no stuck scrollbar), whichever order they are closed in
+- [ ] **12.** Any other dialog still stops the page behind it from scrolling while open, and restores scrolling when closed
+- [ ] **13.** Categories and Tags fields work as before in the editor (add, remove, create new)
+- [ ] **14.** Location map: the plain mouse wheel scrolls the page past the map instead of zooming it
+- [ ] **15.** Location map: **Ctrl/⌘ + wheel** zooms around the cursor, and a trackpad pinch zooms the map rather than the whole page
+- [ ] **16.** Desktop layout: the tabs, header and strip look right on a wide screen and in a light and a dark theme
+- [ ] **17.** Phone width: the three tabs, header toggles and the sticky strip fit without horizontal scroll, and the strip sits above the bottom bar and music player
+
 ## 2026-11-18 — Release (Documents: Document Review, Journal form tweaks)
 
 **No migration; republish needed.** Nothing here has been run, linted or seen on screen. Items 1–9 need the Document Library with attachments (item 5 needs a pre-0163 un-hashed file); items 10–11 are phone-width; item 14 is a CLI check.

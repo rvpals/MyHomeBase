@@ -6,8 +6,8 @@
 // ## Two modes, because a new entry has no row to attach to
 //
 // **Writing a new entry** (`entryId` omitted): the entry does not exist until Save,
-// so this field keeps a *pending* list and `journal-entry-form.tsx` writes the links
-// in `attachPendingClips` once the save returns an id.
+// so this field keeps a *pending* list for the caller to link once the save returns an id.
+// (No caller uses this mode today: `JournalEntryEditor` offers clips only in Edit.)
 //
 // **Editing an existing entry** (`entryId` given): there is a row already, so a pick
 // is linked immediately and a removal detaches immediately. Nothing waits for Save —

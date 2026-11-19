@@ -31,7 +31,7 @@ import {
   refreshJournalEntriesAction,
   type BulkRefreshScope,
 } from "./journal-bulk-actions";
-import { JournalEntryForm } from "./journal-entry-form";
+import { JournalEntryEditor } from "./journal-entry-editor";
 
 /** An open merge dialog: the draft being edited, and how it got there. */
 export interface PendingMerge {
@@ -230,7 +230,13 @@ export function JournalMergeDialogs({
               draft. Reused rather than rebuilt so the merged entry gets the
               location picker, the weather fetch, the handwriting sheet and the
               fullscreen editor for free. */}
-          <JournalEntryForm
+          <JournalEntryEditor
+            mode="new"
+            inDialog
+            // No Lock or Encrypt on a merge draft: locking blocks the edit the
+            // dialog exists for, and encrypting has no undo.
+            allowSealing={false}
+            onClose={onMergeClose}
             categoryOptions={formOptions.categoryOptions}
             tagOptions={formOptions.tagOptions}
             preferences={formOptions.preferences}

@@ -1,5 +1,25 @@
 # Change History
 
+## 2026-11-18 21:51 — Journal: one entry form for New and Edit (JournalEntryEditor), page-scroll lock fix, map zoom on Ctrl+wheel
+
+**No migration, no new package.** A **republish is required**.
+
+**What was checked: nothing, in this session.** This work was written in an earlier session and is released here without a typecheck, lint, test, build or browser run; none of it has been seen on screen. The only checks made now were by search: the four `<JournalEntryEditor` call sites exist, and no source file still imports the two deleted forms. **Treat all of it as untested** and work through the Testing List section.
+
+### A. One Journal entry form
+`JournalEntryForm` (New) and `JournalEntryEditForm` (Edit) had drifted into two layouts for the same fields. Both are deleted and replaced by **`JournalEntryEditor`** (`journal-entry-editor.tsx`, `mode="new" | "edit"`); mock in `docs/mocks/journal-entry-mock.html`.
+
+- **Three tabs over one state:** **Main** (Date, Time, Title, Categories, Tags, Content, plus the prefill template picker in New), **Location & Weather** (weather buttons and reading, Place name, the locations picker with its map) and **Misc** (Edit: clips and read-only entry details; New: empty).
+- **A sticky strip** holds Save and Close (and Clear in New). Close asks before discarding unsaved changes. In New, Lock / Pin / Encrypt are in the header; in Edit only Pin is.
+- **Call sites:** the New Entry section, the single-entry screen (`/entries/[id]`), the Review dialog's edit, and the merge flow (`mode="new"`, prefilled with the merge proposal). `entry-screen.tsx` and `page.tsx` changed to match.
+- **Docs:** `modules.md` (Journal) and `components.md` (references and two example snippets).
+
+### B. Page scroll could stay locked after closing stacked dialogs
+`Modal` and `PhotoViewer` each saved and restored `document.body.style.overflow`. When a dialog and a dialog inside it closed together, the outer cleanup ran first and the inner one then restored "hidden", leaving the page with no scrollbar until a reload (seen on the Journal entry editor). New **`useBodyScrollLock`** (`src/components/body-scroll-lock.ts`) counts holders: scroll turns off for the first and back on only after the last leaves, in any order. Both overlays now use it; `components.md` says new overlays must too.
+
+### C. Location map
+The map no longer captures the mouse wheel: a plain wheel scrolls the page, and **Ctrl/⌘ + wheel** (or a trackpad pinch) zooms around the cursor (`ModifierWheelZoom` in `location-map.tsx`). A map in the middle of a long form had made the page feel stuck.
+
 ## 2026-11-18 08:05 — Documents: Document Review (duplicate attachments), plus two Journal form tweaks and a gates script
 
 **No migration, no new package.** A **republish is required**. Relies on the content hashes from migration 0163; files uploaded before it must be hashed first (the screen offers this).

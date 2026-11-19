@@ -24,7 +24,7 @@ import type {
   SameDateGroup,
   SameDateRow,
 } from "@/lib/journal";
-import { JournalEntryEditForm } from "./entries/[id]/entry-edit-form";
+import { JournalEntryEditor } from "./journal-entry-editor";
 import { buildJournalMergeDraftAction } from "./journal-bulk-actions";
 import {
   JournalMergeDialogs,
@@ -732,13 +732,17 @@ export function JournalReviewView({
               viewer's own Edit button is what switches between them, and it
               disables itself on a locked entry (updateEntry would reject one). */}
           {isEditing ? (
-            <JournalEntryEditForm
+            <JournalEntryEditor
+              mode="edit"
+              inDialog
               entry={openEntry}
               categoryOptions={categoryOptions}
               tagOptions={tagOptions}
+              preferences={preferences}
+              contentTextures={contentTextures}
               locationCategoryOptions={locationCategoryOptions}
               locationTagOptions={locationTagOptions}
-              onCancel={() => setIsEditing(false)}
+              onClose={() => setIsEditing(false)}
               onSaved={() => void reloadAfterEdit(openEntry.id)}
             />
           ) : (

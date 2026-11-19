@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { useIsCompact } from "@/components/viewport-context";
+import { useBodyScrollLock } from "@/components/body-scroll-lock";
 
 type Size = "sm" | "md" | "lg" | "full" | "window";
 
@@ -307,14 +308,9 @@ export function Modal({
   // The page behind must not scroll while a modal is up, or the overlay slides
   // off the viewport on a short screen. A non-modal panel has no overlay and the
   // page behind is meant to stay usable, so it leaves the scroll alone.
-  useEffect(() => {
-    if (isNonModal) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isNonModal]);
+  // Shared and counted (see body-scroll-lock.ts), so stacked dialogs closing in
+  // any order can't leave the page stuck without a scrollbar.
+  useBodyScrollLock(!isNonModal);
 
   return (
     <div

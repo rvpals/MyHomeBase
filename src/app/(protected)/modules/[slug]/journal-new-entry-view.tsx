@@ -8,7 +8,7 @@
 // and `JournalView`; as a section it needs none of that, and the context is
 // gone with it.
 //
-// A thin wrapper rather than a `JournalEntryForm` rendered straight into the
+// A thin wrapper rather than a `JournalEntryEditor` rendered straight into the
 // section body: the card is what gives the form the paper texture and the
 // heading every other journal section's body has.
 
@@ -20,10 +20,12 @@ import type {
   JournalPreferences,
   JournalPrefillTemplate,
 } from "@/lib/journal";
-import { JournalEntryForm } from "./journal-entry-form";
+import { JournalEntryEditor } from "./journal-entry-editor";
 
 /** This section's own route, for returning to a blank form after a clone is saved. */
 const NEW_ENTRY_PATH = "/modules/journal/new-entry";
+/** Where Close goes: the Journal home. */
+const JOURNAL_HOME_PATH = "/modules/journal";
 
 /** What `<input type="date">` accepts, and what the calendar's day cells emit. */
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -86,7 +88,9 @@ export function JournalNewEntryView({
       defaultOpen
       className="paper-texture"
     >
-      <JournalEntryForm
+      <JournalEntryEditor
+        mode="new"
+        onClose={() => router.push(JOURNAL_HOME_PATH)}
         // Remounts the form when the reader clones a different entry from the
         // same screen. The form seeds its state in a lazy initialiser, which
         // runs once per mount -- without this key, navigating from ?clone=12 to

@@ -267,7 +267,7 @@ query travels in the URL (`?filter=`) so a filtered list is linkable. Libraries:
 **New Journal Entry** (`new-entry`) is the entry form, on a route of its own. It was a
 `New Journal` card on the home screen, revealed by a quill button in the title row; that
 button is gone, and the section panel is the one way in. It **adds no table and no
-migration** — it renders the same `JournalEntryForm` against the same
+migration** — it renders `JournalEntryEditor` (`mode="new"`) against the same
 `createEntry` use-case, so nothing about how an entry is written changed. Two choices
 worth knowing:
 
@@ -286,13 +286,19 @@ in `tree-icons.tsx`: no Iconify set in `TREE_ICON_GLYPHS` covers the concept, an
 nearest keys were both taken — `quote` (a book and quill) is Report's, and `plus` says
 "add" without saying what.
 
-The form itself is **two tabs over one state**, with a card for the content:
+The form itself is `JournalEntryEditor`, **one component for New and Edit** (`mode`),
+with **three tabs over one state** (mock: `docs/mocks/journal-entry-mock.html`):
 
-- **Main** carries Date, Time, Title, Categories, Tags, and a **Content** card.
-  **Misc** carries Place name, the locations picker, and both weather buttons — the
-  GPS one writes to the locations list *and* the Place name field, so the control and
-  everything it fills sit on one screen.
-- **The state stays in `JournalEntryForm`, above the tabs.** `Tabs` unmounts the panel it
+- **Main** carries Date, Time, Title, Categories, Tags and Content (plus the prefill
+  template picker in New). **Location & Weather** carries the weather buttons and
+  reading, Place name and the locations picker with its map — the GPS button writes to
+  the locations list *and* Place name, so the control and everything it fills sit on one
+  screen. **Misc** carries, in Edit, the clips (attached/detached immediately) and the
+  read-only entry details; in New it is empty.
+- **A sticky strip** at the bottom holds Save and Close (and Clear in New). Close asks
+  before discarding unsaved changes. In New, Lock / Pin / Encrypt sit in the header; in
+  Edit only Pin does.
+- **The state stays in `JournalEntryEditor`, above the tabs.** `Tabs` unmounts the panel it
   isn't showing, so a Misc field owning its own state would lose what was typed the
   moment the writer flipped to Main and back. Save, Clear and the error line also live
   outside the strip: a Save button that vanishes on one of two tabs is a trap, and an
@@ -690,7 +696,7 @@ so a reader can decide. Four choices worth knowing:
 - **Merge writes before it deletes, never the other way round.** `mergeEntryDraft` builds
   a *proposal* — date and time from the earliest source, titles joined with `/`, each
   source's content under a `— HH:MM · Title` provenance line, categories and tags unioned
-  — and the reader edits it in the ordinary `JournalEntryForm` before saving. Saving
+  — and the reader edits it in the ordinary `JournalEntryEditor` (`mode="new"`) before saving. Saving
   creates one new entry and leaves every source in place; **only then** does a second
   dialog ask *"would you like to delete the original n entries?"*, with **Keep them** as
   the non-destructive way out. So a merge abandoned, or a save that fails, cannot lose any
@@ -710,7 +716,7 @@ so a reader can decide. Four choices worth knowing:
   prefill templates make for not storing them.
 - **Reading and editing reuse the single-entry screen's own components.** The row
   click opens `JournalViewer` in a modal and its built-in `onEdit` swaps in
-  `JournalEntryEditForm` — the same pair `/entries/[id]` renders, so an entry is read
+  `JournalEntryEditor` (`mode="edit"`) — the same pair `/entries/[id]` renders, so an entry is read
   and written identically from either route, and the locked-entry guard comes along
   for free (the button disables itself, because `updateEntry` would reject one). A
   saved edit re-reads both the entry *and* the grouping, since changing an entry's

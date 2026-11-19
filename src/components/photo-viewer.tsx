@@ -59,6 +59,7 @@ import {
   revealFromRun,
 } from "@/lib/journal-photos/strip-window";
 import { useIsCompact } from "@/components/viewport-context";
+import { useBodyScrollLock } from "@/components/body-scroll-lock";
 import type { ExifGpsFix } from "@/lib/journal-photos/exif-all";
 import type { ExifTag } from "@/lib/journal-photos/exif-tags";
 
@@ -957,13 +958,8 @@ export function PhotoViewer({
 
   // The page behind must not scroll while the viewer is up — on a phone a swipe would
   // otherwise move the page underneath instead of doing nothing.
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
+  // Shared and counted with `Modal`'s lock (see body-scroll-lock.ts).
+  useBodyScrollLock();
 
   // The slideshow timer. One `setTimeout` keyed on the index rather than a repeating
   // interval, so every photo — including one arrived at by hand — gets a full interval,

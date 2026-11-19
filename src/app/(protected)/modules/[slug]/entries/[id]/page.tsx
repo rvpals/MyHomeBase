@@ -1,7 +1,15 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
-import { getEntry, getEntryNeighbors, listCategories, listTags } from "@/lib/journal";
+import {
+  getEntry,
+  getEntryNeighbors,
+  listCategories,
+  listTags,
+  resolveJournalPreferences,
+} from "@/lib/journal";
+import { listDashboardTextures } from "@/lib/dashboard-texture";
+import { listModuleSettingsFor } from "@/lib/module-settings";
 import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { getModuleBySlug } from "@/lib/modules";
 import { userHasModuleAccess } from "@/lib/user";
@@ -83,6 +91,13 @@ export default async function JournalEntryPage({
           )}
           locationTagOptions={listLocationTags(deps.sysLocationRepo).map((row) => row.name)}
           canSeeExpense={canSeeExpense}
+          // For the editor: the same preferences and texture library the New
+          // Entry screen reads, so an entry is edited in the font, handwriting
+          // size and Content background it was written in.
+          preferences={resolveJournalPreferences(
+            listModuleSettingsFor(deps.moduleSettingsRepo, appModule.id),
+          )}
+          contentTextures={listDashboardTextures(deps.dashboardTextureRepo)}
         />
       </div>
     </JournalShell>

@@ -141,6 +141,7 @@ pattern instead of inventing one.
 | [`SlotIcon`](#sloticon) | Render the icon for a named place in the app, honouring per-slot overrides | [src/components/slot-icon.tsx](src/components/slot-icon.tsx) | yes |
 | [`IconOverrideProvider`](#iconoverrideprovider--useiconoverrides) / `useIconOverrides` | Per-slot icon overrides for the active set (context) | [src/components/icon-override-context.tsx](src/components/icon-override-context.tsx) | yes |
 | [`ModuleCustomIconProvider`](#modulecustomiconprovider--usemodulecustomicons) / `useModuleCustomIcons` | Per-module uploaded icons, keyed by slug (context) | [src/components/module-icon-context.tsx](src/components/module-icon-context.tsx) | yes |
+| `useBodyScrollLock` | Stop the page behind an overlay from scrolling — counted, so stacked overlays can close in any order (hook). Every overlay uses this; never set `document.body.style.overflow` directly | [src/components/body-scroll-lock.ts](src/components/body-scroll-lock.ts) | yes |
 | [`useCurrentPosition`](#usecurrentposition) | Read the device's GPS coordinates (hook) | [src/components/use-current-position.ts](src/components/use-current-position.ts) | yes |
 | [`useGameSounds`](#usegamesounds) | Synthesized game sound effects — Web Audio tones, no files (hook) | [src/components/use-game-sounds.ts](src/components/use-game-sounds.ts) | yes |
 | [`AppVersionWatch`](#appversionwatch) | Prompts a stale installed PWA to reload after a deploy — mount in the layout | [src/components/app-version-watch.tsx](src/components/app-version-watch.tsx) | yes |
@@ -319,7 +320,7 @@ enough that a changed button label isn't enough — a bulk edit, a merge, a batc
   its own `message`/`detail` pair first — "Reading every entry…" is the wrong
   second line for a delete, so one generic string was not enough.
   Saving the merged entry is the interesting one: that write lives inside
-  [`JournalEntryForm`](src/app/(protected)/modules/[slug]/journal-entry-form.tsx),
+  [`JournalEntryEditor`](src/app/(protected)/modules/[slug]/journal-entry-editor.tsx),
   which owns its own busy flag and only *reports* it out through the optional
   `onSavingChange` prop. The New Entry screen leaves that prop off and is
   unaffected — it's a page, not a dialog, so its Save button label is signal enough.
@@ -1488,7 +1489,7 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
 
 ```tsx
 <CollapsibleCard title="Add an entry" defaultOpen>
-  <JournalEntryForm onSubmit={handleCreate} />
+  <JournalEntryEditor mode="new" />
 </CollapsibleCard>
 ```
 
@@ -1693,7 +1694,7 @@ two copies of a prop table drift.
 
 ```tsx
 <CustomizableCard title="Add an entry" defaultOpen>
-  <JournalEntryForm onSubmit={handleCreate} />
+  <JournalEntryEditor mode="new" />
 </CustomizableCard>
 ```
 
@@ -3541,10 +3542,8 @@ value lives in the chips.
 />
 ```
 
-**Used by:** the journal's Categories and Tags fields, in both the create form
-[journal-entry-form.tsx](src/app/(protected)/modules/[slug]/journal-entry-form.tsx)
-and the edit form
-[entry-edit-form.tsx](src/app/(protected)/modules/[slug]/entries/[id]/entry-edit-form.tsx);
+**Used by:** the journal's Categories and Tags fields, in the one entry form for creating and editing,
+[journal-entry-editor.tsx](src/app/(protected)/modules/[slug]/journal-entry-editor.tsx);
 and the Documents library's New / Edit document screen
 [documents-editor-view.tsx](src/app/(protected)/modules/[slug]/documents-editor-view.tsx),
 which had grown its own local `TaxonomyPicker` — a create `<input>` next to a
@@ -5925,8 +5924,8 @@ is *returned* rather than only stored in state, because reading the hook's `erro
 after `await request()` would give you the previous render's value. `error` and `isLocating`
 are still exposed for views that prefer to render status declaratively.
 
-**Used by:** the Journal new-entry form's *GPS + Weather* button
-([journal-entry-form.tsx](src/app/(protected)/modules/[slug]/journal-entry-form.tsx)), which
+**Used by:** the Journal entry form's *GPS + Weather* button
+([journal-entry-editor.tsx](src/app/(protected)/modules/[slug]/journal-entry-editor.tsx)), which
 chains it into `reverseGeocodeAction` and `fetchWeatherAction`.
 
 **Two constraints worth knowing before you reach for this:**
