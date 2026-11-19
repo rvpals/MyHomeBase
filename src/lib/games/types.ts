@@ -2455,3 +2455,166 @@ export interface StoredPictionaryWord extends PictionaryWord {
 export const PICTIONARY_SOURCES = ["both", "built-in", "custom"] as const;
 
 export type PictionarySource = (typeof PICTIONARY_SOURCES)[number];
+
+// ---------------------------------------------------------------------------------
+// Word Wizard — the crossword tile game.
+//
+// An original design in the crossword-tile genre: its own bonus-square layout
+// (`WORD_WIZARD_LAYOUT`), its own letter values and tile counts, and a 40-point bonus
+// for playing all seven tiles. Two ways to play, chosen at the start: against one bot,
+// or pass-and-play for two to four people under typed names (like Pictionary, that
+// mode posts nothing to the shared board).
+// ---------------------------------------------------------------------------------
+
+/** The board is 15 squares a side, stored row-major as 225 cells. */
+export const WORD_WIZARD_SIZE = 15;
+
+/** The centre square, which the first word must cover. */
+export const WORD_WIZARD_CENTRE = 112;
+
+/** Tiles in a full rack. */
+export const WORD_WIZARD_RACK_SIZE = 7;
+
+/** The bonus for playing every tile on the rack in one turn. */
+export const WORD_WIZARD_FULL_RACK_BONUS = 40;
+
+/** Swapping needs at least this many tiles left in the bag. */
+export const WORD_WIZARD_MIN_BAG_TO_SWAP = 7;
+
+export const WORD_WIZARD_MIN_PLAYERS = 2;
+export const WORD_WIZARD_MAX_PLAYERS = 4;
+export const WORD_WIZARD_MAX_NAME_LENGTH = 20;
+
+/** The letter a blank tile carries on the rack before it is assigned one. */
+export const WORD_WIZARD_BLANK = "?";
+
+/**
+ * Points per letter. Blanks are worth nothing wherever they are played.
+ *
+ * Tuned to English letter frequency in the ENABLE list, so this game's own values,
+ * not any other game's.
+ */
+export const WORD_WIZARD_LETTER_VALUES: Readonly<Record<string, number>> = {
+  A: 1, B: 4, C: 3, D: 2, E: 1, F: 4, G: 3, H: 3, I: 1, J: 8, K: 6, L: 2, M: 3,
+  N: 1, O: 1, P: 3, Q: 10, R: 1, S: 1, T: 1, U: 2, V: 5, W: 5, X: 8, Y: 4, Z: 9,
+  [WORD_WIZARD_BLANK]: 0,
+};
+
+/** How many of each tile the bag holds: 100 letters plus 2 blanks. */
+export const WORD_WIZARD_TILE_COUNTS: Readonly<Record<string, number>> = {
+  A: 9, B: 2, C: 2, D: 4, E: 12, F: 2, G: 3, H: 3, I: 8, J: 1, K: 1, L: 4, M: 2,
+  N: 6, O: 8, P: 2, Q: 1, R: 6, S: 5, T: 7, U: 4, V: 2, W: 2, X: 1, Y: 2, Z: 1,
+  [WORD_WIZARD_BLANK]: 2,
+};
+
+export const WORD_WIZARD_SQUARES = [
+  "plain",
+  "double-letter",
+  "triple-letter",
+  "double-word",
+  "triple-word",
+] as const;
+
+export type WordWizardSquare = (typeof WORD_WIZARD_SQUARES)[number];
+
+/**
+ * The top-left quarter of the board (rows and columns 0–7), mirrored into the other
+ * three. Symmetric about its own diagonal, so the whole board is 8-fold symmetric.
+ *
+ *   `.` plain · `d` double letter · `t` triple letter · `D` double word ·
+ *   `T` triple word · `*` the centre (a double word)
+ *
+ * The corners are triple *letters* and the triple words sit at the middle of each
+ * quarter-edge, so the long edge runs are not the jackpot here — the diagonal mixes
+ * letter and word bonuses all the way in.
+ */
+export const WORD_WIZARD_LAYOUT: readonly string[] = [
+  "t...T..d",
+  ".D...t..",
+  "..d...D.",
+  "...D...d",
+  "T...d...",
+  ".t...t..",
+  "..D...d.",
+  "d..d...*",
+];
+
+export const WORD_WIZARD_MODES = ["bot", "pass-and-play"] as const;
+
+/** `bot`: you against one machine opponent. `pass-and-play`: 2–4 people, one device. */
+export type WordWizardMode = (typeof WORD_WIZARD_MODES)[number];
+
+export const WORD_WIZARD_BOT_LEVELS = ["easy", "normal", "hard"] as const;
+
+export type WordWizardBotLevel = (typeof WORD_WIZARD_BOT_LEVELS)[number];
+
+/** A tile on a rack or in the bag. `letter` is `WORD_WIZARD_BLANK` for a blank. */
+export interface WordWizardTile {
+  id: number;
+  letter: string;
+}
+
+/** A tile on the board. A blank carries the letter its player chose for it. */
+export interface WordWizardCell {
+  tileId: number;
+  letter: string;
+  blank: boolean;
+}
+
+/** One tile being put down: which rack tile, where, and (for a blank) as what. */
+export interface WordWizardPlacement {
+  index: number;
+  tileId: number;
+  /** Required for a blank; ignored for a lettered tile. */
+  letter?: string;
+}
+
+export interface WordWizardPlayer {
+  name: string;
+  kind: "human" | "bot";
+  rack: WordWizardTile[];
+  score: number;
+}
+
+/** One word a play formed, as scored. */
+export interface WordWizardWord {
+  word: string;
+  score: number;
+  /** The cells it covers, start to end. */
+  indices: number[];
+}
+
+export interface WordWizardTurn {
+  player: number;
+  kind: "play" | "swap" | "pass";
+  words: WordWizardWord[];
+  /** The whole turn's points, bonus included. 0 for a swap or a pass. */
+  score: number;
+  /** Tiles swapped, for a swap. The letters are never shown, only the count. */
+  swapped?: number;
+  fullRackBonus?: boolean;
+}
+
+export interface WordWizardState {
+  mode: WordWizardMode;
+  /** Only meaningful in `bot` mode. */
+  botLevel: WordWizardBotLevel;
+  board: (WordWizardCell | null)[];
+  bag: WordWizardTile[];
+  players: WordWizardPlayer[];
+  /** Whose turn it is, an index into `players`. */
+  turn: number;
+  history: WordWizardTurn[];
+  /** Swaps and passes in a row. Every player doing it twice ends the game. */
+  scorelessTurns: number;
+  phase: "playing" | "over";
+  /** Indices of the winners once over: more than one on a tie. */
+  winners: number[];
+  /** The rack-penalty step at the end, so the summary can show it. */
+  finalAdjustments: number[];
+}
+
+/** Why a placement was refused, in words the player can act on. */
+export type WordWizardPlayResult =
+  | { ok: true; words: WordWizardWord[]; score: number; fullRackBonus: boolean }
+  | { ok: false; reason: string; invalidWords?: string[] };

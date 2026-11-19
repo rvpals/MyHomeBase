@@ -1460,6 +1460,15 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "games_card_word_wizard",
+    label: "Word Wizard",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Word Wizard card.",
+    defaultConcept: "game-word-wizard",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Expense — nav sections.

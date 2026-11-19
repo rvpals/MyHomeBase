@@ -1,5 +1,23 @@
 # Change History
 
+## 2026-11-18 21:58 — Games: Word Wizard, a crossword tile game against a bot or pass-and-play
+
+**No migration, no new npm package, no paid service.** A **republish is required**, and it must include the new static file `public/games/word-wizard-words.txt` (1.6 MB).
+
+**What was checked: nothing, in this session.** The game was written this session and no typecheck, lint, test, build or browser run was done for it; none of it has been seen on screen. The three new test files (`game-word-wizard`, `word-wizard-lexicon`, `word-wizard-bot`) were written but **not run**, and neither was `slots.test.ts`, which checks every catalogue game has an icon slot. **Treat all of it as untested** and work through the Testing List section.
+
+A new Arcade card, **Word Wizard** (`word-wizard`): build crossing words from seven letter tiles on a 15×15 board. An original design in the crossword-tile genre, not a copy of any one game: its own bonus-square layout, letter values and tile counts, and a 40-point bonus for playing all seven tiles.
+
+- **Two modes, chosen at the start.** *Against the bot* (Easy / Normal / Hard) or *pass and play* for 2–4 typed names. Pass-and-play hides the next player's tiles behind a "pass the device" screen.
+- **Playing.** Tap a tile then a square (drag also works on desktop); tap a placed tile to take it back. While tiles are laid the game shows the words they make and the score, or what is wrong. Play checks every word against the list, so a bad word is refused before it scores and there is no challenge step. Blank tile asks for a letter; Swap (needs 7 tiles in the bag), Pass, Shuffle and Recall are there too.
+- **Ending.** Someone uses their last tile with the bag empty, or every player swaps or passes twice in a row. Tiles left on a rack count against their owner; whoever went out gains them.
+- **Scores.** Beating the bot puts your final total on the shared board; a loss or a tie records nothing (the Bridge and Mahjong rule). Pass-and-play posts nothing, for Pictionary's reason. No save/resume yet.
+- **Library** (`src/lib/games`): `game-word-wizard.ts` (rules and scoring), `word-wizard-lexicon.ts` (the word list as a prefix tree built from text, so the library does no I/O), `word-wizard-bot.ts` (anchor squares, cross-checks and a prefix-tree walk; it scores with the same function a player is scored by); constants and types in `types.ts`; catalogue entry and exports added.
+- **Word list:** the public-domain ENABLE list cut to 2–15 letters (168,551 words), served as a static file and fetched once per page load, only when the game is opened.
+- **Icon:** slot `games_card_word_wizard` with a new three-tiles glyph (`game-word-wizard`). The slot id is permanent once an upload exists.
+- **Docs:** `modules.md` (Games), the Arcade rules text and the in-game Rules panel.
+- **Phone:** the board is full width with the rack and buttons below it; squares are about 23px, so the bonus labels are very small. Restyled with `max-lg:` variants only.
+
 ## 2026-11-18 21:51 — Journal: one entry form for New and Edit (JournalEntryEditor), page-scroll lock fix, map zoom on Ctrl+wheel
 
 **No migration, no new package.** A **republish is required**.

@@ -1137,9 +1137,29 @@ is never retried at all. So a track is asked about at most once, ever.
 `src/lib/games`. Three tables: `gam_scores` (`migrations/0074`, registered by `0075`),
 `gam_pictionary_words` (`migrations/0164`) and `gam_saved_runs` (`migrations/0171`: runs
 in progress, one per player per game key, so a board can be resumed on any device. Only
-Arrow Clearing uses it so far, through `arrow-save.ts` and `saved-runs.ts`). Eleven games so far: **2048**,
+Arrow Clearing uses it so far, through `arrow-save.ts` and `saved-runs.ts`). Twelve games so far: **2048**,
 **Arrow Clearing**, **Tetris**, **Sudoku**, **Blackjack**, **Minesweeper**,
-**Mahjong Match**, **Mahjong**, **Bridge**, **Pac-Man**, and **Pictionary**.
+**Mahjong Match**, **Mahjong**, **Bridge**, **Pac-Man**, **Pictionary**, and **Word Wizard**.
+
+**Word Wizard** (`word-wizard`) is the crossword tile game, and an original design in that
+genre rather than a copy of any one: its own bonus-square layout, letter values and tile
+counts, all in the Word Wizard section of `types.ts`. Rules in `game-word-wizard.ts`, the
+bot in `word-wizard-bot.ts` (anchor squares, cross-checks and a prefix-tree walk, so every
+play it finds is legal by construction), the dictionary in `word-wizard-lexicon.ts`. Three
+choices worth knowing:
+- **The word list is a static file, not a table or a bundle import.**
+  `public/games/word-wizard-words.txt` is the public-domain ENABLE list cut to 2–15
+  letters (168,551 words, 1.6 MB). The view fetches it once per page load, only when the
+  game is opened; `parseLexicon` takes the text, so the library never does I/O and a test
+  builds a lexicon from ten words. Words are checked on Play, so a bad word is refused
+  before it scores and there is no challenge step.
+- **Two modes, picked at the start.** Against the bot (Easy / Normal / Hard) posts the
+  human's final total only when they win outright, 0 for a loss or a tie, which is the
+  Bridge and Mahjong rule. Pass-and-play takes 2–4 typed names and posts nothing, for
+  Pictionary's reason. Between turns it hides the board's pending tiles and the rack
+  behind a hand-over screen.
+- **No save/resume yet.** `gam_saved_runs` would carry it when it is wanted; a game in
+  progress is lost on close, as every game but Arrow Clearing's is.
 
 Five choices worth knowing, all recorded in `0074`'s log:
 

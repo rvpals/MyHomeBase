@@ -669,3 +669,65 @@ export {
   type PictionaryImportParse,
   type PictionaryImportProblem,
 } from "./pictionary-import";
+
+// Word Wizard — the crossword tile game, against a bot or pass-and-play. The collisions
+// are the usual ones (`startGame`, `scoreGame`, `standings`, `tileValue`, `Random`)
+// plus generic names like `squareAt` and `neighbours`, so everything here carries a
+// `wordWizard` qualifier for the reason every block above gives.
+export {
+  WORD_WIZARD_BLANK,
+  WORD_WIZARD_BOT_LEVELS,
+  WORD_WIZARD_CENTRE,
+  WORD_WIZARD_FULL_RACK_BONUS,
+  WORD_WIZARD_LAYOUT,
+  WORD_WIZARD_LETTER_VALUES,
+  WORD_WIZARD_MAX_NAME_LENGTH,
+  WORD_WIZARD_MAX_PLAYERS,
+  WORD_WIZARD_MIN_BAG_TO_SWAP,
+  WORD_WIZARD_MIN_PLAYERS,
+  WORD_WIZARD_MODES,
+  WORD_WIZARD_RACK_SIZE,
+  WORD_WIZARD_SIZE,
+  WORD_WIZARD_SQUARES,
+  WORD_WIZARD_TILE_COUNTS,
+  type WordWizardBotLevel,
+  type WordWizardCell,
+  type WordWizardMode,
+  type WordWizardPlacement,
+  type WordWizardPlayResult,
+  type WordWizardPlayer,
+  type WordWizardSquare,
+  type WordWizardState,
+  type WordWizardTile,
+  type WordWizardTurn,
+  type WordWizardWord,
+} from "./types";
+export {
+  canSwap as canWordWizardSwap,
+  currentPlayer as wordWizardCurrentPlayer,
+  evaluatePlay as evaluateWordWizardPlay,
+  isBoardEmpty as isWordWizardBoardEmpty,
+  letterMultiplier as wordWizardLetterMultiplier,
+  passTurn as passWordWizardTurn,
+  playTiles as playWordWizardTiles,
+  scoreGame as scoreWordWizard,
+  squareAt as wordWizardSquareAt,
+  standings as wordWizardStandings,
+  startGame as startWordWizard,
+  swapTiles as swapWordWizardTiles,
+  tileValue as wordWizardTileValue,
+  wordMultiplier as wordWizardWordMultiplier,
+  type WordCheck as WordWizardWordCheck,
+  type WordWizardEntrant,
+} from "./game-word-wizard";
+export {
+  isLexiconWord as isWordWizardWord,
+  parseLexicon as parseWordWizardLexicon,
+  type WordWizardLexicon,
+} from "./word-wizard-lexicon";
+export {
+  choosePlay as chooseWordWizardPlay,
+  findPlays as findWordWizardPlays,
+  takeBotTurn as takeWordWizardBotTurn,
+  type WordWizardCandidate,
+} from "./word-wizard-bot";

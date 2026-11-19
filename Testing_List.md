@@ -146,6 +146,29 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-18 — Release (Games: Word Wizard)
+
+**No migration; republish needed**, including `public/games/word-wizard-words.txt`. Nothing here has been run, linted or seen on screen, and the new unit tests were never run. Items 12 and 13 need two or more people; items 15 and 16 are phone-width; item 14 is worth checking in a light theme.
+
+- [ ] **1.** Games → Arcade: a **Word Wizard** card appears with a tiles icon, and Play opens the game full-screen; its Rules button shows the rules
+- [ ] **2.** The start screen shows "Loading the word list…" briefly, then Start; with the file blocked it shows an error and Retry
+- [ ] **3.** Against the bot: the first word must cover the centre star, and a word off the star or a one-letter word is refused with a clear message
+- [ ] **4.** Tap a rack tile then a square places it; tap a placed tile takes it back; Recall returns all of them; on desktop, dragging a tile onto a square also works
+- [ ] **5.** While tiles are laid, the line under the rack shows the words and the score, or the reason a placement is wrong
+- [ ] **6.** A word that is not in the list is refused on Play and the turn is not lost; a made-up cross word is caught too
+- [ ] **7.** The blank tile asks for a letter, shows that letter in italics on the board and scores nothing
+- [ ] **8.** The bot replies within about a second on Normal and Hard; Easy plays weaker words; it never plays an illegal word
+- [ ] **9.** Bonus squares (2L, 3L, 2W, 3W) show their labels, and the score counts them only when a tile is first put on one
+- [ ] **10.** Playing all seven tiles in one turn adds 40 points and says so
+- [ ] **11.** Swap lets you pick tiles and puts them back (button disabled with fewer than 7 in the bag); Pass asks you to tap twice; Shuffle reorders the rack
+- [ ] **12.** Pass and play: 2–4 names; a blank or duplicate name is refused; between turns a hand-over screen hides the next rack until the button is tapped
+- [ ] **13.** Pass and play: scores and the last move are shown; the game ends when a player goes out or everyone has passed or swapped twice; the result says nothing was saved
+- [ ] **14.** The game ends with a result panel showing the leftover-tile adjustments and the winner; a tie names both; all colours read well in a light and a dark theme
+- [ ] **15.** Phone width: the board fits the screen with no horizontal scroll, the rack and buttons sit below it, and tapping a square places a tile reliably
+- [ ] **16.** Phone width: the score panel and the moves list sit below the controls and stay readable
+- [ ] **17.** Beating the bot puts your score on Games → Scores and updates the card's Record; losing or tying adds nothing
+- [ ] **18.** Icon settings: **Word Wizard** is listed under Games cards, and an uploaded icon replaces the glyph on its card
+
 ## 2026-11-18 — Release (Journal: one entry form for New and Edit)
 
 **No migration; republish needed.** Nothing here has been run, linted or seen on screen; it was written in an earlier session. Items 1–13 need a Journal with a few entries; items 5, 6 and 9 need a saved entry; item 11 needs an entry with a photo; item 17 is phone-width; items 14 and 15 need a mouse or trackpad.

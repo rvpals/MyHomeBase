@@ -733,6 +733,19 @@ const GamePictionary: IconComponent = (props) => (
   </svg>
 );
 
+/* Word Wizard: three square letter tiles, the middle one raised, with a short stroke on
+   each for a letter. Square tiles rather than a book or a speech bubble, because "tiles
+   that spell" is the game; the step keeps three squares from reading as a progress bar. */
+const GameWordWizard: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <rect x="2.5" y="10" width="6" height="6" rx="1" />
+    <rect x="9" y="7" width="6" height="6" rx="1" />
+    <rect x="15.5" y="10" width="6" height="6" rx="1" />
+    <path d="M4.5 13.5h2M11 10.5h2M17.5 13.5h2" />
+    <path d="M3 19.5h18" />
+  </svg>
+);
+
 /* A rocket launching: the nose-cone body on a diagonal, one porthole, two fins and a
    short exhaust plume off the tail. The "launch module" button on the home screen's
    cards.
@@ -968,6 +981,7 @@ const TREE_ICONS = {
   "game-mahjong": GameMahjongMatch,
   "game-pacman": GamePacman,
   "game-pictionary": GamePictionary,
+  "game-word-wizard": GameWordWizard,
   pin: MapPin,
   pushpin: Pushpin,
   "pushpin-filled": PushpinFilled,

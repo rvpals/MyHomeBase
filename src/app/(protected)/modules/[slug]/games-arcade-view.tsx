@@ -24,6 +24,7 @@ import { GamePacmanView } from "./game-pacman-view";
 import { GamePictionaryView } from "./game-pictionary-view";
 import { GameSudokuView } from "./game-sudoku-view";
 import { GameTetrisView } from "./game-tetris-view";
+import { GameWordWizardView } from "./game-word-wizard-view";
 
 // The Arcade: the list of games, and the selected game played full-bleed over it.
 //
@@ -286,6 +287,12 @@ export function GamesArcadeView({
                   under typed names. It takes no `bestScore` because it posts nothing to
                   the shared board — see the catalogue entry for why. */}
               {open.game.key === "pictionary" && <GamePictionaryView wordPool={wordPool} />}
+              {/* The crossword tile game: against a bot (a win posts a score) or
+                  pass-and-play (posts nothing, like Pictionary). The mode is picked
+                  inside the game. */}
+              {open.game.key === "word-wizard" && (
+                <GameWordWizardView bestScore={open.best?.score ?? 0} />
+              )}
             </div>
           </div>
         </Modal>

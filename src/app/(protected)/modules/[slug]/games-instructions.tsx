@@ -479,6 +479,63 @@ export function MahjongRules() {
   );
 }
 
+export function WordWizardRules() {
+  return (
+    <Section title="Playing Word Wizard">
+      <p>
+        A crossword game with letter tiles. Everyone holds seven. On your turn, lay tiles
+        in one row or one column so they spell a word and join the words already on the
+        board; every new word you make, across and down, scores. Then you draw back up to
+        seven. Choose at the start: play <strong className="text-ink">against the bot</strong>{" "}
+        (Easy, Normal or Hard), or <strong className="text-ink">pass and play</strong> with
+        two to four people on one device.
+      </p>
+      <ul className="flex list-disc flex-col gap-1 pl-5">
+        <li>
+          <strong className="text-ink">Placing tiles.</strong> Tap a tile, then a square,
+          or drag on a desktop. Tap a tile you laid this turn to take it back.{" "}
+          <strong className="text-ink">Play</strong> checks every word against the word
+          list, and a word that isn&rsquo;t in it is refused before it scores, so nobody
+          needs to challenge.
+        </li>
+        <li>
+          <strong className="text-ink">The first word</strong> must cover the centre star
+          and be at least two letters.
+        </li>
+        <li>
+          <strong className="text-ink">Bonus squares</strong> count only on the turn a tile
+          is put on them: 2L and 3L double or triple that letter, 2W and 3W the whole word.
+          The centre star is a 2W.
+        </li>
+        <li>
+          <strong className="text-ink">The blank</strong> is any letter you choose, and is
+          worth nothing.
+        </li>
+        <li>
+          <strong className="text-ink">All seven tiles</strong> in one turn earns a
+          40-point bonus.
+        </li>
+        <li>
+          <strong className="text-ink">Swap</strong> puts tiles back for new ones (it
+          needs 7 in the bag) and <strong className="text-ink">Pass</strong> skips your
+          turn; both end your turn without scoring.
+        </li>
+        <li>
+          <strong className="text-ink">The end.</strong> The game ends when someone uses
+          their last tile with the bag empty, or every player swaps or passes twice in a
+          row. Tiles left on a rack count against their owner; whoever went out gains
+          them.
+        </li>
+        <li>
+          <strong className="text-ink">Scores.</strong> Beat the bot and your total goes on
+          the shared board; a loss or a tie saves nothing. Pass-and-play players are typed
+          names, so those games aren&rsquo;t saved.
+        </li>
+      </ul>
+    </Section>
+  );
+}
+
 export function PictionaryRules() {
   return (
     <Section title="Playing Pictionary">
@@ -635,9 +692,10 @@ function ArcadeInstructions() {
     <>
       <p className="text-sm text-muted">
         A small arcade. Pick a game, play it in the browser, and your result goes onto a
-        scoreboard shared by everyone in the house. Ten games so far: 2048, the Arrow
+        scoreboard shared by everyone in the house. Twelve games so far: 2048, the Arrow
         Clearing maze puzzle, Tetris, Sudoku, Blackjack, Minesweeper, Mahjong Match, the
-        four-player Mahjong, Bridge, and Pac-Man.
+        four-player Mahjong, Bridge, Pac-Man, Pictionary, and the Word Wizard crossword
+        tile game.
       </p>
       <Section title="How this module is laid out">
         <ul className="flex list-disc flex-col gap-1 pl-5">
@@ -666,6 +724,7 @@ function ArcadeInstructions() {
       <BridgeRules />
       <PacmanRules />
       <PictionaryRules />
+      <WordWizardRules />
 
       <Section title="When a score is saved">
         <p>
@@ -673,7 +732,8 @@ function ArcadeInstructions() {
           the board is empty or the lives run out; for Tetris, when the well fills to the
           top; for Sudoku, when the last cell is filled in correctly; for Blackjack, when
           you cash out or run out of chips; for Minesweeper, when the last safe square is
-          uncovered; for Pac-Man, when the last life goes. Abandoning a game part-way saves
+          uncovered; for Pac-Man, when the last life goes; for Word Wizard, when you beat the
+          bot. Abandoning a game part-way saves
           nothing, so a
           refresh mid-game costs you the board rather than posting a low score.
         </p>
@@ -747,6 +807,7 @@ const RULES_BY_GAME: Record<string, () => React.ReactNode> = {
   bridge: BridgeRules,
   pacman: PacmanRules,
   pictionary: PictionaryRules,
+  "word-wizard": WordWizardRules,
 };
 
 /** Whether `gameKey` has rules to show, for deciding whether to offer the button. */

@@ -185,6 +185,21 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
+  // Word Wizard — the crossword tile game, and an original design in that genre: its own
+  // bonus-square layout, letter values and tile counts (see the Word Wizard section of
+  // `types.ts`). Two modes, picked at the start: one player against a bot, or 2–4 people
+  // passing one device.
+  //
+  // Points, from the human's final total — but only for a bot game they **won**; a loss
+  // or a tie records 0, the rule Bridge and Mahjong apply. Pass-and-play posts nothing,
+  // for Pictionary's reason: its players are typed names, not accounts.
+  {
+    key: "word-wizard",
+    name: "Word Wizard",
+    description: "Build crossing words from seven letter tiles. Against a bot, or pass the device.",
+    status: "available",
+    scoreUnit: "points",
+  },
 ];
 
 /** The catalogue entry for `key`, or undefined when nothing matches. */
