@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { Modal } from "@/components/modal";
 import { SlotIcon } from "@/components/slot-icon";
+import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";
 import {
   formatScore,
   type ArrowDifficulty,
@@ -57,6 +58,16 @@ function GameIcon({ gameKey, className }: { gameKey: string; className?: string 
  *  button and the panel need it and only one Bridge board is ever open. */
 const RULES_PANEL_ID = "game-rules-panel";
 
+/** Where the Cards/List choice is remembered, per device. */
+const VIEW_MODE_KEY = "myhomebase:games-arcade-view";
+
+type ArcadeViewMode = "cards" | "list";
+
+const VIEW_MODE_OPTIONS: readonly ViewModeOption<ArcadeViewMode>[] = [
+  { key: "cards", label: "Cards", hint: "A grid of square tiles" },
+  { key: "list", label: "List", hint: "One compact row per game" },
+];
+
 export function GamesArcadeView({
   games,
   arrowBests,
@@ -79,6 +90,32 @@ export function GamesArcadeView({
   // the panel never reappears over a fresh hand.
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const open = games.find((entry) => entry.game.key === openKey);
+
+  // Cards is the default, and the stored choice is read AFTER mount: `localStorage`
+  // does not exist on the server, so reading it in the initial state would hydrate
+  // differently. Same pattern as Clips' List/Board switch.
+  const [viewMode, setViewMode] = useState<ArcadeViewMode>("cards");
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(VIEW_MODE_KEY);
+      if (stored === "cards" || stored === "list") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- see above.
+        setViewMode(stored);
+      }
+    } catch {
+      // Storage blocked: the choice just doesn't persist.
+    }
+  }, []);
+
+  function chooseViewMode(mode: ArcadeViewMode) {
+    setViewMode(mode);
+    try {
+      window.localStorage.setItem(VIEW_MODE_KEY, mode);
+    } catch {
+      // As above.
+    }
+  }
 
   /*
     While the rules are open, swallow the keys the games steer with.
@@ -153,13 +190,34 @@ export function GamesArcadeView({
         full phone width is a 350px tile holding four short lines, so the catalogue
         scrolls for no reason. Two across keeps a square tile at a sensible size.
       */}
-      <ul className="grid grid-cols-3 gap-4 xl:grid-cols-4 max-lg:grid-cols-2">
-        {games.map((entry) => (
-          <li key={entry.game.key}>
-            <GameCard summary={entry} onOpen={() => openGame(entry.game.key)} />
-          </li>
-        ))}
-      </ul>
+      {/* Two short labels, so the segments stay as a row on a phone too. */}
+      <div className="flex justify-end">
+        <ViewModeSwitch
+          options={VIEW_MODE_OPTIONS}
+          value={viewMode}
+          onChange={chooseViewMode}
+          label="View"
+          compact="segments"
+        />
+      </div>
+
+      {viewMode === "cards" ? (
+        <ul className="grid grid-cols-3 gap-4 xl:grid-cols-4 max-lg:grid-cols-2">
+          {games.map((entry) => (
+            <li key={entry.game.key}>
+              <GameCard summary={entry} onOpen={() => openGame(entry.game.key)} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {games.map((entry) => (
+            <li key={entry.game.key}>
+              <GameRow summary={entry} onOpen={() => openGame(entry.game.key)} />
+            </li>
+          ))}
+        </ul>
+      )}
 
       {open && (
         <Modal
@@ -298,6 +356,53 @@ export function GamesArcadeView({
         </Modal>
       )}
     </div>
+  );
+}
+
+/**
+ * One game as a row. Wide: name + description on the left, stats and Play on the right.
+ * `max-lg:` stacks it — the stats and Play drop under the text so a 390px row never
+ * has to squeeze a description beside a button.
+ */
+function GameRow({ summary, onOpen }: { summary: GameSummary; onOpen: () => void }) {
+  const { game, best, played } = summary;
+  const playable = game.status === "available";
+
+  return (
+    <article className="flex items-center gap-4 rounded-xl border border-line bg-paper-raised px-4 py-3 max-lg:flex-col max-lg:items-stretch max-lg:gap-2">
+      <div className="min-w-0 flex-1">
+        <h3 className="flex items-center gap-2 font-display text-base text-ink">
+          <GameIcon gameKey={game.key} className="h-4 w-4 shrink-0 text-brass-dark" />
+          {game.name}
+          {!playable && (
+            <span className="rounded bg-brass-soft px-1.5 py-0.5 text-[0.65rem] uppercase tracking-wide text-brass-dark">
+              Soon
+            </span>
+          )}
+        </h3>
+        <p className="mt-0.5 text-sm text-muted">{game.description}</p>
+      </div>
+
+      <dl className="flex shrink-0 gap-4 text-xs text-muted">
+        <div className="min-w-24">
+          <dt className="uppercase tracking-wide">Record</dt>
+          <dd className="mt-0.5 font-display text-sm tabular-nums text-ink">
+            {best ? formatScore(game.key, best.score) : "—"}
+          </dd>
+          {best && <p className="mt-0.5 max-w-40 truncate">Held by {best.userName}</p>}
+        </div>
+        <div>
+          <dt className="uppercase tracking-wide">Played</dt>
+          <dd className="mt-0.5 font-display text-sm tabular-nums text-ink">{played}</dd>
+        </div>
+      </dl>
+
+      {playable && (
+        <Button onClick={onOpen} size="sm" className="shrink-0 lg:w-20">
+          Play
+        </Button>
+      )}
+    </article>
   );
 }
 
