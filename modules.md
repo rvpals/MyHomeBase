@@ -1148,9 +1148,28 @@ is never retried at all. So a track is asked about at most once, ever.
 `src/lib/games`. Three tables: `gam_scores` (`migrations/0074`, registered by `0075`),
 `gam_pictionary_words` (`migrations/0164`) and `gam_saved_runs` (`migrations/0171`: runs
 in progress, one per player per game key, so a board can be resumed on any device. Only
-Arrow Clearing uses it so far, through `arrow-save.ts` and `saved-runs.ts`). Twelve games so far: **2048**,
+Arrow Clearing uses it so far, through `arrow-save.ts` and `saved-runs.ts`). Thirteen games so far: **2048**,
 **Arrow Clearing**, **Tetris**, **Sudoku**, **Blackjack**, **Minesweeper**,
-**Mahjong Match**, **Mahjong**, **Bridge**, **Pac-Man**, **Pictionary**, and **Word Wizard**.
+**Mahjong Match**, **Mahjong**, **Bridge**, **Pac-Man**, **Pictionary**, **Word Wizard**
+and **Battleship**.
+
+**Battleship** (`battleship`) is the player against the computer. Rules in
+`game-battleship.ts` (placement validation, Randomize Fleet, a placement → battle →
+game-over phase machine, turn order, refused repeat shots, MISS / HIT / SUNK, the win on
+the 17th hit), the computer in `battleship-bot.ts`. Three choices worth knowing:
+- **The computer aims from the masked board.** `takeComputerTurn` passes `maskBoard` of
+  the player's waters to `chooseShot` and never the ship list, so no level can cheat by
+  construction. Easy is random; Normal hunts a checkerboard spaced by the smallest ship
+  afloat and follows a line of hits; Hard counts how many legal placements of the
+  remaining ships cover each square.
+- **It started as a multiplayer brief and was cut to single-player before any code.**
+  The brief wanted rooms over a custom Socket.IO server, which would have meant a second
+  process beside Next's standalone `server.js` on the NAS. Against the computer the
+  state is client-side like every other game; the view still renders from
+  `playerView`, which masks the computer's unhit ships, so moving the state server-side
+  later would not change the screen.
+- **One card, one scoreboard, a level multiplier.** A win is `(117 − shots) × 1/2/3`
+  for Easy/Normal/Hard; a loss is 0. `moves` on the score row is shots fired.
 
 **Word Wizard** (`word-wizard`) is the crossword tile game, and an original design in that
 genre rather than a copy of any one: its own bonus-square layout, letter values and tile

@@ -1,5 +1,18 @@
 # Change History
 
+## 2026-11-20 22:00 — Games: Battleship against the computer
+
+**No migration, no new package, no paid service.** A new Arcade card. The pasted brief asked for real-time multiplayer over a custom Socket.IO server; it was changed to single-player against the computer before any code was written, so there is no socket server, no rooms and no deployment change.
+
+**Not seen on screen.** Work through the Testing List section.
+
+- **Rules** in `src/lib/games/game-battleship.ts`: 10x10 board (A–J, 1–10), the five-ship fleet, placement validation (complete, on the board, no overlap; lengths come from the ship kind), Randomize Fleet, a placement → battle → game-over phase machine, turn order with repeat and out-of-turn shots refused, MISS / HIT / SUNK naming the ship, and the win on the 17th hit. The player fires first.
+- **Computer** in `battleship-bot.ts`, choosing only from the *masked* player board: Easy fires at random, Normal hunts on a checkerboard and follows a hit along its line, Hard fires at the square most placements of the remaining ships would cover.
+- **Score:** a win is (117 − shots fired) × 1 / 2 / 3 for Easy / Normal / Hard, so a perfect Normal game is 200; a loss is 0. One card, one scoreboard (`battleship`).
+- **View** `game-battleship-view.tsx`: ship picker, Rotate (or R), Randomize Fleet, Clear, Ready; then your fleet and the enemy radar, side by side on desktop and stacked on a phone with the radar first. The two boards use a fixed dark radar palette in every theme (the mahjong-tile licence in design.md); everything around them is theme tokens.
+- **Icon slot** `games_card_battleship` with a new `game-battleship` glyph. Rules text in `games-instructions.tsx`.
+- The game state lives in the browser like every other Arcade game, so the computer's fleet is not hidden from someone reading the page's memory. The screen renders from a masked view regardless.
+
 ## 2026-11-20 20:56 — Recipes picture fix, Games Cards/List switch, Journal stat-tile icons and calendar tweaks
 
 **No migration, no new package, no paid service.** One change-set, three bodies of work, committed separately.

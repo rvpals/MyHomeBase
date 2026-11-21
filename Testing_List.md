@@ -146,6 +146,25 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-20 — Games: Battleship
+
+**No migration; republish needed.** Not seen on screen. Items 9 and 10 are phone-width; item 11 is worth checking in a light theme.
+
+- [ ] **1.** Games → Arcade: a **Battleship** card with a ship icon; Play opens it full-screen; Rules shows the rules
+- [ ] **2.** Pick a ship, tap a square: it is placed from its bow and the next unplaced ship is selected; Rotate (and R on a desktop) turns it Across/Down
+- [ ] **3.** Desktop: hovering shows a green preview where it fits and red where it would overlap or run off; a refused tap says why
+- [ ] **4.** Tapping a placed ship picks it up so it can be moved; Clear empties the board; Randomize Fleet lays all five legally
+- [ ] **5.** Ready is disabled until all five ships are down; pressing it starts the battle with you to fire
+- [ ] **6.** Tapping the radar fires; the line below reads like "You: B7 — HIT", and the computer replies after a short pause with its own line
+- [ ] **7.** A square already fired at can't be tapped again; the radar can't be tapped during the computer's turn
+- [ ] **8.** Sinking a ship names it, shades all its squares and strikes it through in the fleet list; the game ends on the last one with a Victory / Fleet lost panel, and a loss outlines the ships you never found
+- [ ] **9.** Phone width: the radar sits first and fills the width with no horizontal scroll; your fleet is smaller below it; squares are big enough to tap accurately
+- [ ] **10.** Phone width: the ship picker and placement buttons wrap cleanly above the board
+- [ ] **11.** The radar boards read well on a light theme and a dark one; Easy / Normal / Hard each deal a new game
+- [ ] **12.** A win puts (117 − shots) × level on Games → Scores and updates the card's Record; a loss adds nothing
+- [ ] **13.** Normal and Hard chase a hit along the ship rather than firing elsewhere; Easy doesn't
+- [ ] **14.** Icon settings: **Battleship** is listed under Games cards, and an uploaded icon replaces the glyph
+
 ## 2026-11-20 — Release (Recipes picture fix, Games list view, Journal icons)
 
 Not verified on screen at all; the Recipes cause was not reproduced. Phone and desktop both matter for items 1–3.

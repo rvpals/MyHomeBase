@@ -200,6 +200,16 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
+  // Battleship against the computer. One card for all three levels, as Sudoku and
+  // Minesweeper do; the level's multiplier in `BATTLESHIP_SETUP` keeps an Easy win from
+  // ranking level with a Hard one on the single board. A loss scores 0.
+  {
+    key: "battleship",
+    name: "Battleship",
+    description: "Hide your fleet, hunt the computer's. First to sink all five ships wins.",
+    status: "available",
+    scoreUnit: "points",
+  },
 ];
 
 /** The catalogue entry for `key`, or undefined when nothing matches. */

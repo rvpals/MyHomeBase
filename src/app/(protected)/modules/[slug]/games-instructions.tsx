@@ -323,6 +323,48 @@ export function BlackjackRules() {
   );
 }
 
+export function BattleshipRules() {
+  return (
+    <Section title="Playing Battleship">
+      <p>
+        You and the computer each hide a fleet of five ships on a 10&times;10 grid &mdash;
+        rows A&ndash;J, columns 1&ndash;10 &mdash; then take turns firing at each other&rsquo;s
+        waters. Sink all five enemy ships (17 squares) before the computer sinks yours.
+      </p>
+      <p>
+        The fleet is a <strong className="text-ink">Carrier</strong> (5),{" "}
+        <strong className="text-ink">Battleship</strong> (4),{" "}
+        <strong className="text-ink">Cruiser</strong> (3),{" "}
+        <strong className="text-ink">Submarine</strong> (3) and{" "}
+        <strong className="text-ink">Destroyer</strong> (2). Pick a ship, then tap the
+        square for its bow; <strong className="text-ink">Rotate</strong> (or R) turns it.
+        Tap a placed ship to pick it up again, or press{" "}
+        <strong className="text-ink">Randomize Fleet</strong>. Ships can touch but not
+        overlap. Press <strong className="text-ink">Ready</strong> once all five are down.
+      </p>
+      <ul className="flex list-disc flex-col gap-1 pl-5">
+        <li>
+          You fire first, and turns alternate whether you hit or miss. Each shot comes back
+          as <strong className="text-ink">MISS</strong>,{" "}
+          <strong className="text-ink">HIT</strong> or{" "}
+          <strong className="text-ink">SUNK</strong>, naming the ship that went down.
+        </li>
+        <li>
+          <strong className="text-ink">Easy</strong> fires at random.{" "}
+          <strong className="text-ink">Normal</strong> hunts in a checkerboard and chases
+          down a hit. <strong className="text-ink">Hard</strong> works out where your
+          remaining ships could still be hiding and fires at the likeliest square.
+        </li>
+        <li>
+          A win scores <strong className="text-ink">117 minus the shots you fired</strong>{" "}
+          &mdash; 100 for a perfect 17-shot game &mdash; times 1, 2 or 3 for Easy, Normal or
+          Hard. A loss scores nothing.
+        </li>
+      </ul>
+    </Section>
+  );
+}
+
 export function MinesweeperRules() {
   return (
     <Section title="Playing Minesweeper">
@@ -808,6 +850,7 @@ const RULES_BY_GAME: Record<string, () => React.ReactNode> = {
   pacman: PacmanRules,
   pictionary: PictionaryRules,
   "word-wizard": WordWizardRules,
+  battleship: BattleshipRules,
 };
 
 /** Whether `gameKey` has rules to show, for deciding whether to offer the button. */

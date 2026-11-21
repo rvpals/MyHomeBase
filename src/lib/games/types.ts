@@ -2618,3 +2618,147 @@ export interface WordWizardState {
 export type WordWizardPlayResult =
   | { ok: true; words: WordWizardWord[]; score: number; fullRackBonus: boolean }
   | { ok: false; reason: string; invalidWords?: string[] };
+
+/* ---------------------------------------------------------------------------------
+   Battleship — the player against the computer.
+--------------------------------------------------------------------------------- */
+
+/** The board is 10x10: rows A–J, columns 1–10. Cells are flat indices, row-major. */
+export const BATTLESHIP_SIZE = 10;
+
+export const BATTLESHIP_CELLS = BATTLESHIP_SIZE * BATTLESHIP_SIZE;
+
+/** Row letters, top to bottom. `B7` is row index 1, column index 6. */
+export const BATTLESHIP_ROW_LABELS = "ABCDEFGHIJ";
+
+export const BATTLESHIP_SHIP_KINDS = [
+  "carrier",
+  "battleship",
+  "cruiser",
+  "submarine",
+  "destroyer",
+] as const;
+
+export type BattleshipShipKind = (typeof BATTLESHIP_SHIP_KINDS)[number];
+
+/** The fleet: one of each kind, 17 cells in all. Order is the placement order. */
+export const BATTLESHIP_FLEET: Record<BattleshipShipKind, { name: string; length: number }> = {
+  carrier: { name: "Carrier", length: 5 },
+  battleship: { name: "Battleship", length: 4 },
+  cruiser: { name: "Cruiser", length: 3 },
+  submarine: { name: "Submarine", length: 3 },
+  destroyer: { name: "Destroyer", length: 2 },
+};
+
+/** Ship cells in a full fleet — the number of hits that wins. */
+export const BATTLESHIP_FLEET_CELLS = BATTLESHIP_SHIP_KINDS.reduce(
+  (sum, kind) => sum + BATTLESHIP_FLEET[kind].length,
+  0,
+);
+
+/**
+ * The computer's three levels, behind one Arcade card and one scoreboard — the shape
+ * Sudoku and Minesweeper use. The multiplier is what keeps an Easy win from ranking
+ * level with a Hard one on that single board.
+ */
+export const BATTLESHIP_DIFFICULTIES = ["easy", "normal", "hard"] as const;
+
+export type BattleshipDifficulty = (typeof BATTLESHIP_DIFFICULTIES)[number];
+
+export const BATTLESHIP_SETUP: Record<
+  BattleshipDifficulty,
+  { label: string; multiplier: number }
+> = {
+  easy: { label: "Easy", multiplier: 1 },
+  normal: { label: "Normal", multiplier: 2 },
+  hard: { label: "Hard", multiplier: 3 },
+};
+
+/**
+ * A win scores `(BATTLESHIP_SCORE_BASE - shots fired) x multiplier`. The fewest shots
+ * that can win is 17, so a perfect game is worth 100 before the multiplier and a game
+ * that needed all 100 squares is worth 17. A loss scores 0, as a broke Blackjack run
+ * does.
+ */
+export const BATTLESHIP_SCORE_BASE = BATTLESHIP_FLEET_CELLS + 100;
+
+/**
+ * The phases. There is no lobby: against the computer there is no room to join, and
+ * picking the difficulty is the first button of the placement screen, as in Sudoku.
+ */
+export const BATTLESHIP_PHASES = ["placement", "battle", "game-over"] as const;
+
+export type BattleshipPhase = (typeof BATTLESHIP_PHASES)[number];
+
+export type BattleshipSide = "player" | "computer";
+
+export type BattleshipOrientation = "horizontal" | "vertical";
+
+/**
+ * One placed ship: its kind, its bow (top-left cell) and which way it runs. The
+ * length is never stored — it comes from `BATTLESHIP_FLEET`, so a ship cannot be
+ * placed at the wrong length in the first place.
+ */
+export interface BattleshipShip {
+  kind: BattleshipShipKind;
+  row: number;
+  col: number;
+  orientation: BattleshipOrientation;
+}
+
+/** One side's waters: where its ships are and every cell the other side has fired at. */
+export interface BattleshipBoard {
+  ships: readonly BattleshipShip[];
+  /** Cell indices fired at, in order. Never contains a duplicate. */
+  shots: readonly number[];
+}
+
+export type BattleshipShotResult = "miss" | "hit" | "sunk";
+
+export interface BattleshipShot {
+  by: BattleshipSide;
+  index: number;
+  result: BattleshipShotResult;
+  /** Set only when `result` is `"sunk"`. */
+  sunk?: BattleshipShipKind;
+}
+
+export interface BattleshipState {
+  phase: BattleshipPhase;
+  difficulty: BattleshipDifficulty;
+  /** `player` is fired at by the computer; `computer` is fired at by the player. */
+  boards: Record<BattleshipSide, BattleshipBoard>;
+  turn: BattleshipSide;
+  winner?: BattleshipSide;
+  lastShot?: BattleshipShot;
+}
+
+/**
+ * What one side may know about the other side's waters. `unknown` covers both open
+ * sea and an unhit ship — that is the whole point of the mask. A sunk ship is shown
+ * in full, since sinking it has already revealed every cell.
+ */
+export type BattleshipMaskedCell = "unknown" | "miss" | "hit" | "sunk";
+
+/** A cell of a side's own waters, which it sees in full. */
+export interface BattleshipOwnCell {
+  ship?: BattleshipShipKind;
+  shot: boolean;
+}
+
+/**
+ * Everything the screen needs, and nothing it should not have. The computer's unhit
+ * ships are not in it — the view renders from this rather than from the state.
+ */
+export interface BattleshipPlayerView {
+  phase: BattleshipPhase;
+  turn: BattleshipSide;
+  winner?: BattleshipSide;
+  lastShot?: BattleshipShot;
+  own: readonly BattleshipOwnCell[];
+  opponent: readonly BattleshipMaskedCell[];
+  /** Kinds sunk on each side, in the order they went down. */
+  ownSunk: readonly BattleshipShipKind[];
+  opponentSunk: readonly BattleshipShipKind[];
+  shotsFired: number;
+}

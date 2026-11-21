@@ -1505,6 +1505,15 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "games_card_battleship",
+    label: "Battleship",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Battleship card.",
+    defaultConcept: "game-battleship",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Expense — nav sections.

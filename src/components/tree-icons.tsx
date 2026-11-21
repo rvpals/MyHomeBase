@@ -746,6 +746,18 @@ const GameWordWizard: IconComponent = (props) => (
   </svg>
 );
 
+/* Battleship: a hull sitting on the waterline with a superstructure and funnel, and a
+   wave underneath. Side-on rather than a crosshair or a grid, because a grid would read
+   as Sudoku or Minesweeper beside it in the same list — the ship is the game. */
+const GameBattleship: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M2.5 13.5h19l-2.5 4h-14z" />
+    <path d="M8 13.5v-3h7v3" />
+    <path d="M11 10.5V7.5h2v3" />
+    <path d="M2.5 20.5c1.5-1 3-1 4.5 0s3 1 4.5 0 3-1 4.5 0 3 1 4.5 0" />
+  </svg>
+);
+
 /* A rocket launching: the nose-cone body on a diagonal, one porthole, two fins and a
    short exhaust plume off the tail. The "launch module" button on the home screen's
    cards.
@@ -982,6 +994,7 @@ const TREE_ICONS = {
   "game-pacman": GamePacman,
   "game-pictionary": GamePictionary,
   "game-word-wizard": GameWordWizard,
+  "game-battleship": GameBattleship,
   pin: MapPin,
   pushpin: Pushpin,
   "pushpin-filled": PushpinFilled,

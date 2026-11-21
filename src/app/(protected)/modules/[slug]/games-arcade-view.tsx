@@ -18,6 +18,7 @@ import { Game2048View } from "./game-2048-view";
 import { GameBlackjackView } from "./game-blackjack-view";
 import { GameBridgeView } from "./game-bridge-view";
 import { GameArrowsView } from "./game-arrows-view";
+import { GameBattleshipView } from "./game-battleship-view";
 import { GameMahjongMatchView } from "./game-mahjong-match-view";
 import { GameMahjongView } from "./game-mahjong-view";
 import { GameMinesweeperView } from "./game-minesweeper-view";
@@ -350,6 +351,11 @@ export function GamesArcadeView({
                   inside the game. */}
               {open.game.key === "word-wizard" && (
                 <GameWordWizardView bestScore={open.best?.score ?? 0} />
+              )}
+              {/* Battleship against the computer. One key for all three levels, as
+                  with Sudoku and Minesweeper — the level is picked inside the game. */}
+              {open.game.key === "battleship" && (
+                <GameBattleshipView bestScore={open.best?.score ?? 0} />
               )}
             </div>
           </div>

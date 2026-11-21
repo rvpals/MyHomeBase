@@ -101,6 +101,8 @@ export const TREE_ICON_NAMES = [
   "game-pictionary",
   // Word Wizard. Three letter tiles in a stepped row — a word being laid down.
   "game-word-wizard",
+  // Battleship. A hull on the waterline with a funnel, over a wave.
+  "game-battleship",
   // Journal's Location Manager. A map pin — the mark for a single saved place.
   // Deliberately not `flash`/`plus`: this says *where*, not *do something*.
   "pin",
