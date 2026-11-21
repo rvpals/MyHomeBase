@@ -230,6 +230,8 @@ export function HouseholdRecipesView({
         picturePreview?: string;
         /** Whether the stored recipe already has one, so the label can say "Replace". */
         hasPicture?: boolean;
+        /** `updatedAt` of the stored recipe — cache-buster for its picture URL. */
+        pictureVersion?: string;
       }
     | { kind: "view"; recipe: Recipe }
     | { kind: "delete"; recipe: RecipeSummary }
@@ -293,6 +295,7 @@ export function HouseholdRecipesView({
       id,
       form: toForm(result.recipe),
       hasPicture: result.recipe.hasPicture,
+      pictureVersion: result.recipe.updatedAt,
     });
   }
 
@@ -684,6 +687,11 @@ export function HouseholdRecipesView({
           isBusy={isBusy}
           picturePreview={dialog.picturePreview}
           hasPicture={dialog.hasPicture}
+          storedPictureUrl={
+            dialog.id !== undefined && dialog.hasPicture
+              ? `/api/household/recipes/${dialog.id}/picture?v=${encodeURIComponent(dialog.pictureVersion ?? "")}`
+              : undefined
+          }
           onChange={(form) => setDialog({ ...dialog, form })}
           onPicture={(picture, picturePreview) =>
             setDialog({ ...dialog, picture, picturePreview })
@@ -793,6 +801,7 @@ function RecipeEditor({
   isBusy,
   picturePreview,
   hasPicture,
+  storedPictureUrl,
   onChange,
   onPicture,
   onCancel,
@@ -807,6 +816,8 @@ function RecipeEditor({
   picturePreview?: string;
   /** Whether the stored recipe already has one — "Replace" rather than "Add". */
   hasPicture?: boolean;
+  /** URL of the stored picture, shown until a new one is chosen. */
+  storedPictureUrl?: string;
   onChange: (form: RecipeForm) => void;
   /** Hands up a chosen picture and its preview; saved with the form. */
   onPicture: (picture: RecipePictureInput, previewUrl: string) => void;
@@ -852,7 +863,11 @@ function RecipeEditor({
             onChange={(event) => set({ description: event.target.value })}
           />
         </Field>
-        <Field label="Picture">
+        {/* A div, not <Field>: a <label> around a hidden file input and a button
+            makes the button's click also activate the label, which can open the
+            picker twice or swallow it. */}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted">Picture</span>
           <div className="flex items-center gap-3">
             {/* The chosen picture if there is one, else whatever is stored, else
                 a placeholder. A preview matters most for a NEW recipe, where
@@ -863,6 +878,14 @@ function RecipeEditor({
               // loader for bytes that never touch the network.
               <img
                 src={picturePreview}
+                alt=""
+                className="h-20 w-20 rounded-md border border-line object-cover"
+              />
+            ) : storedPictureUrl ? (
+
+              // Stored picture of an existing recipe, served by the API route.
+              <img
+                src={storedPictureUrl}
                 alt=""
                 className="h-20 w-20 rounded-md border border-line object-cover"
               />
@@ -904,7 +927,7 @@ function RecipeEditor({
               {pictureError && <span className="text-xs text-ink">{pictureError}</span>}
             </div>
           </div>
-        </Field>
+        </div>
         {/* One per row, full width, rather than the pair of half-width columns
             these used to share. Both hold line-per-item text that wraps badly in
             a narrow box: an ingredient like "2 tbsp unsalted butter, softened"
