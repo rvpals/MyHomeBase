@@ -516,6 +516,7 @@ export {
 export {
   JOURNAL_STATS_TABS,
   JOURNAL_STATS_TAXONOMY_LIMIT,
+  JOURNAL_STATS_TOP_TAGS_LIMIT,
   journalStatsTabSchema,
   loadJournalStatsTab,
   type JournalStatsTab,

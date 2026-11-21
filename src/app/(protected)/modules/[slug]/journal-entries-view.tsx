@@ -188,6 +188,13 @@ const COLUMNS: DataGridColumn<JournalEntry>[] = [
           <SlotIcon slot={ENCRYPTED_SLOT} className="h-3.5 w-3.5" />
           {ENCRYPTED_TITLE_PLACEHOLDER}
         </span>
+      ) : entry.isLocked ? (
+        // A locked entry gets the lock in front of its title. Reuses the encrypted
+        // entry's lock slot rather than a new id — one glyph for "can't be edited".
+        <span className="inline-flex items-center gap-1.5">
+          <SlotIcon slot={ENCRYPTED_SLOT} className="h-3.5 w-3.5 shrink-0 text-muted" />
+          {entry.title}
+        </span>
       ) : (
         entry.title
       ),
@@ -204,7 +211,6 @@ const COLUMNS: DataGridColumn<JournalEntry>[] = [
     value: (entry) => entry.tags.join(", "),
     render: (entry) => entry.tags.join(", "),
   },
-  { key: "place", header: "Place", value: (entry) => entry.placeName, render: (entry) => entry.placeName },
 ];
 
 /** One row of a "Show SQL" re-run's arbitrary result set. */
@@ -1290,8 +1296,8 @@ function EntriesTab({
             // rows, so a width, an order or a hidden column set on one holds on all
             // of them. Three keys is what let the tabs look like three screens.
             storageKey="myhomebase:journal-entries-grid"
-            // `enableRecordView` stays at its default (on) everywhere. The eye
-            // used to be switched off on Substantial and absent on Log.
+            // The eye column is off on every tab: the row click already opens the entry.
+            enableRecordView={false}
             onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
             enableSelection
             renderSelectionActions={(selectedRows, clearSelection) => (
@@ -1768,7 +1774,7 @@ function SearchTab({
           enableExport
           exportFileName="journal-search-entries"
           storageKey="myhomebase:journal-entries-grid"
-          enableRecordView
+          enableRecordView={false}
           onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
           enableSelection
           renderSelectionActions={(selectedRows, clearSelection) => (

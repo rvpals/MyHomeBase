@@ -146,6 +146,18 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-20 — Release (Recipes picture fix, Games list view, Journal icons)
+
+Not verified on screen at all; the Recipes cause was not reproduced. Phone and desktop both matter for items 1–3.
+
+- [ ] **1.** Household → Recipes → Add: click Add picture, choose a PNG/JPEG — the thumbnail appears at once and the picker opens only once
+- [ ] **2.** Household → Recipes → Edit a recipe that has a picture: the thumbnail spot shows it; Replace picture swaps in the new preview; Save keeps it
+- [ ] **3.** Household → Recipes: a file over 2 MB or of a wrong type shows an error line under the button
+- [ ] **4.** Games: switch between Cards and List; the choice survives a reload; List stacks cleanly on a phone
+- [ ] **5.** Journal → Home → Statistics: each of the four tiles shows its icon; Top Tags lists up to 20
+- [ ] **6.** Journal → Entries: no eye column on any tab; a locked entry shows a lock before its title
+- [ ] **7.** Journal → Calendar: clicking an entry opens it on its own screen
+
 ## 2026-11-19 — Release (Journal Calendar redesign)
 
 **Needs migration 0172 applied on the NAS; republish needed.** Nothing here has been run, linted or seen on screen, and the new unit tests were never run. Items 9–11 need a category with a colour set first; item 14 is desktop-only; items 7 and 15 are phone-width; item 16 is worth checking in a light theme and in a themed icon set.

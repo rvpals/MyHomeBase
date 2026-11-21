@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { JOURNAL_STATS_TAXONOMY_LIMIT, loadJournalStatsTab } from "./stats-tabs";
+import {
+  JOURNAL_STATS_TAXONOMY_LIMIT,
+  JOURNAL_STATS_TOP_TAGS_LIMIT,
+  loadJournalStatsTab,
+} from "./stats-tabs";
 import type { JournalRepository } from "./ports";
 import type { JournalEntry } from "./types";
 
@@ -65,7 +69,7 @@ describe("loadJournalStatsTab", () => {
       topCategories: [{ name: "Travel", entryCount: 5 }],
     });
     expect(calls).toEqual([
-      `tags:${JOURNAL_STATS_TAXONOMY_LIMIT}`,
+      `tags:${JOURNAL_STATS_TOP_TAGS_LIMIT}`,
       `categories:${JOURNAL_STATS_TAXONOMY_LIMIT}`,
     ]);
   });

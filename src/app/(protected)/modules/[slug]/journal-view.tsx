@@ -35,7 +35,11 @@ import { loadJournalStatsTabAction, type JournalStatsTabResult } from "./journal
 // non-null assertions are safe because slots.test.ts asserts each id is registered.
 const STATS_SLOT = getIconSlot("journal_card_statistics")!;
 const INTERESTING_STATS_SLOT = getIconSlot("journal_card_interesting_stats")!;
-const TOP_TAGS_SLOT = getIconSlot("journal_heading_top_tags")!;
+const STAT_TOTAL_SLOT = getIconSlot("journal_stat_total_entries")!;
+const STAT_LOCKED_SLOT = getIconSlot("journal_stat_locked_entries")!;
+const STAT_LOG_SLOT = getIconSlot("journal_stat_log_entries")!;
+const STAT_RECYCLED_SLOT = getIconSlot("journal_stat_recycled_entries")!;
+const TOP_TAGS_SLOT =getIconSlot("journal_heading_top_tags")!;
 const TOP_CATEGORIES_SLOT = getIconSlot("journal_heading_top_categories")!;
 const RECENT_SLOT = getIconSlot("journal_card_recent_entries")!;
 // The combined card's header, then the two tab labels inside it.
@@ -237,9 +241,12 @@ function StatTile({
   value,
   href,
   title,
+  icon,
 }: {
   label: string;
   value: number;
+  /** The tile's icon slot, shown beside the label. */
+  icon?: NonNullable<ReturnType<typeof getIconSlot>>;
   /**
    * Where the tile goes when clicked. Optional because "Total Entries" has no
    * destination worth having — the Entries section unfiltered is one nav click
@@ -254,7 +261,10 @@ function StatTile({
   // change to the tile's shape can't drift between the linked and plain cases.
   const body = (
     <>
-      <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
+      <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted">
+        {icon && <SlotIcon slot={icon} className="h-4 w-4 shrink-0" />}
+        {label}
+      </p>
       {/* Thousands separated, with a fixed locale rather than the browser's, so
           the figure doesn't change shape per visitor. */}
       <p className="mt-1 font-display text-xl text-ink">{value.toLocaleString("en-US")}</p>
@@ -819,8 +829,9 @@ export function JournalView({
             summary numbers"). `max-lg:grid-cols-1` stacks them on a phone and leaves
             the desktop columns untouched. */}
         <div className="grid grid-cols-4 gap-4 max-lg:grid-cols-1">
-          <StatTile label="Total Entries" value={tally.totalCount} />
+          <StatTile label="Total Entries" value={tally.totalCount} icon={STAT_TOTAL_SLOT} />
           <StatTile
+            icon={STAT_LOCKED_SLOT}
             label="Total Locked Entries"
             value={tally.lockedCount}
             // `locked = yes` is the filter grammar's own spelling (filter-query.ts
@@ -834,6 +845,7 @@ export function JournalView({
             title="Show every locked entry"
           />
           <StatTile
+            icon={STAT_LOG_SLOT}
             label="Total Log Entries"
             value={tally.logCount}
             // The Log tab, not a Main filtered to `category = Log`: the tab IS the old
@@ -842,6 +854,7 @@ export function JournalView({
             title="Show the Log tab"
           />
           <StatTile
+            icon={STAT_RECYCLED_SLOT}
             label="Total Recycled Entries"
             value={tally.recycledCount}
             href="/modules/journal/recycle-bin"

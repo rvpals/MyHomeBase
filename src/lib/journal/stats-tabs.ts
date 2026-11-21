@@ -17,8 +17,11 @@ export type JournalStatsTab = (typeof JOURNAL_STATS_TABS)[number];
 /** Boundary schema for the tab key — the server action and any CLI caller parse with it. */
 export const journalStatsTabSchema = z.enum(JOURNAL_STATS_TABS);
 
-/** How many tags and how many categories the first tab ranks. */
+/** How many categories the first tab ranks. */
 export const JOURNAL_STATS_TAXONOMY_LIMIT = 10;
+
+/** How many tags the first tab ranks — more than categories, since there are more tags. */
+export const JOURNAL_STATS_TOP_TAGS_LIMIT = 20;
 
 export type JournalStatsTabData =
   | { tab: "taxonomy"; topTags: JournalTaxonomyCount[]; topCategories: JournalTaxonomyCount[] }
@@ -47,7 +50,7 @@ export function loadJournalStatsTab(
     case "taxonomy":
       return {
         tab: "taxonomy",
-        topTags: listTopTags(repo, JOURNAL_STATS_TAXONOMY_LIMIT),
+        topTags: listTopTags(repo, JOURNAL_STATS_TOP_TAGS_LIMIT),
         topCategories: listTopCategories(repo, JOURNAL_STATS_TAXONOMY_LIMIT),
       };
     case "count":

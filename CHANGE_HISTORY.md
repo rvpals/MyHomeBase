@@ -1,5 +1,24 @@
 # Change History
 
+## 2026-11-20 20:56 — Recipes picture fix, Games Cards/List switch, Journal stat-tile icons and calendar tweaks
+
+**No migration, no new package, no paid service.** One change-set, three bodies of work, committed separately.
+
+**What was checked: only that `household-recipes-view.tsx` typechecks.** No lint, test, library-boundary check or browser run, and none of it has been seen on screen. The Recipes cause was **not reproduced**; the fix addresses the two likeliest suspects. **Treat all of it as untested** and work through the Testing List section.
+
+### A. Household → Recipes: Add picture (`household-recipes-view.tsx`)
+- The editor's Picture field is no longer wrapped in the shared `Field` `<label>`: a label around a hidden file input and a button lets the button's click also activate the label, which can open the picker twice or swallow it. It is now a plain `div` with the same heading.
+- Editing a recipe that already has a picture now shows that picture in the thumbnail spot (previously only the "—" placeholder). A newly chosen file still previews immediately. `openEditor` keeps the recipe's `updatedAt` as the cache-buster.
+
+### B. Games (`games-arcade-view.tsx`)
+- A Cards/List switch on the arcade; List shows one game per row (`max-lg:` stacks stats and Play under the text). The choice is remembered per device in `localStorage`, read after mount.
+
+### C. Journal
+- **Statistics tiles** carry icons: four new slots `journal_stat_total_entries`, `journal_stat_locked_entries`, `journal_stat_log_entries`, `journal_stat_recycled_entries` (`src/lib/icons/slots.ts`).
+- **Top tags** ranks 20 (`JOURNAL_STATS_TOP_TAGS_LIMIT`) while categories keep their own limit (`stats-tabs.ts`, test updated).
+- **Entries list:** the eye (record view) column is off on every tab; the Place column was removed from one table; a locked entry shows a lock before its title.
+- **Calendar:** clicking an entry opens it on its own screen instead of a dialog.
+
 ## 2026-11-19 11:47 — Journal Calendar: calmer grid, category colour dots, 5 Weeks, Display mode, hover controls, legend, pin/lock marks
 
 **One migration (0172), no new npm package, no paid service.** Apply `migrations/0172_add_color_to_journal_categories.sql` on the NAS (`node --env-file-if-exists=.env migrate.cjs`) and **republish**; without it the Calendar and Categories screens fail with "no such column: color".

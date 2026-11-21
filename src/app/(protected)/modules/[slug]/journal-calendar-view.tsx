@@ -21,7 +21,6 @@ import { Button } from "@/components/button";
 import { Comments } from "@/components/comments";
 import { FullscreenStage } from "@/components/fullscreen-stage";
 import type { TintColor } from "@/lib/shared/tint";
-import { JournalViewer } from "@/components/journal-viewer";
 import { Modal } from "@/components/modal";
 import { PhotoOfTheDayButton } from "@/components/photo-of-the-day";
 import { SlotIcon } from "@/components/slot-icon";
@@ -60,7 +59,6 @@ import { JournalDayExpenses } from "./journal-day-expenses";
 import { JournalPhotosHost } from "./journal-photos-host";
 import { TaxonomyChipRow } from "@/components/taxonomy-icon";
 import { TreeIcon } from "@/components/tree-icons";
-import { journalEntriesFilterHref } from "./journal-shared";
 
 /**
  * What the photo dialog is currently showing — one day, or a whole period.
@@ -124,8 +122,6 @@ export function JournalCalendarView({
   const searchParams = useSearchParams();
   const isCompact = useIsCompact();
 
-  /** Which entry the viewer dialog is showing, if any. */
-  const [openEntryId, setOpenEntryId] = useState<number | undefined>(undefined);
   /** Which photos the Photo of the Day dialog is showing, if it is open. */
   const [photoRequest, setPhotoRequest] = useState<PhotoRequest | undefined>(undefined);
   /**
@@ -178,10 +174,6 @@ export function JournalCalendarView({
   const title = monthOrWeekGrid?.title ?? yearGrid?.title ?? "";
   const entryCount = monthOrWeekGrid?.entryCount ?? yearGrid?.entryCount ?? 0;
 
-  const entriesById = useMemo(
-    () => new Map(entries.map((entry) => [entry.id, entry])),
-    [entries],
-  );
   const selectedEntries = useMemo(
     () =>
       selectedDate === undefined
@@ -256,7 +248,13 @@ export function JournalCalendarView({
   }
 
   const cellTitleLimit = isCompact ? CALENDAR_CELL_TITLE_LIMIT_COMPACT : CALENDAR_CELL_TITLE_LIMIT;
-  const openEntry = openEntryId === undefined ? undefined : entriesById.get(openEntryId);
+  /**
+   * Opens an entry on its own screen. Not a dialog: the calendar is for finding an
+   * entry, and the full screen is where it is read, edited and linked from.
+   */
+  function openEntry(id: number) {
+    router.push(`/modules/journal/entries/${id}`);
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -296,7 +294,7 @@ export function JournalCalendarView({
           cellTitleLimit={cellTitleLimit}
           variant={monthOrWeekGrid.scope}
           onSelectDay={selectDay}
-          onOpenEntry={setOpenEntryId}
+          onOpenEntry={openEntry}
           onOpenPhotos={(date) => setPhotoRequest({ kind: "day", date })}
         />
       ) : null}
@@ -377,7 +375,7 @@ export function JournalCalendarView({
           entries={selectedEntries}
           categoryIcons={categoryIcons}
           tagIcons={tagIcons}
-          onOpenEntry={setOpenEntryId}
+          onOpenEntry={openEntry}
           onClose={() => {
             // The dialog belongs to the open day, so closing the day closes it
             // too — otherwise it would hang over a calendar with nothing selected.
@@ -416,39 +414,6 @@ export function JournalCalendarView({
           autoLookup
           onClose={() => setPhotoRequest(undefined)}
         />
-      ) : null}
-
-      {openEntry ? (
-        <Modal
-          // An encrypted entry's modal is titled by the placeholder: the
-          // viewer inside renders its own unlock prompt, and a modal header
-          // reading "Journal entry" would hide which entry was opened.
-          title={
-            openEntry.isEncrypted
-              ? ENCRYPTED_TITLE_PLACEHOLDER
-              : openEntry.title.trim() === ""
-                ? "Journal entry"
-                : openEntry.title
-          }
-          size="lg"
-          onClose={() => setOpenEntryId(undefined)}
-          footer={
-            <Button href={`/modules/journal/entries/${openEntry.id}`} variant="secondary" size="sm">
-              Open full entry
-            </Button>
-          }
-        >
-          {/* The registered viewer, not a re-implementation. Read-only here: the
-              calendar is for finding an entry, and editing it belongs on the
-              entry screen, which the footer link goes to. */}
-          <JournalViewer
-            entry={openEntry}
-            categoryIcons={categoryIcons}
-            tagIcons={tagIcons}
-            categoryHref={(name) => journalEntriesFilterHref("category", name)}
-            tagHref={(name) => journalEntriesFilterHref("tag", name)}
-          />
-        </Modal>
       ) : null}
     </div>
   );
@@ -598,7 +563,7 @@ function CalendarToolbar({
                 title for the whole thing.
               </li>
               <li>Click a day to list its entries below the grid; click it again to close.</li>
-              <li>Click a title to read the entry without leaving the calendar.</li>
+              <li>Click a title to open that entry on its own screen.</li>
               <li>
                 Week, 5 Weeks, Month and Year are the ranges; ‹ and › step by whichever one
                 is showing — except 5 Weeks, which slides one week at a time. In 5 Weeks the
@@ -940,11 +905,15 @@ function MonthGrid({
     // fills left are the ones that mean something: the open day, and the dimmed
     // days a month grid borrows from its neighbours.
     <div className="flex flex-col gap-1">
-      <div className="grid grid-cols-7 gap-1">
+      {/* The weekday row pops off the page: a raised bar with a drop shadow, using
+          design.md's registered `.card-raised` lift rather than a hand-rolled
+          shadow. `relative z-10` keeps the cast above the day cells that follow it
+          in the DOM, and the extra bottom margin leaves room for it to read. */}
+      <div className="card-raised relative z-10 mb-2 grid grid-cols-7 gap-1 rounded-lg bg-paper-raised">
         {WEEKDAY_LABELS.map((label) => (
           <div
             key={label}
-            className={`px-2 pb-1 text-center font-medium uppercase tracking-wide text-muted ${
+            className={`px-2 py-2 text-center font-medium uppercase tracking-wide text-muted ${
               isDisplay ? "text-lg" : "text-xs"
             }`}
           >
@@ -1453,6 +1422,16 @@ function DayEntriesPanel({
                       ? "(untitled)"
                       : entry.title}
                 </span>
+                {/* A labelled chip, not a bare padlock: this list is where a reader
+                    checks which entries are locked, so it says so in words. A state
+                    marker, so no icon slot (coding-guide.md keeps `lock` out of the
+                    registry). */}
+                {entry.isLocked ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded bg-brass-soft px-1.5 py-0.5 text-xs text-brass-dark">
+                    <TreeIcon name="lock" className="h-3 w-3" />
+                    Locked
+                  </span>
+                ) : null}
                 {entry.placeName === "" ? null : (
                   <span className="truncate text-xs text-muted max-lg:w-full">
                     {entry.placeName}
