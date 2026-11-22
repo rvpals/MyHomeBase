@@ -731,6 +731,11 @@ export {
   takeBotTurn as takeWordWizardBotTurn,
   type WordWizardCandidate,
 } from "./word-wizard-bot";
+export {
+  lookupWordDefinition as lookupWordWizardDefinition,
+  type WordDefinitionEntry as WordWizardDefinitionEntry,
+  type WordDefinitionResult as WordWizardDefinitionResult,
+} from "./word-definitions";
 
 // Battleship — the player against the computer. Everything carries a `battleship`
 // qualifier for the reason every block above gives: `startGame`, `scoreGame`, `ready`,
@@ -789,3 +794,4 @@ export {
   heatMap as battleshipHeatMap,
   takeComputerTurn as takeBattleshipComputerTurn,
 } from "./battleship-bot";
+export { sunkShipPlacements as sunkBattleshipPlacements } from "./game-battleship";

@@ -5469,6 +5469,11 @@ route.
 - **It owns no open/closed state** — guard it with `{isOpen && <PhotoOfTheDay …>}` like
   any [`Modal`](#modal). **Key it by what it shows** (`key={date}`); pointing a mounted
   dialog at a new date would leave the previous scan's folders under the new title.
+- **The grid loads like the viewer's strip.** Tiles use `thumbUrl` (a few KB; falls back
+  to `photoUrl` when the caller passes none), at most 3 downloading at once in grid order,
+  each with a spinner until it lands, plus a "Loading pictures… n of m" line. Nothing new
+  starts while the photo viewer is open, so a click on the viewer's own photo never queues
+  behind tiles. The folder lookup and folder read also show a spinner.
 - **A single date and a range are the same code path.** The domain treats one day as the
   range `date..date`, so the day case cannot drift from the range case.
 - **Nothing is scanned until a folder is opened.** The folder list is names and counts

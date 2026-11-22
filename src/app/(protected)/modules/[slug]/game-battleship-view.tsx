@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/button";
 import { useGameSounds } from "@/components/use-game-sounds";
 import {
@@ -24,12 +32,14 @@ import {
   revealedBattleshipFleet,
   scoreBattleship,
   startBattleship,
+  sunkBattleshipPlacements,
   takeBattleshipComputerTurn,
   validateBattleshipFleet,
   type BattleshipDifficulty,
   type BattleshipOrientation,
   type BattleshipShipKind,
   type BattleshipShot,
+  type BattleshipSide,
   type BattleshipState,
 } from "@/lib/games";
 import { saveScoreAction } from "./games-actions";
@@ -51,6 +61,31 @@ const GAME_KEY = "battleship";
 
 /** The pause before the computer fires, so its shot reads as a reply rather than a flicker. */
 const COMPUTER_DELAY_MS = 650;
+
+/**
+ * How long a sinking's effects stay mounted. Longer than the CSS animations
+ * (`.battleship-*` in globals.css: the banner's 1800ms is the longest) plus the
+ * per-cell stagger of a five-cell carrier (4 x 110ms), so nothing is cut off mid-fade.
+ */
+const SINK_MS = 2400;
+
+/** The gap between one cell of a sinking ship going up and the next, along its length. */
+const SINK_STAGGER_MS = 110;
+
+/**
+ * A ship going down, for the board it sank on. `side` is whose fleet it was: the
+ * computer's shows on the radar, the player's on their own board. `order` maps each of
+ * the ship's cells to its place along the hull, which is what staggers the blast.
+ *
+ * Only a *sunk* ship ever lands here, so its cells are already public — the radar is
+ * not given anything the rules had not revealed.
+ */
+interface Sinking {
+  key: number;
+  side: BattleshipSide;
+  order: ReadonlyMap<number, number>;
+  text: string;
+}
 
 /*
   The board is a radar scope: a fixed dark, green-phosphor palette in every theme.
@@ -75,11 +110,36 @@ function useSounds(enabled: boolean) {
         sounds.play({ startHz: 260, endHz: 140, durationMs: 160, type: "triangle", peak: 0.04 }),
       hit: () =>
         sounds.play({ startHz: 180, endHz: 60, durationMs: 260, type: "sawtooth", peak: 0.07 }),
-      sunk: () =>
+      /**
+       * A ship going down: a crack and a rolling blast, a second charge going off in
+       * the hull, then the long groan of it sinking with bubbles rising off it.
+       *
+       * No noise source in `useGameSounds`, so the "crack" is a short, fast downward
+       * sawtooth sweep and the rumble is two low sweeps layered; low-passed so they
+       * read as a boom rather than a buzz. Sinking your *own* ship drops the pitch and
+       * leaves off the triumphant bell that a sunk enemy gets.
+       */
+      sunk: (own: boolean) => {
+        const pitch = own ? 0.8 : 1;
         sounds.playSequence([
-          { startHz: 200, endHz: 50, durationMs: 380, type: "sawtooth", peak: 0.08 },
-          { startHz: 120, endHz: 40, durationMs: 500, type: "square", peak: 0.05, afterMs: 140 },
-        ]),
+          { startHz: 1100 * pitch, endHz: 180, durationMs: 110, type: "sawtooth", peak: 0.06, cutoffHz: 2500 },
+          { startHz: 190 * pitch, endHz: 32, durationMs: 800, type: "sawtooth", peak: 0.11, cutoffHz: 700, attackMs: 8 },
+          { startHz: 95 * pitch, endHz: 24, durationMs: 1000, type: "square", peak: 0.07, cutoffHz: 400, afterMs: 40 },
+          { startHz: 150 * pitch, endHz: 28, durationMs: 650, type: "sawtooth", peak: 0.09, cutoffHz: 600, afterMs: 260 },
+          // The groan of the hull going under.
+          { startHz: 380 * pitch, endHz: 55, durationMs: 1500, type: "sine", peak: 0.05, cutoffHz: 900, attackMs: 40, afterMs: 380 },
+          // Bubbles, rising off it.
+          ...[560, 430, 690, 500, 760].map((hz, index) => ({
+            startHz: hz * pitch,
+            endHz: hz * pitch * 1.5,
+            durationMs: 70,
+            type: "sine" as OscillatorType,
+            peak: 0.03,
+            afterMs: 700 + index * 190,
+          })),
+        ]);
+        if (!own) sounds.playBell({ hz: 660, durationMs: 800, peak: 0.05, brightness: 0.5, afterMs: 1000 });
+      },
       won: () =>
         sounds.playSequence(
           [523, 659, 784, 1047].map((hz, index) => ({
@@ -126,8 +186,18 @@ export function GameBattleshipView({ bestScore }: { bestScore: number }) {
   const [computerLine, setComputerLine] = useState<string | undefined>(undefined);
   const [saveNote, setSaveNote] = useState<string | undefined>(undefined);
   const [soundOn, setSoundOn] = useState(true);
+  const [sinkings, setSinkings] = useState<readonly Sinking[]>([]);
   const savedRef = useRef(false);
+  const sinkKey = useRef(0);
+  // Pending timers that retire a sinking's effects, kept so a new game or leaving the
+  // game can cancel them rather than set state on a board that has gone.
+  const sinkTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const sounds = useSounds(soundOn);
+
+  useEffect(() => {
+    const timers = sinkTimers.current;
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   const view = useMemo(() => battleshipPlayerView(state), [state]);
   const placedShips = state.boards.player.ships;
@@ -143,13 +213,46 @@ export function GameBattleshipView({ bestScore }: { bestScore: number }) {
     setComputerLine(undefined);
     setSaveNote(undefined);
     savedRef.current = false;
+    sinkTimers.current.forEach(clearTimeout);
+    sinkTimers.current.clear();
+    setSinkings([]);
+  }, []);
+
+  /**
+   * Start the sinking effects for `shot`, if it sank something. `after` is the state
+   * the shot produced; the sunk ship's cells come from it. One sinking per board at a
+   * time — a second ship going down on the same board replaces the first's effects.
+   */
+  const registerSinking = useCallback((shot: BattleshipShot, after: BattleshipState) => {
+    if (shot.result !== "sunk" || !shot.sunk) return;
+    const side: BattleshipSide = shot.by === "player" ? "computer" : "player";
+    const ship = sunkBattleshipPlacements(after.boards[side]).find((each) => each.kind === shot.sunk);
+    const cells = ship ? battleshipShipCells(ship) : undefined;
+    if (!cells) return;
+
+    sinkKey.current += 1;
+    const key = sinkKey.current;
+    const name = BATTLESHIP_FLEET[shot.sunk].name;
+    const sinking: Sinking = {
+      key,
+      side,
+      order: new Map(cells.map((cell, place) => [cell, place])),
+      text: side === "computer" ? `Enemy ${name} sunk!` : `Your ${name} sunk!`,
+    };
+    setSinkings((list) => [...list.filter((each) => each.side !== side), sinking]);
+
+    const timer = setTimeout(() => {
+      sinkTimers.current.delete(timer);
+      setSinkings((list) => list.filter((each) => each.key !== key));
+    }, SINK_MS);
+    sinkTimers.current.add(timer);
   }, []);
 
   const playShotSound = useCallback(
     (shot: BattleshipShot) => {
       if (shot.result === "miss") sounds.splash();
       else if (shot.result === "hit") sounds.hit();
-      else sounds.sunk();
+      else sounds.sunk(shot.by === "computer");
     },
     [sounds],
   );
@@ -256,8 +359,9 @@ export function GameBattleshipView({ bestScore }: { bestScore: number }) {
       setState(result.state);
       setPlayerLine(`You: ${describeShot(result.shot)}`);
       playShotSound(result.shot);
+      registerSinking(result.shot, result.state);
     },
-    [playShotSound, state],
+    [playShotSound, registerSinking, state],
   );
 
   // The computer's reply, after a pause. Keyed on the state so a new game mid-pause
@@ -270,9 +374,10 @@ export function GameBattleshipView({ bestScore }: { bestScore: number }) {
       setState(result.state);
       setComputerLine(`Computer: ${describeShot(result.shot)}`);
       playShotSound(result.shot);
+      registerSinking(result.shot, result.state);
     }, COMPUTER_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [playShotSound, state]);
+  }, [playShotSound, registerSinking, state]);
 
   // Game over: the sting, and a one-shot save on a win. `moves` carries shots fired.
   useEffect(() => {
@@ -303,10 +408,17 @@ export function GameBattleshipView({ bestScore }: { bestScore: number }) {
   );
   const setup = BATTLESHIP_SETUP[state.difficulty];
 
+  // The ship going down on each board, if any: the player's own on the left, the
+  // computer's on the radar.
+  const ownSinking = sinkings.find((each) => each.side === "player");
+  const radarSinking = sinkings.find((each) => each.side === "computer");
+
   const ownBoard = (
     <BoardGrid
       title={placing ? "Your waters" : "Your fleet"}
       compact={!placing}
+      shake={ownSinking !== undefined}
+      banner={ownSinking && { key: ownSinking.key, text: ownSinking.text, good: false }}
       ariaLabel={(index) => {
         const cell = view.own[index];
         const where = battleshipCoordLabel(index);
@@ -333,7 +445,15 @@ export function GameBattleshipView({ bestScore }: { bestScore: number }) {
               : WATER,
         ].join(" ");
         const mark = cell.shot ? (cell.ship ? <HitMark /> : <MissMark />) : null;
-        return { className, content: mark };
+        return {
+          className,
+          content: (
+            <>
+              <SinkEffects sinking={ownSinking} index={index} />
+              {mark}
+            </>
+          ),
+        };
       }}
     />
   );
@@ -341,6 +461,8 @@ export function GameBattleshipView({ bestScore }: { bestScore: number }) {
   const radarBoard = (
     <BoardGrid
       title="Enemy waters"
+      shake={radarSinking !== undefined}
+      banner={radarSinking && { key: radarSinking.key, text: radarSinking.text, good: true }}
       ariaLabel={(index) => {
         const where = battleshipCoordLabel(index);
         const cell = view.opponent[index];
@@ -366,7 +488,15 @@ export function GameBattleshipView({ bestScore }: { bestScore: number }) {
             : "",
         ].join(" ");
         const mark = cell === "miss" ? <MissMark /> : cell === "hit" || cell === "sunk" ? <HitMark /> : null;
-        return { className, content: mark };
+        return {
+          className,
+          content: (
+            <>
+              <SinkEffects sinking={radarSinking} index={index} />
+              {mark}
+            </>
+          ),
+        };
       }}
     />
   );
@@ -556,9 +686,15 @@ function BoardGrid({
   onHover,
   renderCell,
   ariaLabel,
+  shake = false,
+  banner,
 }: {
   title: string;
   compact?: boolean;
+  /** Rattles the board, for a ship going down on it. */
+  shake?: boolean;
+  /** A short "Destroyer sunk!" caption over the board; `key` restarts it. */
+  banner?: { key: number; text: string; good: boolean };
   interactive: boolean;
   isDisabled?: (index: number) => boolean;
   onCell: (index: number) => void;
@@ -570,7 +706,28 @@ function BoardGrid({
   return (
     <div className={`flex w-full flex-col gap-1.5 ${compact ? "max-w-[26rem] max-lg:max-w-[16rem]" : "max-w-[26rem]"}`}>
       <div className="text-center text-xs uppercase tracking-wide text-muted">{title}</div>
-      <div className={SCOPE} onPointerLeave={() => onHover?.(undefined)}>
+      <div
+        className={`${SCOPE} relative ${shake ? "battleship-shake" : ""}`}
+        onPointerLeave={() => onHover?.(undefined)}
+      >
+        {banner && (
+          <div
+            key={banner.key}
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center"
+          >
+            <span
+              className={[
+                "battleship-banner rounded-md border bg-slate-950/85 px-3 py-1 font-display text-sm uppercase tracking-wide",
+                banner.good
+                  ? "border-emerald-400/60 text-emerald-300"
+                  : "border-red-400/60 text-red-300",
+              ].join(" ")}
+            >
+              {banner.text}
+            </span>
+          </div>
+        )}
         <div
           className="grid gap-px"
           style={{ gridTemplateColumns: `1.1rem repeat(${BATTLESHIP_SIZE}, minmax(0, 1fr))` }}
@@ -624,10 +781,34 @@ function MissMark() {
   return <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-sky-200/70" />;
 }
 
+/**
+ * The effects on one cell of a ship going down: the hull (which flashes and drops out
+ * of the cell's bottom, clipped so it goes *under*), a fireball and a puff of smoke.
+ * Renders nothing for a cell that is not part of the sinking ship.
+ *
+ * Keyed on the sinking's `key` so a second sinking restarts the animations rather than
+ * inheriting a finished one. The stagger along the hull is `--bs-delay`, read by the
+ * `.battleship-*` rules in globals.css.
+ */
+function SinkEffects({ sinking, index }: { sinking: Sinking | undefined; index: number }) {
+  const place = sinking?.order.get(index);
+  if (!sinking || place === undefined) return null;
+  const style = { "--bs-delay": `${place * SINK_STAGGER_MS}ms` } as CSSProperties;
+  return (
+    <span key={sinking.key} aria-hidden className="pointer-events-none contents">
+      <span className="absolute inset-0 overflow-hidden rounded-[2px]">
+        <span className="battleship-hull" style={style} />
+      </span>
+      <span className="battleship-smoke" style={style} />
+      <span className="battleship-boom" style={style} />
+    </span>
+  );
+}
+
 /** A hit: a red cross. */
 function HitMark() {
   return (
-    <span aria-hidden className="font-display font-bold text-red-400">
+    <span aria-hidden className="relative z-[3] font-display font-bold text-red-400">
       ✕
     </span>
   );

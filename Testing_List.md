@@ -146,6 +146,39 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-21 — Pictionary auto-hide and Photo of the Day loading
+
+**No migration; republish needed.** Not seen on screen. Item 5 is phone-width.
+
+- [ ] **1.** Pictionary pass-and-play: after the hand-over, the drawer's word shows and hides itself after about 2 seconds without tapping anything
+- [ ] **2.** **Peek at the word** shows it again, and it hides again after about 2 seconds
+- [ ] **3.** **New word** shows the new word and it also hides after about 2 seconds; the clock keeps running
+- [ ] **4.** Photo of the Day (Home card → open a day with many photos): tiles show spinners and fill in gradually, with a "Loading pictures… n of m" line; folder lookup shows a spinner
+- [ ] **5.** Phone width: the grid loads the same way and opening a photo in the viewer is not slowed by tiles still loading
+
+## 2026-11-21 — Word Wizard: word meanings
+
+**No migration; republish needed.** Not seen on screen. Needs the server to reach en.wiktionary.org. Item 5 is phone-width.
+
+- [ ] **1.** Play a bot game: after the bot plays, its words in the Moves list are dotted-underlined; tapping one shows a card at the top of the side panel with "Looking it up…", then up to 3 meanings and "From Wiktionary."
+- [ ] **2.** Tap an odd word-game word (e.g. QI, ZA, XU): it gets a meaning; a word with no entry shows "No definition found — it's in the game's word list"
+- [ ] **3.** Your own words and the extra side-words of a play are tappable too; tapping a second word replaces the card; ✕ closes it
+- [ ] **4.** Pass-and-play: the words on the hand-over screen's last-move line are tappable and the card shows in the side panel
+- [ ] **5.** Phone width: the words are easy to tap, and the card sits above Moves without horizontal scrolling
+- [ ] **6.** With the network unplugged (or the server offline from the internet), tapping a word shows an error instead of hanging; tapping it again after reconnecting works
+
+## 2026-11-21 — Battleship: explosion and sinking ships
+
+Not seen or heard. Needs sound on; item 5 needs the OS set to reduce motion; item 6 is phone-width.
+
+- [ ] **1.** Sink an enemy ship: a fireball runs down its squares on the radar, the hull flashes and drops out of the bottom of each square, smoke rises, the radar shakes and an "Enemy ... sunk!" caption shows, then fades
+- [ ] **2.** The same happens on your own board when the computer sinks one of yours, with "Your ... sunk!"
+- [ ] **3.** Sound: a boom, a second blast, a groan and bubbles; sinking the enemy ends with a bell, losing yours does not and sounds lower; Sound off silences it
+- [ ] **4.** A plain hit or miss does not trigger any of it; after the effects finish the sunk squares stay red and the ship is struck through in the fleet list
+- [ ] **5.** With reduce-motion on, the squares flash and fade but nothing moves or shakes
+- [ ] **6.** Phone width: the effects stay inside the screen, the caption is readable, and the boards do not jump
+- [ ] **7.** Starting a new game mid-effect clears it; sinking the last ship still shows the Victory / Fleet lost panel
+
 ## 2026-11-20 — Games: Battleship
 
 **No migration; republish needed.** Not seen on screen. Items 9 and 10 are phone-width; item 11 is worth checking in a light theme.

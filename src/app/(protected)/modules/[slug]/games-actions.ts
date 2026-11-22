@@ -10,10 +10,12 @@ import {
   discardArrowRun,
   importWords,
   loadArrowRun,
+  lookupWordWizardDefinition,
   recordScore,
   saveArrowRun,
   type PictionaryImportSummary,
   type SavedArrowRun,
+  type WordWizardDefinitionResult,
 } from "@/lib/games";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
@@ -225,4 +227,13 @@ export async function discardArrowRunAction(
   } catch (error) {
     return { ok: false, error: errorText(error, "Could not discard the saved run.") };
   }
+}
+
+/**
+ * Looks up what a Word Wizard word means (Wiktionary, via the library). Only the word is
+ * sent; validation, caching and every failure path live in `lookupWordWizardDefinition`.
+ */
+export async function lookupWordAction(word: string): Promise<WordWizardDefinitionResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  return lookupWordWizardDefinition({ word }, fetch);
 }

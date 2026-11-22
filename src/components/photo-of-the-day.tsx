@@ -35,6 +35,22 @@ const PHOTO_SLOT = getIconSlot("homescreen_card_photo_of_the_day")!;
 /** How many photos to show before the grid asks to be expanded. */
 const INITIAL_GRID_LIMIT = 24;
 
+/**
+ * How many grid thumbnails may download at once. Matches the server's cap on concurrent
+ * resizes and leaves most of the browser's six connections free for a click.
+ */
+const GRID_THUMB_CONCURRENCY = 3;
+
+/** A small spinner, the same ring the viewer's strip uses. */
+function TileSpinner({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block animate-spin rounded-full border-2 border-line border-t-brass ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
 /** A span of dates, inclusive at both ends. */
 export interface PhotoDateRange {
   /** `YYYY-MM-DD`, on or before `to`. */
@@ -484,7 +500,8 @@ export function PhotoOfTheDay({
             )}
 
             {lookup.phase === "loading" && (
-              <p className="text-sm text-muted">
+              <p className="flex items-center gap-2 text-sm text-muted">
+                <TileSpinner />
                 Looking for folders from {range === undefined ? "this date" : "these dates"}…
               </p>
             )}
@@ -536,7 +553,9 @@ export function PhotoOfTheDay({
                     key={folder.relativePath}
                     folder={folder}
                     matchLabel={matchLabelOf(folder, date)}
-                    photoUrl={photoUrl}
+                    thumbUrl={thumbUrl ?? photoUrl}
+                    // The viewer owns the browser's connections while it is up.
+                    isPaused={viewer !== undefined}
                     isOpen={openFolders.includes(folder.relativePath)}
                     state={folderStates[folder.relativePath]}
                     onToggle={() => toggleFolder(folder)}
@@ -736,7 +755,8 @@ function rootProblemMessage(
 function FolderRow({
   folder,
   matchLabel,
-  photoUrl,
+  thumbUrl,
+  isPaused,
   isOpen,
   state,
   onToggle,
@@ -749,8 +769,10 @@ function FolderRow({
 }: {
   folder: PhotoFolder;
   matchLabel: string;
-  /** Builds the URL for one photo's bytes, forwarded from the dialog's caller. */
-  photoUrl: (relativePath: string) => string;
+  /** Builds a grid tile's image URL: the small thumbnail, or the original as a fallback. */
+  thumbUrl: (relativePath: string) => string;
+  /** True while the photo viewer is open: no new tile may start downloading. */
+  isPaused: boolean;
   isOpen: boolean;
   state?: FolderState;
   onToggle: () => void;
@@ -765,6 +787,30 @@ function FolderRow({
   const isMonth = folder.kind === "month";
   const photos = state?.photos ?? [];
   const visible = photos.slice(0, state?.visibleCount ?? 0);
+
+  // ---- Tile loading queue (the same idea as the viewer's strip). ----
+  //
+  // A tile's `<img>` gets a `src` only once it is done or among the first
+  // GRID_THUMB_CONCURRENCY not-yet-done tiles, in grid order; every other tile shows a
+  // spinner. So a folder of 200 photos opens with three small requests in flight rather
+  // than a stampede of originals, the top of the grid fills first, and a thumbnail
+  // landing frees a place for the next. Derived in render, not an effect. Held by path,
+  // so "Show more" simply adds tiles to the back of the queue.
+  const [doneThumbs, setDoneThumbs] = useState<ReadonlySet<string>>(new Set());
+  const markThumbDone = useCallback((relativePath: string) => {
+    setDoneThumbs((current) => {
+      if (current.has(relativePath)) return current;
+      const next = new Set(current);
+      next.add(relativePath);
+      return next;
+    });
+  }, []);
+  const pendingTiles = visible.filter((photo) => !doneThumbs.has(photo.relativePath));
+  const startableTiles = new Set(
+    isPaused
+      ? []
+      : pendingTiles.slice(0, GRID_THUMB_CONCURRENCY).map((photo) => photo.relativePath),
+  );
 
   return (
     <div className="rounded-lg border border-line">
@@ -804,7 +850,9 @@ function FolderRow({
       {isOpen && (
         <div className="border-t border-line px-3 py-3">
           {state?.isLoading && (
-            <p className="text-sm text-muted">
+            <p className="flex items-start gap-2 text-sm text-muted">
+              <TileSpinner className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
               {isMonth ? (
                 <>
                   Reading the date each of {folder.photoCount} photos in {folder.name} was
@@ -821,6 +869,7 @@ function FolderRow({
               ) : (
                 "Reading the folder…"
               )}
+              </span>
             </p>
           )}
 
@@ -907,6 +956,17 @@ function FolderRow({
                 </p>
               )}
 
+              {/* Progress, so a slow share reads as "working" and not "stuck". Polite
+                  live region: announced, never interrupting. */}
+              <p className="flex items-center gap-2 text-xs text-muted" aria-live="polite">
+                {pendingTiles.length > 0 ? (
+                  <>
+                    <TileSpinner className="h-3 w-3" />
+                    Loading pictures… {visible.length - pendingTiles.length} of {visible.length}
+                  </>
+                ) : null}
+              </p>
+
               {/* Two columns on a phone, up to five on a wide screen. Desktop classes
                   are the base; the narrow case is the max-lg override, so a wide
                   screen can't regress. */}
@@ -919,6 +979,7 @@ function FolderRow({
                     (state?.isShowingCull ?? false) &&
                     verdict !== undefined &&
                     !verdict.isKeeper;
+                  const isTileDone = doneThumbs.has(photo.relativePath);
 
                   return (
                   <li key={photo.relativePath}>
@@ -939,7 +1000,7 @@ function FolderRow({
                                   ? ""
                                   : ` of ${verdict.duplicateOf}`))
                       }
-                      className={`block w-full overflow-hidden rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
+                      className={`relative block w-full overflow-hidden rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass ${
                         isDimmed
                           ? "border-line opacity-40 grayscale"
                           : verdict?.isKeeper && (state?.isShowingCull ?? false)
@@ -947,18 +1008,38 @@ function FolderRow({
                             : "border-line"
                       }`}
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- the bytes
-                          come from our own session-gated route over a NAS share, not a
-                          static asset next/image can optimize. */}
-                      <img
-                        src={photoUrl(photo.relativePath)}
-                        alt={photo.name}
-                        // Lazy: a folder can hold hundreds, and the full-size JPEG is
-                        // what gets scaled — nothing is written to the archive to make
-                        // a thumbnail.
-                        loading="lazy"
-                        className="aspect-square w-full bg-paper object-cover transition-opacity hover:opacity-90"
-                      />
+                      {isTileDone || startableTiles.has(photo.relativePath) ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- the bytes
+                        // come from our own session-gated route over a NAS share, not a
+                        // static asset next/image can optimize.
+                        <img
+                          src={thumbUrl(photo.relativePath)}
+                          alt={photo.name}
+                          // Decoded off the main thread; the queue above replaces
+                          // `loading="lazy"`, which could not tell a tile scrolled past
+                          // from one the reader is waiting for.
+                          decoding="async"
+                          // Intrinsic size, so the tile holds its box until the bytes land.
+                          width={160}
+                          height={160}
+                          className="aspect-square w-full bg-paper object-cover transition-opacity hover:opacity-90"
+                          onLoad={() => markThumbDone(photo.relativePath)}
+                          // A failed tile must not hold a download place forever.
+                          onError={() => markThumbDone(photo.relativePath)}
+                        />
+                      ) : (
+                        <span className="block aspect-square w-full bg-paper" />
+                      )}
+                      {/* The busy signal: queued or downloading. Absolute, so the tile
+                          never changes size when the image replaces it. */}
+                      {!isTileDone && (
+                        <span
+                          className="pointer-events-none absolute inset-0 grid place-items-center"
+                          aria-hidden="true"
+                        >
+                          <TileSpinner />
+                        </span>
+                      )}
                     </button>
                   </li>
                   );

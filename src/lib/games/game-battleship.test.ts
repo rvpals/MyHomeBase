@@ -14,6 +14,7 @@ import {
   scoreGame,
   shipCells,
   startGame,
+  sunkShipPlacements,
   sunkShips,
   validateFleet,
 } from "./game-battleship";
@@ -208,6 +209,13 @@ describe("what the player can see", () => {
     expect(view[40]).toBe("sunk");
     expect(view[41]).toBe("sunk");
     expect(sunkShips(board)).toEqual(["destroyer"]);
+  });
+
+  it("gives the position of sunk ships only, not of damaged or untouched ones", () => {
+    // The destroyer is sunk; the carrier is hit once; the rest are untouched.
+    const board = { ships: ROWS_FLEET, shots: [0, 40, 41] };
+    expect(sunkShipPlacements(board)).toEqual([ROWS_FLEET[4]]);
+    expect(sunkShipPlacements({ ships: ROWS_FLEET, shots: [] })).toEqual([]);
   });
 
   it("never puts the computer's unhit ships in the player's view mid-game", () => {

@@ -56,6 +56,8 @@ import {
  * limb under time pressure, not to tidy an edge, and a precise eraser on a phone is
  * just a slower pen.
  */
+/** How long the drawer's word stays on screen before hiding itself. */
+const WORD_SHOW_MS = 2000;
 const PEN_WIDTH = 4;
 const ERASER_WIDTH = 28;
 
@@ -269,6 +271,16 @@ export function GamePictionaryView({
     // word they have not been shown once.
     setWordHidden(false);
   }, [clearCanvas, phase, round]);
+
+  // The word only stays up for a moment, then hides itself — the drawer no longer has to
+  // remember to tap "Start guessing" before the guessers look. Restarts when the word
+  // changes ("New word") or is peeked at again.
+  const currentWord = state?.current?.word;
+  useEffect(() => {
+    if (phase !== "drawing" || wordHidden) return;
+    const id = setTimeout(() => setWordHidden(true), WORD_SHOW_MS);
+    return () => clearTimeout(id);
+  }, [phase, wordHidden, currentWord]);
 
   /* ---------------------------------------------------------------------------------
      Actions. Each one hands the current state to a library rule and keeps what comes
@@ -691,9 +703,8 @@ function HandoffScreen({
       <h3 className="font-display text-3xl text-ink max-lg:text-2xl">Pass to {drawerName}</h3>
       <p className="max-w-md text-sm text-muted">
         {drawerName}, take the device and tap below — everyone else, look away. The word
-        appears on the next screen with the clock; read it, then tap{" "}
-        <strong className="text-ink">Start guessing</strong> to hide it before you turn
-        the screen round. Can&rsquo;t picture it? <strong className="text-ink">New
+        shows for 2 seconds with the clock, then hides itself — tap{" "}
+        <strong className="text-ink">Peek at the word</strong> to see it again. Can&rsquo;t picture it? <strong className="text-ink">New
         word</strong> there gives you another and keeps your turn.
       </p>
       <div className="flex flex-wrap justify-center gap-2">

@@ -4998,3 +4998,195 @@ html[data-color-theme="glass"] {
     animation: none;
   }
 }
+
+/* Battleship: a ship being sunk.
+
+   Four layers on the sunk ship's cells, staggered along its length by `--bs-delay` (set
+   per cell by the view) so the blast travels down the hull instead of every cell going
+   at once:
+     1. a fireball (`battleship-boom`) that flares and fades,
+     2. the hull (`battleship-hull`) — drawn over the wreck, it flashes, lurches and drops
+        out of the bottom of its cell, which is clipped, so it reads as going under,
+     3. a puff of smoke rising off it,
+     4. on the board, a short shake and a "sunk!" banner.
+   Fixed warm colours rather than theme tokens, for the reason the radar itself is fixed:
+   a fireball is the same fireball on every theme. Transform and opacity only. */
+@keyframes battleship-boom {
+  0% {
+    transform: scale(0.1);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  45% {
+    transform: scale(2.4);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(3.4);
+    opacity: 0;
+  }
+}
+
+.battleship-boom {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    circle,
+    #fff 0%,
+    #fde68a 22%,
+    #f97316 48%,
+    rgba(220, 38, 38, 0.7) 66%,
+    transparent 72%
+  );
+  animation: battleship-boom 900ms ease-out forwards;
+  animation-delay: var(--bs-delay, 0ms);
+}
+
+@keyframes battleship-hull-sink {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    filter: brightness(1);
+    opacity: 1;
+  }
+  15% {
+    transform: translate(2%, -3%);
+    filter: brightness(2.4);
+  }
+  30% {
+    transform: translate(-2%, 0) rotate(-3deg);
+    filter: brightness(1.2);
+  }
+  100% {
+    transform: translateY(115%) rotate(9deg);
+    filter: brightness(0.5);
+    opacity: 0.2;
+  }
+}
+
+.battleship-hull {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: rgb(148 163 184 / 0.75);
+  animation: battleship-hull-sink 1500ms ease-in forwards;
+  animation-delay: calc(var(--bs-delay, 0ms) + 250ms);
+}
+
+@keyframes battleship-smoke {
+  0% {
+    transform: translateY(0) scale(0.5);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translateY(-90%) scale(1.8);
+    opacity: 0;
+  }
+}
+
+.battleship-smoke {
+  position: absolute;
+  inset: 15%;
+  z-index: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0;
+  background: rgb(100 116 139 / 0.8);
+  filter: blur(2px);
+  animation: battleship-smoke 1600ms ease-out forwards;
+  animation-delay: calc(var(--bs-delay, 0ms) + 300ms);
+}
+
+@keyframes battleship-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  15% {
+    transform: translate(-3px, 2px);
+  }
+  30% {
+    transform: translate(3px, -2px);
+  }
+  45% {
+    transform: translate(-2px, -2px);
+  }
+  60% {
+    transform: translate(2px, 2px);
+  }
+  75% {
+    transform: translate(-1px, 1px);
+  }
+}
+
+.battleship-shake {
+  animation: battleship-shake 420ms ease-in-out;
+}
+
+@keyframes battleship-banner {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  25% {
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.battleship-banner {
+  animation: battleship-banner 1800ms ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* A player who asked for less motion still has to *see* which ship went, so the flash
+     and the hull's disappearance stay as plain fades; the movement, smoke and shake go. */
+  .battleship-shake,
+  .battleship-smoke {
+    animation: none;
+  }
+
+  .battleship-boom {
+    animation-name: battleship-reduced-flash;
+  }
+
+  .battleship-hull {
+    animation-name: battleship-reduced-fade;
+  }
+}
+
+@keyframes battleship-reduced-flash {
+  0% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes battleship-reduced-fade {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.2;
+  }
+}

@@ -32,8 +32,9 @@ import {
   type WordWizardState,
   type WordWizardTile,
   type WordWizardTurn,
+  type WordWizardDefinitionResult,
 } from "@/lib/games";
-import { saveScoreAction } from "./games-actions";
+import { lookupWordAction, saveScoreAction } from "./games-actions";
 
 // The Word Wizard table. A client component that owns only presentation state — which
 // rack tile is picked up, the tiles laid this turn but not yet played, the rack's
@@ -123,6 +124,20 @@ export function GameWordWizardView({ bestScore }: { bestScore: number }) {
   const [revealedAt, setRevealedAt] = useState(-1);
   const [saved, setSaved] = useState<{ best: boolean } | undefined>(undefined);
   const savedRef = useRef(false);
+  // The word whose meaning is showing in the side panel, tapped from a move line.
+  const [lookup, setLookup] = useState<{ word: string; result?: WordWizardDefinitionResult } | undefined>(undefined);
+  const lookupWord = (word: string) => {
+    setLookup({ word });
+    void lookupWordAction(word).then(
+      (result) => setLookup((current) => (current?.word === word ? { word, result } : current)),
+      () =>
+        setLookup((current) =>
+          current?.word === word
+            ? { word, result: { status: "error", word, message: "Couldn't reach the dictionary." } }
+            : current,
+        ),
+    );
+  };
 
   const [loadAttempt, setLoadAttempt] = useState(0);
   useEffect(() => {
@@ -368,7 +383,7 @@ export function GameWordWizardView({ bestScore }: { bestScore: number }) {
           />
         ) : handingOver ? (
           <div className="flex flex-col items-center gap-3 rounded-lg border border-line bg-paper-raised p-5 text-center">
-            <LastTurnLine state={game} turn={lastTurn} />
+            <LastTurnLine state={game} turn={lastTurn} onWord={lookupWord} />
             <p className="font-display text-lg text-ink">Pass the device to {game.players[game.turn].name}</p>
             <p className="text-sm text-muted">Their tiles stay hidden until they are holding it.</p>
             <Button onClick={() => setRevealedAt(game.history.length)}>
@@ -456,7 +471,13 @@ export function GameWordWizardView({ bestScore }: { bestScore: number }) {
         )}
       </div>
 
-      <SidePanel state={game} bestScore={bestScore} />
+      <SidePanel
+        state={game}
+        bestScore={bestScore}
+        onWord={lookupWord}
+        lookup={lookup}
+        onCloseLookup={() => setLookup(undefined)}
+      />
     </div>
   );
 }
@@ -746,19 +767,118 @@ function Rack({
   );
 }
 
-function turnText(state: WordWizardState, turn: WordWizardTurn): string {
+/**
+ * One turn as a sentence. Each played word is a button: tapping it looks up what it
+ * means, so a player can check the bot's QI or ZA is a real word.
+ */
+function TurnText({
+  state,
+  turn,
+  onWord,
+}: {
+  state: WordWizardState;
+  turn: WordWizardTurn;
+  onWord: (word: string) => void;
+}) {
   const who = state.players[turn.player].name;
-  if (turn.kind === "pass") return `${who} passed`;
-  if (turn.kind === "swap") return `${who} swapped ${turn.swapped} tile${turn.swapped === 1 ? "" : "s"}`;
-  return `${who} played ${turn.words.map((w) => w.word).join(", ")} for ${turn.score}${turn.fullRackBonus ? " (all seven!)" : ""}`;
+  if (turn.kind === "pass") return <>{who} passed</>;
+  if (turn.kind === "swap") return <>{who} swapped {turn.swapped} tile{turn.swapped === 1 ? "" : "s"}</>;
+  return (
+    <>
+      {who} played{" "}
+      {turn.words.map((w, i) => (
+        <span key={`${w.word}-${i}`}>
+          {i > 0 && ", "}
+          <button
+            type="button"
+            onClick={() => onWord(w.word)}
+            title={`What does ${w.word} mean?`}
+            className="font-medium text-ink underline decoration-dotted underline-offset-2 hover:text-brass-dark max-lg:py-1"
+          >
+            {w.word}
+          </button>
+        </span>
+      ))}{" "}
+      for {turn.score}
+      {turn.fullRackBonus ? " (all seven!)" : ""}
+    </>
+  );
 }
 
-function LastTurnLine({ state, turn }: { state: WordWizardState; turn?: WordWizardTurn }) {
+function LastTurnLine({
+  state,
+  turn,
+  onWord,
+}: {
+  state: WordWizardState;
+  turn?: WordWizardTurn;
+  onWord: (word: string) => void;
+}) {
   if (!turn) return null;
-  return <p className="text-sm text-muted">{turnText(state, turn)}.</p>;
+  return (
+    <p className="text-sm text-muted">
+      <TurnText state={state} turn={turn} onWord={onWord} />.
+    </p>
+  );
 }
 
-function SidePanel({ state, bestScore }: { state: WordWizardState; bestScore: number }) {
+/** The tapped word's meaning, or why there isn't one. */
+function DefinitionCard({
+  word,
+  result,
+  onClose,
+}: {
+  word: string;
+  result?: WordWizardDefinitionResult;
+  onClose: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-line bg-paper-raised p-3" aria-live="polite">
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <h5 className="font-display text-base text-ink">{word}</h5>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close the definition"
+          className="px-1 text-sm text-muted hover:text-ink"
+        >
+          ✕
+        </button>
+      </div>
+      {!result ? (
+        <p className="text-xs text-muted">Looking it up…</p>
+      ) : result.status === "found" ? (
+        <ol className="flex flex-col gap-1.5 text-xs text-ink">
+          {result.entries.map((entry, i) => (
+            <li key={i}>
+              {entry.partOfSpeech && <span className="italic text-muted">{entry.partOfSpeech.toLowerCase()} · </span>}
+              {entry.definition}
+            </li>
+          ))}
+        </ol>
+      ) : result.status === "not-found" ? (
+        <p className="text-xs text-muted">No definition found — it&rsquo;s in the game&rsquo;s word list.</p>
+      ) : (
+        <p className="text-xs text-muted">{result.message}</p>
+      )}
+      {result?.status === "found" && <p className="mt-2 text-[0.65rem] text-muted">From Wiktionary.</p>}
+    </div>
+  );
+}
+
+function SidePanel({
+  state,
+  bestScore,
+  onWord,
+  lookup,
+  onCloseLookup,
+}: {
+  state: WordWizardState;
+  bestScore: number;
+  onWord: (word: string) => void;
+  lookup?: { word: string; result?: WordWizardDefinitionResult };
+  onCloseLookup: () => void;
+}) {
   const recent = state.history.slice(-8).reverse();
   return (
     <aside className="flex w-full flex-col gap-3 lg:w-56 lg:shrink-0">
@@ -784,12 +904,15 @@ function SidePanel({ state, bestScore }: { state: WordWizardState; bestScore: nu
           {state.mode === "bot" && bestScore > 0 && ` · record ${bestScore.toLocaleString()}`}
         </p>
       </div>
+      {lookup && <DefinitionCard word={lookup.word} result={lookup.result} onClose={onCloseLookup} />}
       {recent.length > 0 && (
         <div className="rounded-lg border border-line bg-paper-raised p-3">
           <h5 className="mb-1 text-xs uppercase tracking-wide text-muted">Moves</h5>
           <ol className="flex flex-col gap-1 text-xs text-ink">
             {recent.map((turn, i) => (
-              <li key={state.history.length - i}>{turnText(state, turn)}</li>
+              <li key={state.history.length - i}>
+                <TurnText state={state} turn={turn} onWord={onWord} />
+              </li>
             ))}
           </ol>
         </div>

@@ -158,3 +158,16 @@ export interface SavedRunWriteData {
   state: string;
   savedAt: string;
 }
+
+/**
+ * Looking up a Word Wizard word's meaning. Same shape the game itself accepts — 2–15
+ * plain letters — so nothing else is ever sent to the dictionary service.
+ */
+export const lookupWordDefinitionSchema = z.object({
+  word: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z]{2,15}$/, "Only a 2–15 letter word can be looked up."),
+});
+
+export type LookupWordDefinitionInput = z.infer<typeof lookupWordDefinitionSchema>;

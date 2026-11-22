@@ -1,5 +1,37 @@
 # Change History
 
+## 2026-11-21 — Pictionary word auto-hides; Photo of the Day grid loads like the viewer strip
+
+**No migration, no new package.** Presentation only.
+
+**Not seen on screen, and no gate was run.** Work through the Testing List section.
+
+- **Pictionary:** the drawer's word now shows for 2 seconds (`WORD_SHOW_MS`) when the turn starts, then hides itself; "Peek at the word" shows it again for another 2 seconds, and "New word" restarts the timer. The hand-over text was reworded to match. Files: game-pictionary-view.tsx.
+- **Photo of the Day grid:** tiles use `thumbUrl` (falling back to `photoUrl`), at most 3 download at once in grid order, each tile shows a spinner until it loads, and a "Loading pictures… n of m" line is shown. Nothing new starts while the photo viewer is open. The folder lookup and folder read show a spinner too. Files: photo-of-the-day.tsx, components.md.
+
+## 2026-11-21 — Word Wizard: tap a word to see what it means
+
+**No migration, no new package.** Adds one free, keyless outside service: Wiktionary's definition API (only the word is sent).
+
+**Not seen on screen, and no gate was run.** Work through the Testing List section.
+
+- **Why:** the bot plays from the ENABLE word-game list, so it plays real but obscure words (QI, ZA, XU, AALII) that look made up.
+- **View:** every word in the move lines (the side panel's Moves list and the pass-and-play hand-over line) is now a dotted-underlined button. Tapping it shows a definition card at the top of the side panel: up to 3 English meanings, or "No definition found — it's in the game's word list", or a retryable error. Works for every player's words, in bot and pass-and-play games.
+- **Lib:** `src/lib/games/word-definitions.ts` validates the word (2–15 letters, zod schema `lookupWordDefinitionSchema`), calls Wiktionary with a 6 s timeout, strips the HTML to plain text and caches answers in memory (up to 500; errors aren't cached). Tests in `word-definitions.test.ts`.
+- **Action:** `lookupWordAction` in games-actions.ts, gated by `requireModuleAccess("games")`.
+- Files: word-definitions.ts (+test), schema.ts, index.ts, games-actions.ts, game-word-wizard-view.tsx.
+
+## 2026-11-21 — Battleship: explosion, sinking ships and sound
+
+**No migration, no new package, no paid service.** Presentation only, plus one small lib helper.
+
+**Not seen or heard, and no gate was run.** Work through the Testing List section.
+
+- **When a ship is sunk** (either side) its cells get a fireball that travels down the hull, a flash and a lurch as the hull drops out of the bottom of its cells (clipped, so it goes under), a puff of smoke, a short shake of that board and a "Enemy Destroyer sunk!" / "Your Destroyer sunk!" caption. CSS in globals.css (battleship-*), with a reduced-motion fallback that keeps the flash and the fade but drops the movement.
+- **Sound:** a crack, a rolling blast, a second charge, the groan of the hull and rising bubbles, all synthesized; sinking the enemy adds a bell, losing your own is pitched lower with no bell.
+- **Lib:** sunkShipPlacements() returns the position of ships already sunk, which sinking has made public; the radar animates from it and still gets nothing about unsunk ships. One test added.
+- Files: game-battleship-view.tsx, game-battleship.ts (+test), index.ts, globals.css.
+
 ## 2026-11-20 22:00 — Games: Battleship against the computer
 
 **No migration, no new package, no paid service.** A new Arcade card. The pasted brief asked for real-time multiplayer over a custom Socket.IO server; it was changed to single-player against the computer before any code was written, so there is no socket server, no rooms and no deployment change.

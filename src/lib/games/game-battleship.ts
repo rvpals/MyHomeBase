@@ -328,3 +328,13 @@ export function scoreGame(state: BattleshipState): number {
   const shots = state.boards.computer.shots.length;
   return (BATTLESHIP_SCORE_BASE - shots) * BATTLESHIP_SETUP[state.difficulty].multiplier;
 }
+
+/**
+ * The ships sunk on `board`, with their positions. Sinking a ship reveals every one of
+ * its cells, so this is something the other side is allowed to know — the view uses it
+ * to animate the wreck going down without reading the rest of the fleet.
+ */
+export function sunkShipPlacements(board: BattleshipBoard): BattleshipShip[] {
+  const sunk = new Set(sunkShips(board));
+  return board.ships.filter((ship) => sunk.has(ship.kind));
+}
