@@ -2762,3 +2762,335 @@ export interface BattleshipPlayerView {
   opponentSunk: readonly BattleshipShipKind[];
   shotsFired: number;
 }
+
+/* ---------------------------------------------------------------------------------
+   Chess — the player against the computer, with named saves.
+
+   The engine is hand-written (`chess-board.ts`, `chess-moves.ts`, `game-chess.ts`,
+   `chess-notation.ts`, `chess-bot.ts`). No dependency: `chess.js` would be the app's
+   first runtime game-rules dependency, and a Stockfish WASM build is both far stronger
+   than any of these three levels wants and GPL — the same call `src/lib/calculator`
+   made against `mathjs`.
+
+   Correctness is proved by **perft** (`chess-moves.test.ts`): the published count of
+   legal positions at a given depth from a given position. Those numbers are the one
+   test that catches en-passant, castling-through-check and pinned-piece bugs without
+   anybody having to think of each case.
+--------------------------------------------------------------------------------- */
+
+export const CHESS_COLORS = ["w", "b"] as const;
+
+export type ChessColor = (typeof CHESS_COLORS)[number];
+
+/**
+ * Piece letters, lower case — the FEN/SAN alphabet, so nothing has to be translated
+ * on the way in or out. Colour is carried beside the type, never by the letter's case.
+ */
+export const CHESS_PIECE_TYPES = ["p", "n", "b", "r", "q", "k"] as const;
+
+export type ChessPieceType = (typeof CHESS_PIECE_TYPES)[number];
+
+/** What a pawn may become. The king and the pawn are deliberately absent. */
+export const CHESS_PROMOTION_TYPES = ["q", "r", "b", "n"] as const;
+
+export type ChessPromotionType = (typeof CHESS_PROMOTION_TYPES)[number];
+
+export interface ChessPiece {
+  type: ChessPieceType;
+  color: ChessColor;
+}
+
+/**
+ * A square as a flat index, **0 = a8 through 63 = h1** — FEN's own reading order, so
+ * parsing and serializing a position is a straight walk rather than a flip. `row` is
+ * therefore 0 at the *top* (rank 8) and 7 at the bottom (rank 1).
+ *
+ * The alternative (0 = a1) reads more naturally to a chess player and would have cost
+ * a reversal in every FEN, every SAN rank digit and every board render. The helpers in
+ * `chess-board.ts` mean no caller does the arithmetic by hand.
+ */
+export type ChessSquare = number;
+
+export const CHESS_BOARD_SIZE = 8;
+
+export const CHESS_SQUARE_COUNT = CHESS_BOARD_SIZE * CHESS_BOARD_SIZE;
+
+/**
+ * Castling rights, one flag per side per wing — `wk` is White's king-side.
+ *
+ * Rights are a *permission*, not a claim that castling is legal right now: whether the
+ * squares are empty and unattacked is decided at move-generation time. They go away for
+ * good once the king or that rook has moved, which is exactly what this records.
+ */
+export interface ChessCastling {
+  wk: boolean;
+  wq: boolean;
+  bk: boolean;
+  bq: boolean;
+}
+
+/**
+ * A complete position — everything FEN carries, and nothing else.
+ *
+ * Deliberately immutable: `applyChessMove` returns a new position rather than mutating
+ * and asking the caller to unmake. A copy of a 64-element array per node is slower than
+ * make/unmake, and it is the reason the search is correct by construction — there is no
+ * state to restore, so no path through it can leave the board wrong. The search buys the
+ * speed back with iterative deepening, which simply reaches a shallower depth when a
+ * position is expensive rather than hanging.
+ */
+export interface ChessPosition {
+  /** 64 entries, `null` for an empty square. Index 0 is a8. */
+  board: readonly (ChessPiece | null)[];
+  turn: ChessColor;
+  castling: ChessCastling;
+  /** The square a pawn may capture *onto*, or null. Set only after a double step. */
+  enPassant: ChessSquare | null;
+  /** Half-moves since the last capture or pawn move — the fifty-move rule's counter. */
+  halfmoveClock: number;
+  /** Full moves, from 1, incremented after Black's move. */
+  fullmoveNumber: number;
+}
+
+/**
+ * One move, fully resolved. The flags are filled in by the generator rather than
+ * re-derived when the move is applied — a caller that built a move by hand cannot then
+ * have it applied as a different move than the one the rules offered.
+ */
+export interface ChessMove {
+  from: ChessSquare;
+  to: ChessSquare;
+  piece: ChessPieceType;
+  /** The type captured, including the pawn taken en passant. */
+  captured?: ChessPieceType;
+  promotion?: ChessPromotionType;
+  isEnPassant?: boolean;
+  /** Which wing, when this move is a castle. */
+  isCastle?: "k" | "q";
+}
+
+/**
+ * A move as it is stored and replayed: its coordinate form (`e2e4`, `e7e8q`) plus the
+ * SAN the move list prints (`Nf3`, `exd5`, `O-O`, `Qxh7#`).
+ *
+ * Both, because they answer different questions. The coordinate form is what a save
+ * replays — it is unambiguous without the position it was made in, where SAN is not.
+ * SAN is what a human reads and what PGN export needs, and deriving it later would mean
+ * replaying the whole game to recover the context each one was written in.
+ */
+export interface ChessRecordedMove {
+  uci: string;
+  san: string;
+}
+
+/**
+ * The three levels, behind one Arcade card and one scoreboard — the shape Sudoku,
+ * Minesweeper and Battleship all use. The multiplier is what keeps a Beginner win from
+ * ranking level with an Advanced one on that single board.
+ */
+export const CHESS_LEVELS = ["beginner", "intermediate", "advanced"] as const;
+
+export type ChessLevel = (typeof CHESS_LEVELS)[number];
+
+/**
+ * What each level does. Strength is three independent knobs rather than depth alone,
+ * because depth alone makes a bad beginner: a 1-ply search still never hangs a queen to
+ * a one-move threat, which is precisely the mistake a human beginner needs the computer
+ * to make too.
+ *
+ * - `depth` — how many plies the search looks ahead.
+ * - `timeMs` — the budget for iterative deepening. A level reaches a shallower depth on
+ *   an expensive position rather than stalling the game.
+ * - `quiescence` — whether a leaf keeps searching captures before scoring. Without it a
+ *   search happily grabs a defended pawn on its last ply and never sees the recapture;
+ *   this is the single biggest difference between Beginner and Intermediate.
+ * - `blunderChance` — how often the move is picked at random from every legal move
+ *   instead of from the search. This is the knob that makes Beginner beatable.
+ * - `noiseCentipawns` — a random nudge added to each root move's score, so a level does
+ *   not play the identical game every time from the same position.
+ */
+export const CHESS_LEVEL_SETUP: Record<
+  ChessLevel,
+  {
+    label: string;
+    hint: string;
+    depth: number;
+    timeMs: number;
+    quiescence: boolean;
+    blunderChance: number;
+    noiseCentipawns: number;
+    multiplier: number;
+  }
+> = {
+  beginner: {
+    label: "Beginner",
+    hint: "Looks one move ahead and misses things. Beatable by a new player.",
+    depth: 1,
+    timeMs: 300,
+    quiescence: false,
+    blunderChance: 0.3,
+    noiseCentipawns: 60,
+    multiplier: 1,
+  },
+  intermediate: {
+    label: "Intermediate",
+    hint: "Looks three moves ahead and sees most captures coming.",
+    depth: 3,
+    timeMs: 1200,
+    quiescence: true,
+    blunderChance: 0.04,
+    noiseCentipawns: 20,
+    multiplier: 2,
+  },
+  advanced: {
+    label: "Advanced",
+    hint: "Searches as deep as a few seconds allow and does not give material away.",
+    depth: 6,
+    timeMs: 2500,
+    quiescence: true,
+    blunderChance: 0,
+    noiseCentipawns: 0,
+    multiplier: 3,
+  },
+};
+
+/**
+ * How a game ended, or that it has not. `playing` and `check` are both live positions —
+ * `check` is kept separate so the screen can say so without re-deriving it.
+ */
+export const CHESS_STATUSES = [
+  "playing",
+  "check",
+  "checkmate",
+  "stalemate",
+  "fifty-move",
+  "threefold",
+  "insufficient-material",
+  "resigned",
+  "draw-agreed",
+] as const;
+
+export type ChessStatus = (typeof CHESS_STATUSES)[number];
+
+/** The statuses that mean nobody is to move again. */
+export const CHESS_FINISHED_STATUSES: readonly ChessStatus[] = [
+  "checkmate",
+  "stalemate",
+  "fifty-move",
+  "threefold",
+  "insufficient-material",
+  "resigned",
+  "draw-agreed",
+];
+
+/**
+ * A game in progress or finished — the whole thing the view holds and the save stores.
+ *
+ * `moves` and `repetitionKeys` are both kept because they answer different questions:
+ * the moves are the game (replay, undo, PGN), while the keys are what threefold
+ * repetition counts. Deriving the keys from the moves means replaying, and the rule has
+ * to be checked after every single move.
+ */
+export interface ChessGame {
+  /** The position the game started from. Almost always the standard opening. */
+  initialFen: string;
+  position: ChessPosition;
+  moves: readonly ChessRecordedMove[];
+  /**
+   * One key per position seen, including the starting one — a FEN without the two
+   * counters, which is exactly what "the same position" means for repetition.
+   */
+  repetitionKeys: readonly string[];
+  status: ChessStatus;
+  /** Set only when somebody won. A draw of any kind leaves it undefined. */
+  winner?: ChessColor;
+  humanColor: ChessColor;
+  level: ChessLevel;
+}
+
+/**
+ * A win scores `(CHESS_SCORE_BASE x multiplier) - full moves`, floored at 40% of the
+ * level's base so a long grind still scores something. A loss or a draw scores 0 — the
+ * rule Bridge, Mahjong and Battleship all apply, and the shared board ranks `score DESC`
+ * so a negative could never be expressed anyway.
+ */
+export const CHESS_SCORE_BASE = 100;
+
+/** The fraction of a level's base below which a win cannot score, however long it took. */
+export const CHESS_SCORE_FLOOR_FRACTION = 0.4;
+
+/* ---------------------------------------------------------------------------------
+   Chess saves (gam_chess_saves, migration 0173) and the autosave.
+--------------------------------------------------------------------------------- */
+
+export const CHESS_SAVE_VERSION = 1;
+
+/**
+ * What is stored for a saved game: the starting position, who was who, and the moves.
+ *
+ * **The moves, not a snapshot of the board.** Restoring replays them through the game's
+ * own rules, which rebuilds the full move list, the repetition keys and the status, and
+ * rejects a row whose moves were not all legal — so a damaged or hand-edited save cannot
+ * put an impossible position on screen. The same argument migration 0171 records for
+ * Arrow Clearing, and it costs even less here: a long game is 200 moves.
+ */
+export interface ChessSave {
+  version: number;
+  initialFen: string;
+  humanColor: ChessColor;
+  level: ChessLevel;
+  /** Coordinate moves in order, e.g. `["e2e4", "e7e5", "g1f3"]`. */
+  moves: readonly string[];
+}
+
+/** One named save as the list screen shows it, without replaying the moves. */
+export interface ChessSaveSummary {
+  id: number;
+  name: string;
+  level: ChessLevel;
+  humanColor: ChessColor;
+  moveCount: number;
+  savedAt: string;
+  createdAt: string;
+  /** False when the stored JSON could not even be parsed — see `listChessGames`. */
+  readable: boolean;
+}
+
+/** One named save, restored and ready to play. */
+export interface LoadedChessGame {
+  id: number;
+  name: string;
+  savedAt: string;
+  game: ChessGame;
+}
+
+/** A row of `gam_chess_saves`, as the repository returns it. */
+export interface StoredChessSave {
+  id: number;
+  userId: number;
+  name: string;
+  formatVersion: number;
+  state: string;
+  savedAt: string;
+  createdAt: string;
+}
+
+/** What the repository is handed to write one. */
+export interface ChessSaveWriteData {
+  userId: number;
+  name: string;
+  formatVersion: number;
+  state: string;
+  savedAt: string;
+}
+
+/**
+ * How many named saves one player may keep. A cap rather than unbounded growth: the
+ * table is per player and nothing prunes it, and twenty games in progress is already
+ * well past what anybody is actually playing. Saving over an existing name is always
+ * allowed, so the cap can never block finishing what you started.
+ */
+export const MAX_CHESS_SAVES_PER_PLAYER = 20;
+
+/** The game key the autosave is filed under in `gam_saved_runs`. */
+export const CHESS_GAME_KEY = "chess";

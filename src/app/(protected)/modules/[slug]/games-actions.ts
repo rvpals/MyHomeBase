@@ -5,14 +5,24 @@ import { revalidatePath } from "next/cache";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import {
   PICTIONARY_TIERS,
+  autosaveChessGame,
   clearCustomWords,
+  deleteChessGame,
   deleteCustomWord,
   discardArrowRun,
+  discardChessAutosave,
   importWords,
+  listChessGames,
   loadArrowRun,
+  loadChessAutosave,
+  loadChessGame,
   lookupWordWizardDefinition,
   recordScore,
   saveArrowRun,
+  saveChessGame,
+  type ChessGame,
+  type ChessSaveSummary,
+  type LoadedChessGame,
   type PictionaryImportSummary,
   type SavedArrowRun,
   type WordWizardDefinitionResult,
@@ -226,6 +236,130 @@ export async function discardArrowRunAction(
     return { ok: true };
   } catch (error) {
     return { ok: false, error: errorText(error, "Could not discard the saved run.") };
+  }
+}
+
+/* ---------------------------------------------------------------------------------
+   Chess: an autosave and a library of named games.
+
+   The player always comes from the session, so nobody can read, write or delete
+   another player's game — the repository is scoped by that id as well, so there is no
+   path here that could return somebody else's row to be filtered afterwards.
+
+   No `revalidatePath` on any of these: a saved game is only ever read back through
+   these actions, never by a server-rendered page, so there is nothing to refresh. The
+   one exception is a finished game's score, which goes through `saveScoreAction` above
+   and revalidates there.
+--------------------------------------------------------------------------------- */
+
+export type SaveChessGameResult =
+  | { ok: true; id: number; savedAt: string }
+  | { ok: false; error: string };
+
+/** Stores a game under a name, replacing the player's save of the same name. */
+export async function saveChessGameAction(
+  name: string,
+  save: unknown,
+  id?: number,
+): Promise<SaveChessGameResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: false, error: "Sign in to save a game." };
+    return { ok: true, ...saveChessGame(deps.chessSavesRepo, { userId, name, save, id }) };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not save this game.") };
+  }
+}
+
+export type ListChessGamesResult =
+  | { ok: true; games: ChessSaveSummary[] }
+  | { ok: false; error: string };
+
+/** The player's saved games, newest first. */
+export async function listChessGamesAction(): Promise<ListChessGamesResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: true, games: [] };
+    return { ok: true, games: listChessGames(deps.chessSavesRepo, { userId }) };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not read your saved games.") };
+  }
+}
+
+export type LoadChessGameResult =
+  | { ok: true; loaded: LoadedChessGame }
+  | { ok: false; error: string };
+
+/** One of the player's saved games, replayed through the rules. */
+export async function loadChessGameAction(id: number): Promise<LoadChessGameResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: false, error: "Sign in to load a game." };
+    return { ok: true, loaded: loadChessGame(deps.chessSavesRepo, { userId, id }) };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not load that game.") };
+  }
+}
+
+/** Deletes one of the player's saved games. */
+export async function deleteChessGameAction(
+  id: number,
+): Promise<{ ok: true; removed: boolean } | { ok: false; error: string }> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: false, error: "Sign in to delete a game." };
+    return { ok: true, removed: deleteChessGame(deps.chessSavesRepo, { userId, id }) };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not delete that game.") };
+  }
+}
+
+export type AutosaveChessResult = { ok: true; savedAt: string } | { ok: false; error: string };
+
+/** Writes the player's autosave, replacing whatever was there. */
+export async function autosaveChessAction(save: unknown): Promise<AutosaveChessResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: false, error: "Sign in to save your game." };
+    return { ok: true, ...autosaveChessGame(deps.savedRunsRepo, { userId, save }) };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not save this game.") };
+  }
+}
+
+export type LoadChessAutosaveResult =
+  | { ok: true; run: { savedAt: string; game: ChessGame } | undefined }
+  | { ok: false; error: string };
+
+/** The player's autosave, if there is one that can still be resumed. */
+export async function loadChessAutosaveAction(): Promise<LoadChessAutosaveResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: true, run: undefined };
+    return { ok: true, run: loadChessAutosave(deps.savedRunsRepo, { userId }) };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not load the saved game.") };
+  }
+}
+
+/** Deletes the player's autosave — pressed by New game, and when one finishes. */
+export async function discardChessAutosaveAction(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: true };
+    discardChessAutosave(deps.savedRunsRepo, { userId });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not discard the saved game.") };
   }
 }
 

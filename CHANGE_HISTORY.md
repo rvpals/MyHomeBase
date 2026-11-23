@@ -1,5 +1,20 @@
 # Change History
 
+## 2026-11-22 — Games: Chess against the computer, with saved games
+
+**One migration: `0173_create_chess_saves` (new table `gam_chess_saves`); must be applied on the NAS before the Save/Load buttons work.** No new package, no paid or outside service.
+
+**Not seen on screen, and no gate was run.** Typecheck and lint were run on the chess files part-way through and were clean for them; the unit tests (including the perft move-generator proof), the migration dry-run, the library-boundary check and the browser were **never run**. The computer's Web Worker is covered by no test at all. Work through the Testing List section.
+
+- **Game:** a Chess card in Games → Arcade. Pick Beginner / Intermediate / Advanced and White / Black / Random, tap a piece to see its legal squares, tap to move. Castling, en passant, promotion (you choose the piece), check, checkmate, stalemate, fifty-move, threefold repetition and insufficient material. Undo (takes back your move and the reply), Hint (always searched at Advanced strength), Offer draw, Resign, captured-pieces rows, a move list, PGN export and sound.
+- **Computer:** hand-written alpha-beta search, no dependency. The levels differ in search depth, whether it checks recaptures (Beginner does not), how often it plays a random move (Beginner 30%) and a little noise. It thinks in a Web Worker (`chess-worker.ts`), with a main-thread fallback.
+- **Saving:** the game autosaves after every move (`gam_saved_runs`, key `chess`) and offers Resume on re-opening; Save keeps up to twenty named games (`gam_chess_saves`). A save is the starting FEN plus the moves, replayed through the rules on load, so a damaged one is refused. A damaged named save is listed as unreadable, never deleted.
+- **Scoring:** a win is `(100 × 1/2/3) − full moves`, floored at 40% of the base; a loss or draw scores 0.
+- **Lib:** `chess-board.ts`, `chess-moves.ts`, `game-chess.ts`, `chess-notation.ts`, `chess-bot.ts`, `chess-save.ts` (+ tests, including perft on the six standard positions), `ChessSaveRepository` port and `SqliteChessSaveRepository`, schemas, types.
+- **UI:** `ChessBoard` / `ChessPieceGlyph` component (registered in components.md; SVG pieces, `--chess-*` board colours in globals.css), `game-chess-view.tsx`, seven server actions in games-actions.ts (each gated by `requireModuleAccess("games")`), icon slot `games_card_chess` with a hand-drawn knight glyph, rules text.
+- **CLI:** `npm run cli -- chess` — `--new`, `--move`, `--reply`, `--undo`, `--list`, `--pgn`, `--delete`, plus `--best` and `--perft`.
+- Docs: modules.md, components.md, coding-guide.md, CLI_registry.md, table-reference.ts, Testing_List.md.
+
 ## 2026-11-21 — Pictionary word auto-hides; Photo of the Day grid loads like the viewer strip
 
 **No migration, no new package.** Presentation only.

@@ -146,6 +146,36 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-22 — Games: Chess
+
+**Migration 0173 (`gam_chess_saves`); republish needed.** Not seen on screen — none of
+this has been run. Items 13–14 are phone-width; item 18 is worth checking in a light
+theme. Item 10 is the one most likely to be wrong: the computer runs in a Web Worker
+and that is the part no test covers.
+
+- [ ] **1.** Games → Arcade: a **Chess** card with a knight icon; Play opens it full-screen; Rules shows the rules
+- [ ] **2.** The setup screen offers Beginner / Intermediate / Advanced with a points multiplier each, and White / Black / Random
+- [ ] **3.** New game as White: the board is drawn from your side, a1 dark at bottom-left, with file letters and rank digits in the edge squares
+- [ ] **4.** Tap one of your pieces: it highlights green and every legal square shows a dot; a piece you could capture shows a ring instead
+- [ ] **5.** Tap a dotted square to move; the move's two squares stay marked amber, and the move appears in the Moves list in algebraic notation (e4, Nf3, exd5)
+- [ ] **6.** Tapping another of your own pieces swaps the selection; tapping an illegal square clears it
+- [ ] **7.** New game as **Black**: the board is drawn from Black's side and the computer opens by itself
+- [ ] **8.** Castling works by moving the king two squares and the rook jumps across; capturing *en passant* removes the pawn beside you, not the one you land on
+- [ ] **9.** Push a pawn to the last rank: a dialog offers queen / rook / bishop / knight and the piece you pick appears
+- [ ] **10.** While the computer thinks the panel says "The computer is thinking…", the board is unpressable but still fully legible, and **the page stays responsive** — Advanced should take a couple of seconds and must not freeze the tab
+- [ ] **11.** Check: the king's square glows red and the panel says Check. Checkmate ends the game and the panel names the winner
+- [ ] **12.** Undo takes back **both** your move and the computer's reply, so it is your turn again; Hint marks a move in blue and names it; Offer draw is accepted in a level position and declined when the computer is well ahead; Resign confirms first
+- [ ] **13.** Phone width: the board fills the width with no horizontal scroll, the panel stacks underneath, the Moves list is scrollable rather than endless, and the squares are big enough to tap accurately
+- [ ] **14.** Phone width: the control row wraps cleanly and no button is pushed off-screen
+- [ ] **15.** Save: name a game, then New game, then Load — it comes back with the same position, move list and level. Saving again under the same name replaces it rather than adding a second
+- [ ] **16.** Autosave: play a few moves, close the dialog, re-open Chess — it offers to **Resume**, and the resumed game has the full move list and working Undo. Starting a new game instead discards it
+- [ ] **17.** Export PGN gives text that pastes into another chess program (lichess.org/paste) and replays the same game
+- [ ] **18.** The board's wood colours read well on a light theme and a dark one; everything around the board follows the theme
+- [ ] **19.** A win posts (100/200/300 − moves) to Games → Scores and updates the card's Record; a loss or a draw adds nothing but still counts as Played
+- [ ] **20.** Beginner really is beatable — it should hang pieces; Advanced should not give material away
+- [ ] **21.** Icon settings: **Chess** is listed under Games cards, and an uploaded icon replaces the knight
+- [ ] **22.** CLI: `npm run cli -- chess --perft 4` prints 197,281; `--new`/`--move`/`--reply` plays a game that the web board can then load
+
 ## 2026-11-21 — Pictionary auto-hide and Photo of the Day loading
 
 **No migration; republish needed.** Not seen on screen. Item 5 is phone-width.

@@ -18,6 +18,7 @@ import { exportPortfolioCommand } from "./export-portfolio";
 import { consultTickerCommand } from "./consult-ticker";
 import { normalizeIconOverridesCommand } from "./normalize-icon-overrides";
 import { resizeCarouselImagesCommand } from "./resize-carousel-images";
+import { chessCommand } from "./chess";
 import { gameSavesCommand } from "./game-saves";
 import { gameScoresCommand } from "./game-scores";
 import { pictionaryWordsCommand } from "./pictionary-words";
@@ -127,6 +128,7 @@ const commands: Record<string, Command> = {
   "favorite-quotes": favoriteQuotesCommand,
   "color-themes": colorThemesCommand,
   "fav-photos": favPhotosCommand,
+  chess: chessCommand,
   "game-saves": gameSavesCommand,
   "game-scores": gameScoresCommand,
   "pictionary-words": pictionaryWordsCommand,

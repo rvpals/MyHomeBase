@@ -1,8 +1,10 @@
 import type { SavedRunWriteData, ScoreWriteData } from "./schema";
 import type {
+  ChessSaveWriteData,
   PictionaryTier,
   PictionaryWord,
   Score,
+  StoredChessSave,
   StoredPictionaryWord,
   StoredSavedRun,
 } from "./types";
@@ -74,4 +76,32 @@ export interface SavedRunRepository {
   deleteSavedRun(userId: number, gameKey: string): boolean;
   /** Most recently saved first, for everyone or for one player. */
   listSavedRuns(userId: number | undefined): StoredSavedRun[];
+}
+
+/**
+ * Named chess games, in `gam_chess_saves` (migration 0173). Many rows per player,
+ * unlike the one-per-game-key `SavedRunRepository` above — a library of games rather
+ * than a resume point. See `chess-save.ts` for why chess uses both.
+ *
+ * **Every method is scoped by `userId`**, including the reads. A saved game is private,
+ * and a repository that could return another player's row and then be filtered is one
+ * forgotten `if` away from leaking it — the same contract `ScratchpadRepository` holds
+ * for the same reason. There is deliberately no "list every player's saves" method:
+ * nothing in the app needs one, and the scoreboard is where shared things live.
+ */
+export interface ChessSaveRepository {
+  /** The player's saved games, most recently saved first. */
+  listChessSaves(userId: number): StoredChessSave[];
+  getChessSave(userId: number, id: number): StoredChessSave | undefined;
+  /**
+   * The player's save under this name, if any — matched the way the unique index does,
+   * so the use-case's "saving over a name replaces it" and the table agree.
+   */
+  findChessSaveByName(userId: number, name: string): StoredChessSave | undefined;
+  /** Inserts, or replaces the player's save of the same name. Returns the row's id. */
+  upsertChessSave(input: ChessSaveWriteData): number;
+  /** Returns whether a row was deleted. */
+  deleteChessSave(userId: number, id: number): boolean;
+  /** How many games this player has saved — for the per-player cap. */
+  countChessSaves(userId: number): number;
 }

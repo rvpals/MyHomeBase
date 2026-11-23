@@ -39,6 +39,7 @@ import {
   buildRollingGrid,
   buildWeekGrid,
   buildYearGrid,
+  emptyFilter,
   endOfMonth,
   formatCalendarDayHeading,
   formatJumpDate,
@@ -54,7 +55,18 @@ import {
   type JournalDateFormat,
   type JournalEntry,
 } from "@/lib/journal";
+import { BulkConfirm } from "@/components/bulk-confirm";
 import { adjacentEntryDateAction, recycleJournalEntryAction } from "./journal-actions";
+import {
+  deleteJournalEntriesAction,
+  bulkLockJournalEntriesAction,
+  type BulkRefreshScope,
+} from "./journal-bulk-actions";
+import {
+  JournalMergeDialogs,
+  useJournalMerge,
+  type MergeFormOptions,
+} from "./journal-merge-flow";
 import { JournalDayExpenses } from "./journal-day-expenses";
 import { JournalPhotosHost } from "./journal-photos-host";
 import { TaxonomyChipRow } from "@/components/taxonomy-icon";
@@ -97,6 +109,8 @@ export interface JournalCalendarViewProps {
   canSeeExpense?: boolean;
   /** Category → tint key, for the entry dots (migration 0172). */
   categoryColors?: CalendarCategoryColors;
+  /** What the Merge bulk action's entry form needs, read on the server. */
+  mergeFormOptions: MergeFormOptions;
 }
 
 /**
@@ -116,6 +130,7 @@ export function JournalCalendarView({
   tagIcons,
   canSeeExpense = false,
   categoryColors,
+  mergeFormOptions,
 }: JournalCalendarViewProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -371,7 +386,10 @@ export function JournalCalendarView({
 
       {selectedDate ? (
         <DayEntriesPanel
+          // Keyed by the day so the ticks never carry over to another day's list.
+          key={selectedDate}
           date={selectedDate}
+          mergeFormOptions={mergeFormOptions}
           entries={selectedEntries}
           categoryIcons={categoryIcons}
           tagIcons={tagIcons}
@@ -564,6 +582,11 @@ function CalendarToolbar({
               </li>
               <li>Click a day to list its entries below the grid; click it again to close.</li>
               <li>Click a title to open that entry on its own screen.</li>
+              <li>
+                Tick entries in a day&apos;s list (or Select all) to Merge, Lock, Unlock or
+                Delete them together. Merge skips locked entries; Delete moves them to the
+                recycle bin.
+              </li>
               <li>
                 Week, 5 Weeks, Month and Year are the ranges; ‹ and › step by whichever one
                 is showing — except 5 Weeks, which slides one week at a time. In 5 Weeks the
@@ -900,9 +923,9 @@ function MonthGrid({
   onOpenPhotos: (date: string) => void;
 }) {
   return (
-    // The calm layout: no cell borders and no row bands — the days are separated
-    // by space alone, and the large day numbers carry the structure. The only
-    // fills left are the ones that mean something: the open day, and the dimmed
+    // Gridlines are back: every cell draws its right and bottom edge and the grid
+    // draws the left and top, so neighbouring cells share one 1px line rather than
+    // doubling it. The fills that mean something stay: the open day, and the dimmed
     // days a month grid borrows from its neighbours.
     <div className="flex flex-col gap-1">
       {/* The weekday row pops off the page: a raised bar with a drop shadow, using
@@ -923,7 +946,7 @@ function MonthGrid({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 border-l border-t border-line">
         {weeks.flatMap((week) =>
           week.days.map((day) => (
             <DayCell
@@ -995,7 +1018,7 @@ function DayCell({
       }}
       // `group` is what the hover-revealed controls (the + and the photo button)
       // key off on desktop.
-      className={`group flex cursor-pointer flex-col gap-1 rounded-lg p-1.5 text-left transition-colors ${cellHeightClass(
+      className={`group flex min-w-0 cursor-pointer flex-col gap-1 border-b border-r border-line p-1.5 text-left transition-colors ${cellHeightClass(
         variant,
         isDisplay,
       )} ${
@@ -1275,8 +1298,10 @@ function DayEntriesPanel({
   onOpenEntry,
   onClose,
   onOpenExpenses,
+  mergeFormOptions,
 }: {
   date: string;
+  mergeFormOptions: MergeFormOptions;
   entries: JournalEntry[];
   categoryIcons: Record<string, string>;
   tagIcons: Record<string, string>;
@@ -1290,6 +1315,87 @@ function DayEntriesPanel({
   const [deleting, setDeleting] = useState<JournalEntry | undefined>(undefined);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [notice, setNotice] = useState("");
+
+  // Bulk selection. Ids, not rows: the rows are props that change on every
+  // refresh, and `selectedRows` below re-derives from them so an entry that was
+  // just deleted drops out of the selection by itself.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // The target state, not a toggle — Lock and Unlock are two buttons.
+  const [confirmLock, setConfirmLock] = useState<{ isLocked: boolean } | undefined>(undefined);
+  const [isBulkBusy, setIsBulkBusy] = useState(false);
+  const selectedRows = entries.filter((entry) => selectedIds.has(entry.id));
+  const allSelected = entries.length > 0 && selectedRows.length === entries.length;
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // The bulk actions hand back a re-read of a grid's rows for a scope. The
+  // calendar has no such grid — its rows are props — so the scope is only the
+  // cheapest valid one and the result is ignored in favour of router.refresh().
+  const refreshScope = (): BulkRefreshScope => ({ tab: "main", filter: emptyFilter() });
+
+  const merging = useJournalMerge({
+    scope: refreshScope,
+    applyRows: (_rows, message) => {
+      setNotice(message);
+      router.refresh();
+    },
+    setError,
+    setNotice,
+    setBusy: setIsBulkBusy,
+  });
+
+  function toggleEntry(id: number) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function runBulkDelete() {
+    setIsBulkBusy(true);
+    setError(undefined);
+    try {
+      const result = await deleteJournalEntriesAction(
+        selectedRows.map((entry) => entry.id),
+        refreshScope(),
+      );
+      setConfirmDelete(false);
+      if (!result.ok) {
+        setError(result.error ?? "Failed to delete the selected entries.");
+        return;
+      }
+      clearSelection();
+      setNotice(result.message ?? "Entries deleted.");
+      router.refresh();
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }
+
+  async function runBulkLock(isLocked: boolean) {
+    setIsBulkBusy(true);
+    setError(undefined);
+    try {
+      const result = await bulkLockJournalEntriesAction(
+        selectedRows.map((entry) => entry.id),
+        isLocked,
+        refreshScope(),
+      );
+      setConfirmLock(undefined);
+      if (!result.ok) {
+        setError(result.error ?? "Failed to update the selected entries.");
+        return;
+      }
+      clearSelection();
+      setNotice(result.message ?? "Entries updated.");
+      router.refresh();
+    } finally {
+      setIsBulkBusy(false);
+    }
+  }
 
   /**
    * Recycles the entry, then re-reads the period from the server.
@@ -1364,9 +1470,70 @@ function DayEntriesPanel({
       </div>
 
       {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {notice && !error && <p className="mt-2 text-sm text-muted">{notice}</p>}
 
       {entries.length > 0 ? (
-        <ul className="mt-3 flex flex-col divide-y divide-line border-t border-line">
+        // Select all, and the bulk actions once anything is ticked. Wraps on a
+        // phone; the buttons keep the size the rest of this panel uses.
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-2 px-1 py-1 text-sm text-muted max-lg:py-2">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() =>
+                setSelectedIds(allSelected ? new Set() : new Set(entries.map((entry) => entry.id)))
+              }
+              className="h-4 w-4 accent-brass"
+            />
+            {selectedRows.length === 0 ? "Select all" : `${selectedRows.length} selected`}
+          </label>
+          {selectedRows.length > 0 ? (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy || selectedRows.length < 2}
+                title={
+                  selectedRows.length < 2 ? "Tick two or more entries to merge them" : undefined
+                }
+                onClick={() => void merging.start(selectedRows, clearSelection)}
+              >
+                Merge
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() => setConfirmLock({ isLocked: true })}
+              >
+                Lock
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={isBulkBusy}
+                onClick={() => setConfirmLock({ isLocked: false })}
+              >
+                Unlock
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={isBulkBusy}
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete
+              </Button>
+              <Button size="sm" variant="secondary" disabled={isBulkBusy} onClick={clearSelection}>
+                Clear
+              </Button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {entries.length > 0 ? (
+        <ul className="mt-1 flex flex-col divide-y divide-line border-t border-line">
           {entries.map((entry, index) => (
             <li
               key={entry.id}
@@ -1384,6 +1551,17 @@ function DayEntriesPanel({
                 index % 2 === 1 ? "bg-paper" : ""
               } hover:bg-brass-soft`}
             >
+              <label className="flex shrink-0 cursor-pointer items-center px-2 py-2 max-lg:px-3 max-lg:py-3">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(entry.id)}
+                  onChange={() => toggleEntry(entry.id)}
+                  aria-label={`Select the entry ${
+                    entry.isEncrypted || entry.title.trim() === "" ? "on this day" : entry.title
+                  }`}
+                  className="h-4 w-4 accent-brass"
+                />
+              </label>
               {/* A bare pencil, not a labelled button: a row action, which
                   coding-guide.md keeps out of the icon-slot registry, and
                   ALWAYS_CLASSIC holds it hand-drawn. A link rather than a
@@ -1459,7 +1637,7 @@ function DayEntriesPanel({
               <Button
                 size="sm"
                 variant="danger"
-                disabled={isDeleting}
+                disabled={isDeleting || isBulkBusy}
                 onClick={() => {
                   setError(undefined);
                   setDeleting(entry);
@@ -1474,6 +1652,69 @@ function DayEntriesPanel({
           ))}
         </ul>
       ) : null}
+
+      <JournalMergeDialogs
+        merge={merging.merge}
+        cleanup={merging.cleanup}
+        formOptions={mergeFormOptions}
+        isBusy={isBulkBusy}
+        onMergeClose={merging.close}
+        onSavingChange={setIsBulkBusy}
+        onMergeSaved={(saved) => void merging.handleSaved(saved)}
+        onCleanupKeep={merging.keep}
+        onCleanupDelete={(sourceIds) => void merging.runCleanup(sourceIds)}
+      />
+
+      {confirmDelete && (
+        <BulkConfirm
+          title="Delete these entries?"
+          description="They move to the recycle bin under Data Management, and can be restored from there."
+          count={selectedRows.length}
+          noun={{ one: "entry", many: "entries" }}
+          caveat={
+            selectedRows.some((entry) => entry.isLocked) ? (
+              <>
+                Some of these are <span className="text-ink">locked</span>. They move to the bin
+                too, still locked — restoring one brings it back locked.
+              </>
+            ) : undefined
+          }
+          confirmLabel="Delete"
+          isBusy={isBulkBusy}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => void runBulkDelete()}
+        />
+      )}
+
+      {confirmLock && (
+        <BulkConfirm
+          title={confirmLock.isLocked ? "Lock these entries?" : "Unlock these entries?"}
+          description={
+            confirmLock.isLocked
+              ? "A locked entry can't be edited or deleted on its own screen until it is unlocked."
+              : "Unlocking makes these entries editable again."
+          }
+          count={selectedRows.length}
+          noun={{ one: "entry", many: "entries" }}
+          caveat={(() => {
+            const unchanged = selectedRows.filter(
+              (entry) => entry.isLocked === confirmLock.isLocked,
+            ).length;
+            if (unchanged === 0) return undefined;
+            return (
+              <>
+                {unchanged === 1 ? "1 is" : `${unchanged} are`} already{" "}
+                {confirmLock.isLocked ? "locked" : "unlocked"} and will be left alone.
+              </>
+            );
+          })()}
+          confirmLabel={confirmLock.isLocked ? "Lock" : "Unlock"}
+          tone="primary"
+          isBusy={isBulkBusy}
+          onCancel={() => setConfirmLock(undefined)}
+          onConfirm={() => void runBulkLock(confirmLock.isLocked)}
+        />
+      )}
 
       {deleting && (
         <Modal

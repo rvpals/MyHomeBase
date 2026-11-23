@@ -40,6 +40,7 @@ import { SharpClipImageProcessor } from "./clips/image-processor";
 import { SqliteDocumentsRepository } from "./documents/repository";
 import { NodeDocumentFileStore } from "./documents/file-store";
 import {
+  SqliteChessSaveRepository,
   SqliteGamesRepository,
   SqlitePictionaryWordRepository,
   SqliteSavedRunRepository,
@@ -333,8 +334,13 @@ export const deps = {
   // score have nothing to do with each other; see `src/lib/games/ports.ts`.
   pictionaryWordsRepo: new SqlitePictionaryWordRepository(db),
   // Games runs in progress, so a player can leave a board and resume it (migrations/0171).
-  // Private to each player, unlike the shared scoreboard above.
+  // Private to each player, unlike the shared scoreboard above. Also carries the chess
+  // autosave, under the `chess` game key.
   savedRunsRepo: new SqliteSavedRunRepository(db),
+  // Named chess games (migrations/0173) — the library a player saves to by name, as
+  // opposed to the one-per-player autosave above. A third port rather than methods on
+  // either of the two above: see `src/lib/games/ports.ts`.
+  chessSavesRepo: new SqliteChessSaveRepository(db),
   // The Clips module (migrations/0155): rich-text notes, their taxonomy, their
   // pasted images and their links into other modules.
   clipsRepo: new SqliteClipsRepository(db),

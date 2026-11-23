@@ -1,11 +1,18 @@
 import type Database from "better-sqlite3";
-import type { PictionaryWordRepository, SavedRunRepository, ScoreRepository } from "./ports";
+import type {
+  ChessSaveRepository,
+  PictionaryWordRepository,
+  SavedRunRepository,
+  ScoreRepository,
+} from "./ports";
 import type { SavedRunWriteData, ScoreWriteData } from "./schema";
 import {
   PICTIONARY_TIERS,
+  type ChessSaveWriteData,
   type PictionaryTier,
   type PictionaryWord,
   type Score,
+  type StoredChessSave,
   type StoredPictionaryWord,
   type StoredSavedRun,
 } from "./types";
@@ -296,5 +303,105 @@ function toSavedRun(row: SavedRunRow): StoredSavedRun {
     formatVersion: row.format_version,
     state: row.state_json,
     savedAt: row.saved_at,
+  };
+}
+
+interface ChessSaveRow {
+  id: number;
+  user_id: number;
+  name: string;
+  format_version: number;
+  state_json: string;
+  saved_at: string;
+  created_at: string;
+}
+
+/**
+ * Named chess games (migration 0173).
+ *
+ * No `LEFT JOIN sys_users` here, unlike every read above: a saved game is only ever
+ * read by the player it belongs to, so there is no name to show — the owner already
+ * knows who they are. That is also why every statement carries `user_id = ?` in its
+ * WHERE clause rather than relying on a caller to check afterwards.
+ */
+export class SqliteChessSaveRepository implements ChessSaveRepository {
+  constructor(private readonly db: Database.Database) {}
+
+  listChessSaves(userId: number): StoredChessSave[] {
+    const rows = this.db
+      .prepare(`${SELECT_CHESS_SAVES} WHERE user_id = ? ORDER BY saved_at DESC, id DESC`)
+      .all(userId) as ChessSaveRow[];
+    return rows.map(toChessSave);
+  }
+
+  getChessSave(userId: number, id: number): StoredChessSave | undefined {
+    const row = this.db
+      .prepare(`${SELECT_CHESS_SAVES} WHERE user_id = ? AND id = ?`)
+      .get(userId, id) as ChessSaveRow | undefined;
+    return row ? toChessSave(row) : undefined;
+  }
+
+  findChessSaveByName(userId: number, name: string): StoredChessSave | undefined {
+    // NOCASE, matching the unique index exactly: "Sunday game" and "sunday game" are
+    // the same save, and if these two disagreed the upsert below would hit a constraint
+    // error instead of replacing the row the player meant.
+    const row = this.db
+      .prepare(`${SELECT_CHESS_SAVES} WHERE user_id = ? AND name = ? COLLATE NOCASE`)
+      .get(userId, name) as ChessSaveRow | undefined;
+    return row ? toChessSave(row) : undefined;
+  }
+
+  upsertChessSave(input: ChessSaveWriteData): number {
+    // `created_at` is left alone on an update, so a save still shows when that game was
+    // first kept rather than when it was last written — the same call `upsertSavedRun`
+    // makes above.
+    const result = this.db
+      .prepare(
+        `INSERT INTO gam_chess_saves (user_id, name, format_version, state_json, saved_at, created_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT (user_id, name COLLATE NOCASE) DO UPDATE SET
+           format_version = excluded.format_version,
+           state_json     = excluded.state_json,
+           saved_at       = excluded.saved_at`,
+      )
+      .run(input.userId, input.name, input.formatVersion, input.state, input.savedAt);
+
+    // An ON CONFLICT update reports `lastInsertRowid` from the insert that did not
+    // happen, so the id is read back by name rather than taken from the result.
+    const saved = this.findChessSaveByName(input.userId, input.name);
+    if (!saved) throw new Error("Failed to read back the game just saved.");
+    return saved.id;
+  }
+
+  deleteChessSave(userId: number, id: number): boolean {
+    return (
+      this.db
+        .prepare(`DELETE FROM gam_chess_saves WHERE user_id = ? AND id = ?`)
+        .run(userId, id).changes > 0
+    );
+  }
+
+  countChessSaves(userId: number): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS total FROM gam_chess_saves WHERE user_id = ?")
+      .get(userId) as { total: number } | undefined;
+    return row?.total ?? 0;
+  }
+}
+
+const SELECT_CHESS_SAVES = `
+  SELECT id, user_id, name, format_version, state_json, saved_at, created_at
+  FROM gam_chess_saves
+`;
+
+function toChessSave(row: ChessSaveRow): StoredChessSave {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    formatVersion: row.format_version,
+    state: row.state_json,
+    savedAt: row.saved_at,
+    createdAt: row.created_at,
   };
 }

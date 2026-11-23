@@ -4,6 +4,8 @@ import {
   ARROW_DIFFICULTIES,
   ARROW_MOVE_UNDO,
   BOARD_SIZE,
+  CHESS_COLORS,
+  CHESS_LEVELS,
   DIRECTIONS,
   PICTIONARY_TIERS,
 } from "./types";
@@ -158,6 +160,87 @@ export interface SavedRunWriteData {
   state: string;
   savedAt: string;
 }
+
+/* ---------------------------------------------------------------------------------
+   Chess saves (gam_chess_saves, migration 0173) and the chess autosave.
+--------------------------------------------------------------------------------- */
+
+/**
+ * The longest game that may be stored, in plies.
+ *
+ * The fifty-move rule bounds a game far below this in practice, but it resets on every
+ * capture and pawn move, so there is no hard ceiling to read off the rules — the longest
+ * recorded tournament games run to about 270 moves. A thousand plies is well past any
+ * real game while still bounding what one request can ask the server to replay.
+ */
+export const MAX_CHESS_MOVES = 1_000;
+
+/** The largest chess save that will be stored, in characters of JSON. */
+export const MAX_CHESS_SAVE_CHARS = 32_000;
+
+/** How long a saved game's name may be. */
+export const MAX_CHESS_SAVE_NAME = 60;
+
+/**
+ * The shape of a `ChessSave`. Shape only: whether the moves are *legal* is decided by
+ * replaying them through the rules in `restoreChessGame`, which a schema cannot do.
+ *
+ * The move pattern is deliberately strict — four squares and an optional promotion
+ * letter — so nothing that is not even coordinate notation reaches the replay.
+ */
+export const chessSaveSchema = z.object({
+  version: z.number().int().positive(),
+  // A FEN is six space-separated fields and never approaches this length; the cap is
+  // here so a crafted string cannot make the parser walk something huge.
+  initialFen: z.string().trim().min(1).max(120),
+  humanColor: z.enum(CHESS_COLORS),
+  level: z.enum(CHESS_LEVELS),
+  // Case-insensitive, and the case is *not* normalised here: `findMoveByUci` lowercases
+  // before resolving a move against the legal list, so there is one place that decides
+  // what "e2e4" and "E2E4" mean rather than a schema transform and a lookup that could
+  // drift apart.
+  moves: z
+    .array(z.string().trim().regex(/^[a-hA-H][1-8][a-hA-H][1-8][qrbnQRBN]?$/, "Not a move."))
+    .max(MAX_CHESS_MOVES, "That game is too long to save."),
+});
+
+/**
+ * Storing a named game.
+ *
+ * `id` is optional and means "replace this save of mine". Without it the name decides:
+ * saving under a name already used replaces that game, which is what makes Save a
+ * repeatable action on a game in progress rather than something that fills the list
+ * with twenty copies.
+ */
+export const saveChessGameSchema = z.object({
+  userId: z.number().int().positive(),
+  id: z.number().int().positive().optional(),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Give this game a name.")
+    .max(MAX_CHESS_SAVE_NAME, "That name is too long."),
+  save: chessSaveSchema,
+});
+
+export type SaveChessGameInput = z.infer<typeof saveChessGameSchema>;
+
+/** Reading or deleting one of the player's saved games. */
+export const chessSaveIdSchema = z.object({
+  userId: z.number().int().positive(),
+  id: z.number().int().positive(),
+});
+
+/** Listing the player's saved games, or autosaving / discarding for them. */
+export const chessPlayerSchema = z.object({
+  userId: z.number().int().positive(),
+});
+
+/** The autosave: one per player, in `gam_saved_runs` under the `chess` game key. */
+export const autosaveChessSchema = z.object({
+  userId: z.number().int().positive(),
+  save: chessSaveSchema,
+});
 
 /**
  * Looking up a Word Wizard word's meaning. Same shape the game itself accepts — 2–15

@@ -87,6 +87,7 @@ alongside its row here.
 | [`color-themes`](#color-themes) | read (writes with `import`/`reset`/`delete`) | no |
 | [`fav-photos`](#fav-photos) | read (writes with `add`/`note`/`remove`) | no |
 | [`game-scores`](#game-scores) | read | no |
+| [`chess`](#chess) | read (writes with `--new`/`--move`/`--undo`/`--reply`/`--delete`) | no |
 | [`pictionary-words`](#pictionary-words) | read (writes with `add`/`clear`) | no |
 | [`deployments`](#deployments) | read (writes with `delete`/`prune`) | no |
 | [`ticker-monitors`](#ticker-monitors) | read (writes with `add`/`enable`/`disable`/`delete`/`run`) | no |
@@ -3514,6 +3515,61 @@ the date. Ties are broken in favour of whoever got there first, matching the scr
 unknown `--game`, a `--limit` over the cap). A zod failure is printed through
 `messageOf`, so it reads as one line rather than a wall of JSON.
 Source: [src/cli/game-scores.ts](src/cli/game-scores.ts)
+
+---
+
+## `chess`
+
+Plays chess against the computer from the terminal, against the same saved games the
+Arcade board reads and writes.
+
+```
+npm run cli -- chess --new --user 1 --name "Sunday game" --level advanced --color w
+npm run cli -- chess --list --user 1
+npm run cli -- chess --user 1 --name "Sunday game" --move e2e4 --reply
+npm run cli -- chess --user 1 --name "Sunday game" --undo
+npm run cli -- chess --user 1 --name "Sunday game" --pgn
+npm run cli -- chess --user 1 --name "Sunday game" --delete
+
+npm run cli -- chess --fen "<FEN>" --best --level advanced
+npm run cli -- chess --perft 4
+```
+
+**A run is one move, not a session.** Each invocation loads the named game, does one
+thing and writes it back, so there is no interactive loop and the row is the same one
+the web board uses — a game started here can be finished in the browser and the other
+way round. `--reply` lets the computer answer in the same run, which is what makes
+playing from a terminal practical.
+
+**Input** — `--user <id>` is required for anything touching a saved game (`list-users`
+shows the ids). `--name` takes the game's name or its numeric id. `--level` is
+`beginner`, `intermediate` or `advanced` (default `intermediate`); `--color` is `w` or
+`b` (default `w`); `--fen` starts from a given position. `--move` takes coordinate
+notation (`e2e4`, `e7e8q`). Two flags touch no storage and need no `--user`: `--best`
+prints the move the engine would play from `--fen`, and `--perft <depth>` counts the
+legal positions at that depth — the move generator's own proof, so a rule change can be
+re-checked against a real board without running the test suite.
+
+**Calls** — `startChessGame`, `playChessMove`, `undoChessMove`, `chooseChessMove`,
+`saveChessGame`, `loadChessGame`, `listChessGames`, `deleteChessGame`, `gameToPgn`,
+`scoreChessGame` and `perft`, all from `@/lib/games` — the same use-cases the board
+calls, with no rules reimplemented here.
+
+**Output** — the board in FEN's own letter case (upper for White, lower for Black)
+rather than the Unicode chess glyphs, which align badly in a monospace terminal and are
+missing from plenty of console fonts. Below it: the FEN, whose move it is, anything
+captured and the last few moves in algebraic notation. A game that ends is reported
+with its result and score, and its saved row is removed — a finished game is not
+something to come back to.
+
+**Exit** — 0 normally; 1 when `--user` is missing or not a player, when `--name` names
+no saved game, when a move is illegal, when a FEN cannot be read, or when `--perft` is
+outside 1–6. Errors print through `messageOf`, so a zod failure reads as one line.
+
+**Note** — this command parses its own flags rather than using `parseFlags`, because
+that helper pairs every flag with the following token and `--new --user 1` would
+otherwise record `new: "--user"` and lose the user. See the comment in the source.
+Source: [src/cli/chess.ts](src/cli/chess.ts)
 
 ---
 

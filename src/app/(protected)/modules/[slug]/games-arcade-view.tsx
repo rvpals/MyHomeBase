@@ -19,6 +19,7 @@ import { GameBlackjackView } from "./game-blackjack-view";
 import { GameBridgeView } from "./game-bridge-view";
 import { GameArrowsView } from "./game-arrows-view";
 import { GameBattleshipView } from "./game-battleship-view";
+import { GameChessView } from "./game-chess-view";
 import { GameMahjongMatchView } from "./game-mahjong-match-view";
 import { GameMahjongView } from "./game-mahjong-view";
 import { GameMinesweeperView } from "./game-minesweeper-view";
@@ -357,6 +358,10 @@ export function GamesArcadeView({
               {open.game.key === "battleship" && (
                 <GameBattleshipView bestScore={open.best?.score ?? 0} />
               )}
+              {/* Chess against the computer. One key for all three levels, as with
+                  Sudoku and Minesweeper — the level is picked inside the game, along
+                  with which colour you play. The only game with a save library. */}
+              {open.game.key === "chess" && <GameChessView bestScore={open.best?.score ?? 0} />}
             </div>
           </div>
         </Modal>

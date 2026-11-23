@@ -12,11 +12,7 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Modal } from "@/components/modal";
 import { PAGE_CONTAINER } from "../../page-container";
-import {
-  listCodeTestFoldersAction,
-  listCodeTestPhotosAction,
-  runServerResizeTestAction,
-} from "./actions";
+import { listCodeTestFoldersAction, runServerResizeSuiteAction } from "./actions";
 
 /** Matches the other admin screens' fields. */
 const INPUT_CLASS =
@@ -47,16 +43,15 @@ function messageOf(error: unknown, fallback: string): string {
 /**
  * Experiment 1: how long a server-side resize takes, and how many bytes it saves.
  *
- * Pick a photo by date -> folder -> photo (the archive's own date-based browsing), run
- * the test, read the report in a dialog.
+ * Pick a folder by date -> folder (the archive's own date-based browsing). The server
+ * scans it, picks three photos (EXIF preview, no preview, largest), runs the test on each,
+ * and the combined report opens in a dialog.
  */
 function ServerResizeCard() {
   const [date, setDate] = useState("");
   const [folders, setFolders] = useState<{ name: string; relativePath: string; photoCount: number }[]>();
   const [folderPath, setFolderPath] = useState("");
-  const [photos, setPhotos] = useState<{ name: string; relativePath: string }[]>();
-  const [photoPath, setPhotoPath] = useState("");
-  const [busy, setBusy] = useState<"folders" | "photos" | "test" | undefined>();
+  const [busy, setBusy] = useState<"folders" | "test" | undefined>();
   const [error, setError] = useState<string>();
   const [report, setReport] = useState<string>();
   const [isCopied, setIsCopied] = useState(false);
@@ -66,8 +61,6 @@ function ServerResizeCard() {
     setError(undefined);
     setFolders(undefined);
     setFolderPath("");
-    setPhotos(undefined);
-    setPhotoPath("");
     try {
       const result = await listCodeTestFoldersAction(date);
       if (!result.ok) {
@@ -82,32 +75,11 @@ function ServerResizeCard() {
     }
   }
 
-  async function chooseFolder(relativePath: string) {
-    setFolderPath(relativePath);
-    setPhotos(undefined);
-    setPhotoPath("");
-    if (relativePath === "") return;
-    setBusy("photos");
-    setError(undefined);
-    try {
-      const result = await listCodeTestPhotosAction(relativePath);
-      if (!result.ok) {
-        setError(result.error ?? "Couldn't list that folder.");
-        return;
-      }
-      setPhotos(result.photos ?? []);
-    } catch (thrown) {
-      setError(messageOf(thrown, "Couldn't list that folder."));
-    } finally {
-      setBusy(undefined);
-    }
-  }
-
   async function runTest() {
     setBusy("test");
     setError(undefined);
     try {
-      const result = await runServerResizeTestAction(photoPath);
+      const result = await runServerResizeSuiteAction(folderPath);
       if (!result.ok || result.report === undefined) {
         setError(result.error ?? "The test didn't run.");
         return;
@@ -136,13 +108,14 @@ function ServerResizeCard() {
     <>
       <CollapsibleCard title="Test Image Serve Resize Load" defaultOpen>
         <p className="text-sm text-muted">
-          Reads one photo from the archive and resizes it on the server to 160, 1024 and
-          2048px, timing each step and comparing the bytes with the original. The archive is
-          only read, never written.
+          Scans a folder of the archive, picks three photos (one with an EXIF preview, one
+          without, and the largest file) and, for each, resizes it on the server to 160, 1024
+          and 2048px, timing each step and comparing the bytes with the original. The archive
+          is only read, never written.
         </p>
 
         {/* Stacked on a phone, one row on a desktop. */}
-        <div className="mt-4 grid grid-cols-[12rem_minmax(0,1fr)_minmax(0,1fr)] items-end gap-3 max-lg:grid-cols-1">
+        <div className="mt-4 grid grid-cols-[12rem_minmax(0,1fr)] items-end gap-3 max-lg:grid-cols-1">
           {/* A div, not a label: it holds the button too, and a label may name one control. */}
           <div className="block text-sm">
             <span className="mb-1 block text-muted">1. Date</span>
@@ -169,7 +142,7 @@ function ServerResizeCard() {
             <span className="mb-1 block text-muted">2. Folder</span>
             <select
               value={folderPath}
-              onChange={(event) => void chooseFolder(event.target.value)}
+              onChange={(event) => setFolderPath(event.target.value)}
               disabled={folders === undefined || folders.length === 0 || busy !== undefined}
               className={INPUT_CLASS}
             >
@@ -187,36 +160,7 @@ function ServerResizeCard() {
               ))}
             </select>
           </label>
-
-          <label className="block text-sm">
-            <span className="mb-1 block text-muted">3. Photo</span>
-            <select
-              value={photoPath}
-              onChange={(event) => setPhotoPath(event.target.value)}
-              disabled={photos === undefined || photos.length === 0 || busy !== undefined}
-              className={INPUT_CLASS}
-            >
-              <option value="">
-                {busy === "photos"
-                  ? "Reading the folder…"
-                  : photos === undefined
-                    ? "Choose a folder first"
-                    : photos.length === 0
-                      ? "No photos in that folder"
-                      : "Choose a photo…"}
-              </option>
-              {photos?.map((photo) => (
-                <option key={photo.relativePath} value={photo.relativePath}>
-                  {photo.name}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
-
-        {photoPath !== "" && (
-          <p className="mt-3 break-all font-mono text-xs text-muted">{photoPath}</p>
-        )}
 
         {error !== undefined && (
           <p role="alert" className="mt-3 text-sm text-red-400">
@@ -225,22 +169,22 @@ function ServerResizeCard() {
         )}
 
         <div className="mt-4 max-lg:[&>*]:w-full">
-          <Button onClick={() => void runTest()} disabled={photoPath === "" || busy !== undefined}>
-            {busy === "test" ? "Running…" : "Run test"}
+          <Button onClick={() => void runTest()} disabled={folderPath === "" || busy !== undefined}>
+            {busy === "test" ? "Running…" : "Run 3 tests"}
           </Button>
         </div>
       </CollapsibleCard>
 
       <BusyOverlay
         isBusy={busy === "test"}
-        message="Running the resize test…"
-        detail="Reading the photo from the NAS and resizing it three times. This can take a few seconds."
+        message="Scanning the folder and running 3 tests…"
+        detail="Reading the folder's photos from the NAS, then resizing three of them three times each. This can take a minute."
         progress="indeterminate"
       />
 
       {report !== undefined && (
         <Modal
-          title="Server resize test"
+          title="Server resize tests"
           size="lg"
           onClose={() => setReport(undefined)}
           footer={

@@ -210,6 +210,22 @@ export const GAME_CATALOGUE: readonly CatalogueGame[] = [
     status: "available",
     scoreUnit: "points",
   },
+  // Chess against the computer. One card for all three levels, as Sudoku, Minesweeper
+  // and Battleship do; the level's multiplier in `CHESS_LEVEL_SETUP` keeps a Beginner
+  // win from ranking level with an Advanced one on the single board. A loss or a draw
+  // scores 0, the rule Bridge and Mahjong apply.
+  //
+  // The first game with a real **save library**: Battleship and the rest are lost on
+  // close, and Arrow Clearing keeps one resumable run. A chess game is long enough that
+  // "come back to this one" is the point, so it has both an autosave and named saves —
+  // see `chess-save.ts`.
+  {
+    key: "chess",
+    name: "Chess",
+    description: "The classic game against the computer, at three strengths. Save and resume.",
+    status: "available",
+    scoreUnit: "points",
+  },
 ];
 
 /** The catalogue entry for `key`, or undefined when nothing matches. */

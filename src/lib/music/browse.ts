@@ -86,8 +86,8 @@ export const LIBRARY_VIEW_INFO: Record<LibraryView, { label: string; description
  */
 export const LIBRARY_VIEW_ICONS: Record<LibraryView, string> = {
   "all-songs": "list",
-  artists: "users",
-  albums: "window",
+  artists: "musician",
+  albums: "vinyl",
   genres: "shapes",
   playlists: "note",
   "most-played": "history",

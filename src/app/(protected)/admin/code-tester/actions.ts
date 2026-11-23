@@ -1,16 +1,11 @@
 "use server";
 
-import {
-  createTimedPhotoReader,
-  serverResizeTestSchema,
-  testServerResizeImage,
-} from "@/lib/code-test";
+import { createTimedPhotoReader, runServerResizeSuite } from "@/lib/code-test";
 import {
   listAllPhotosInFolder,
   listPhotoFoldersForDate,
   photoFolderAllSchema,
   photoFolderLookupSchema,
-  type PhotoFile,
   type PhotoFolder,
 } from "@/lib/journal-photos";
 import { deps } from "@/lib/wiring";
@@ -19,21 +14,15 @@ import { requireAdmin } from "../../require-access";
 
 // Administration -> Code Tester. Thin adapters: authorise, validate, call lib, return.
 //
-// The two listing actions reuse the archive's existing date-based browsing
-// (`listPhotoFoldersForDate`, `listAllPhotosInFolder`), but are their own ADMIN-gated
-// endpoints: the Journal and Gallery actions that make the same calls check module
-// access, and an administrator testing the server need not have either module.
+// These actions reuse the archive's existing date-based browsing (`listPhotoFoldersForDate`,
+// `listAllPhotosInFolder`), but are their own ADMIN-gated endpoints: the Journal and
+// Gallery actions that make the same calls check module access, and an administrator
+// testing the server need not have either module.
 
 export interface CodeTestFoldersResult {
   ok: boolean;
   error?: string;
   folders?: PhotoFolder[];
-}
-
-export interface CodeTestPhotosResult {
-  ok: boolean;
-  error?: string;
-  photos?: PhotoFile[];
 }
 
 export interface CodeTestReportResult {
@@ -59,43 +48,34 @@ export async function listCodeTestFoldersAction(date: string): Promise<CodeTestF
   }
 }
 
-/** Every photo in one folder -- the picker's second step. A directory listing, no file opened. */
-export async function listCodeTestPhotosAction(relativePath: string): Promise<CodeTestPhotosResult> {
+/**
+ * Runs the server-resize experiment on three photos picked from one folder: one with an
+ * EXIF preview, one without, and the largest.
+ *
+ * The report carries its own errors as lines, so `ok: false` here means only that the
+ * INPUT was refused, or the folder could not be listed, before anything ran.
+ */
+export async function runServerResizeSuiteAction(folderPath: string): Promise<CodeTestReportResult> {
   await requireAdmin();
-  const parsed = photoFolderAllSchema.safeParse({ relativePath });
+  const parsed = photoFolderAllSchema.safeParse({ relativePath: folderPath });
   if (!parsed.success) return { ok: false, error: "Not a valid photo folder." };
 
   try {
-    const result = await listAllPhotosInFolder(photoStore(), parsed.data);
-    if (!result.isAvailable) {
-      return { ok: false, error: `That folder isn't readable (${result.reason ?? "unknown"}).` };
+    const store = photoStore();
+    const listing = await listAllPhotosInFolder(store, parsed.data);
+    if (!listing.isAvailable) {
+      return { ok: false, error: `That folder isn't readable (${listing.reason ?? "unknown"}).` };
     }
-    return { ok: true, photos: result.photos };
+    const report = await runServerResizeSuite(
+      {
+        reader: createTimedPhotoReader(store),
+        imageLib: deps.codeTestImageLib,
+        now: () => performance.now(),
+      },
+      { folderPath: parsed.data.relativePath, photos: listing.photos },
+    );
+    return { ok: true, report };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Folder listing failed." };
+    return { ok: false, error: error instanceof Error ? error.message : "The test didn't run." };
   }
-}
-
-/**
- * Runs the server-resize experiment on one photo.
- *
- * The report carries its own errors as lines, so `ok: false` here means only that the
- * INPUT was refused before anything ran.
- */
-export async function runServerResizeTestAction(relativePath: string): Promise<CodeTestReportResult> {
-  await requireAdmin();
-  const parsed = serverResizeTestSchema.safeParse({ relativePath });
-  if (!parsed.success) {
-    return { ok: false, error: "That isn't a path relative to the photo root." };
-  }
-
-  const report = await testServerResizeImage(
-    {
-      reader: createTimedPhotoReader(photoStore()),
-      imageLib: deps.codeTestImageLib,
-      now: () => performance.now(),
-    },
-    parsed.data,
-  );
-  return { ok: true, report };
 }

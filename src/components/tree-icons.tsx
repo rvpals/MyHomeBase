@@ -619,6 +619,30 @@ const Album: IconComponent = (props) => (
   </svg>
 );
 
+/* Vinyl record: the disc, one groove arc for the sheen, and the centre label with its
+   spindle hole. Two rings and a dot is the minimum that still reads as a record at 16px. */
+const Vinyl: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M6.8 12a5.2 5.2 0 0 1 5.2-5.2" />
+    <circle cx="12" cy="12" r="2.8" />
+    <circle cx="12" cy="12" r="0.5" />
+  </svg>
+);
+
+/* Musician: a bust in an 18th-century powdered wig (think Mozart) -- the wig arch with a
+   curl each side, the face, and a cravat over the shoulders. */
+const Musician: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    <path d="M8.8 10.5C8.3 6 10 3.5 12 3.5s3.7 2.5 3.2 7" />
+    <circle cx="7.4" cy="11.6" r="1.5" />
+    <circle cx="16.6" cy="11.6" r="1.5" />
+    <path d="M9 10.8v1.2a3 3 0 0 0 6 0v-1.2" />
+    <path d="M5 21c0-3 3-4.6 7-4.6s7 1.6 7 4.6" />
+    <path d="M10.5 16.9L12 19l1.5-2.1" />
+  </svg>
+);
+
 /* ---------------------------------------------------------------------------------
    The six Arcade games. One glyph each, so a game card is recognisable before its
    name is read.
@@ -755,6 +779,24 @@ const GameBattleship: IconComponent = (props) => (
     <path d="M8 13.5v-3h7v3" />
     <path d="M11 10.5V7.5h2v3" />
     <path d="M2.5 20.5c1.5-1 3-1 4.5 0s3 1 4.5 0 3-1 4.5 0 3 1 4.5 0" />
+  </svg>
+);
+
+/* Chess: a knight in profile, standing on its base.
+
+   The knight rather than a board, and rather than a king, for two reasons. A board at
+   16px is a grey square indistinguishable from Sudoku's and Minesweeper's, which sit a
+   few cards away in the same list. And a king is a crowned cylinder that reads as a
+   chess piece only if you already know — the knight's head is the one chess silhouette
+   that survives being shrunk. */
+const GameChess: IconComponent = (props) => (
+  <svg {...shared} {...props}>
+    {/* The head and neck: muzzle out to the left, mane sweeping down to the right. */}
+    <path d="M9 4.5 7 7.5l-1.5 1a3.5 3.5 0 0 0-1.5 2.9V13l2.5-1.5L8 13l2-1.5v5h5.5v-5c0-3.5-2-6-4.5-7Z" />
+    {/* The base it stands on. */}
+    <path d="M7 16.5h11l1 4H6z" />
+    {/* The eye — one dot, which at this size is all that will hold. */}
+    <path d="M10.5 8.1h.01" />
   </svg>
 );
 
@@ -984,6 +1026,8 @@ const TREE_ICONS = {
   photo: Photo,
   "photo-folder": PhotoFolder,
   album: Album,
+  vinyl: Vinyl,
+  musician: Musician,
   "game-2048": Game2048,
   "game-arrows": GameArrows,
   "game-tetris": GameTetris,
@@ -995,6 +1039,7 @@ const TREE_ICONS = {
   "game-pictionary": GamePictionary,
   "game-word-wizard": GameWordWizard,
   "game-battleship": GameBattleship,
+  "game-chess": GameChess,
   pin: MapPin,
   pushpin: Pushpin,
   "pushpin-filled": PushpinFilled,

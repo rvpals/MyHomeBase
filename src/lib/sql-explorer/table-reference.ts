@@ -152,7 +152,8 @@ const GROUPS: TableReferenceGroup[] = [
     summary: "",
     tables: [
       ["gam_scores", "The shared high-score board, one row per completed game. The list of games is code, not data."],
-      ["gam_saved_runs", "Runs in progress a player can resume, one row per player per game key. Private to each player. Arrow Clearing only so far."],
+      ["gam_saved_runs", "Runs in progress a player can resume, one row per player per game key. Private to each player. Arrow Clearing and the chess autosave."],
+      ["gam_chess_saves", "Chess games saved under a name, many per player. Private to each player. The moves, not a board snapshot, so loading replays them through the rules."],
     ],
   },
   {

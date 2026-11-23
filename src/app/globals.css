@@ -5190,3 +5190,252 @@ html[data-color-theme="glass"] {
     opacity: 0.2;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The chessboard, as a physical object.
+
+   Its colours are literal values and do not invert with the theme. That is the
+   licence design.md grants the mahjong tile — "it's an object, not a surface"
+   — and it is taken here for the same reason: a chessboard is light squares
+   and dark squares, and one rendered in Daybreak's near-white `--paper` and
+   another in Copper Vault's near-black are not a light-mode and a dark-mode
+   board. They are two different boards, and neither is the one people know.
+
+   The licence is narrow and it stops at the board's edge. Every control,
+   panel, move list and dialog around it is on theme tokens, exactly as the
+   radar scope in Battleship and the tile in Mahjong are.
+
+   The marks over the squares are translucent layers rather than replacement
+   colours, so each one reads the same on a light square and a dark one
+   without a second rule per square colour — the same trick `.clip-tint` uses
+   against a theme surface.
+--------------------------------------------------------------------------- */
+
+:root {
+  /* Warm boxwood and walnut, the colours of a real board rather than the grey
+     and white a screenshot usually shows. */
+  --chess-light-square: #ead9b9;
+  --chess-dark-square: #9a6f4b;
+  --chess-board-edge: #6f4a2d;
+
+  /* The pieces. Not pure white and pure black: a true #FFF piece on the light
+     square flares, and a true #000 one on the dark square loses its outline. */
+  --chess-piece-light: #f6f1e7;
+  --chess-piece-dark: #2b2621;
+
+  /* The marks. Amber for what just happened, green for where you may go, the
+     app's semantic red for a king in check (design.md keeps red/green literal
+     for exactly this kind of meaning), and a blue that is none of the three
+     for a hint, so advice never reads as a move already made. */
+  --chess-last-move: rgba(241, 196, 15, 0.42);
+  --chess-selected: rgba(46, 204, 113, 0.48);
+  --chess-target: rgba(20, 60, 35, 0.32);
+  --chess-check: rgba(214, 48, 49, 0.62);
+  --chess-hint: rgba(52, 152, 219, 0.45);
+}
+
+.chess-board {
+  /* A hairline rim and a soft cast, so the board sits on the page rather than
+     being painted onto it. Edge-based and low-opacity, never `Button`'s hard
+     offset — the rule design.md sets for any new physical object. */
+  border: 2px solid var(--chess-board-edge);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 6px 18px rgba(0, 0, 0, 0.3);
+  /* The board must never force the page wide on a phone. */
+  max-width: 100%;
+  touch-action: manipulation;
+}
+
+.chess-square {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  aspect-ratio: 1;
+  /* Squares butt together with no seam: a gap would read as a grid of tiles
+     rather than one board. */
+  line-height: 0;
+  cursor: pointer;
+}
+
+.chess-square:disabled {
+  /* Still fully legible — only unpressable. A board that dimmed while the
+     computer thought would make the game look broken for a second a move. */
+  cursor: default;
+}
+
+.chess-square-light {
+  background-color: var(--chess-light-square);
+}
+
+.chess-square-dark {
+  background-color: var(--chess-dark-square);
+}
+
+/* The marks, as stacked translucent washes. `::before` is the wash so the
+   piece's own SVG stays above it and is never tinted. */
+.chess-square-last::before,
+.chess-square-selected::before,
+.chess-square-check::before,
+.chess-square-hint::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.chess-square-last::before {
+  background-color: var(--chess-last-move);
+}
+
+.chess-square-hint::before {
+  background-color: var(--chess-hint);
+}
+
+.chess-square-selected::before {
+  background-color: var(--chess-selected);
+}
+
+/* A king in check gets a radial glow rather than a flat wash: the flat version
+   is indistinguishable from the "last move" mark at a glance, and this is the
+   one mark a player must never miss. */
+.chess-square-check::before {
+  background: radial-gradient(circle, var(--chess-check) 10%, transparent 72%);
+}
+
+/* Where a selected piece may go. A dot on an empty square, a ring around a
+   piece that would be captured — the ring is what says "take this" without
+   hiding what is being taken. */
+.chess-move-dot {
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  border-radius: 9999px;
+  background-color: var(--chess-target);
+  pointer-events: none;
+}
+
+.chess-capture-ring {
+  position: absolute;
+  inset: 6%;
+  border-radius: 9999px;
+  border: 0.34rem solid var(--chess-target);
+  pointer-events: none;
+}
+
+/* The file letters and rank digits, tucked into the corners of the edge
+   squares rather than given margins of their own — a board with gutters is a
+   board that has to shrink to fit the same space. */
+.chess-coord {
+  position: absolute;
+  font-size: 0.6rem;
+  line-height: 1;
+  font-weight: 600;
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+
+.chess-coord-file {
+  right: 3px;
+  bottom: 2px;
+}
+
+.chess-coord-rank {
+  left: 2px;
+  top: 2px;
+}
+
+/* A coordinate takes the *opposite* square's colour, which is how it stays
+   readable on both without a rule per square. */
+.chess-square-light > .chess-coord {
+  color: var(--chess-dark-square);
+}
+
+.chess-square-dark > .chess-coord {
+  color: var(--chess-light-square);
+}
+
+/* The piece itself. 86% of the square, so a knight's muzzle and a queen's
+   outer points have somewhere to go without touching the next square. */
+.chess-piece {
+  position: relative;
+  width: 86%;
+  height: 86%;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  /* A soft drop shadow lifts a piece off the square it stands on. Low opacity,
+     so it reads on the light square and the dark one alike. */
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
+
+.chess-piece-white {
+  fill: var(--chess-piece-light);
+  stroke: var(--chess-piece-dark);
+  stroke-width: 1.4;
+}
+
+.chess-piece-black {
+  fill: var(--chess-piece-dark);
+  /* A light outline, not a dark one: a black piece on a dark square would
+     otherwise have no edge at all. */
+  stroke: var(--chess-piece-light);
+  stroke-width: 1.1;
+}
+
+/* The knight's eye and the bishop's and king's cuts are drawn in the piece's
+   *other* colour, so they show on both. */
+.chess-piece-white .chess-piece-eye {
+  fill: var(--chess-piece-dark);
+  stroke: none;
+}
+
+.chess-piece-black .chess-piece-eye {
+  fill: var(--chess-piece-light);
+  stroke: none;
+}
+
+.chess-piece-cut {
+  fill: none;
+  stroke-width: 2;
+}
+
+.chess-piece-white .chess-piece-cut {
+  stroke: var(--chess-piece-dark);
+}
+
+.chess-piece-black .chess-piece-cut {
+  stroke: var(--chess-piece-light);
+}
+
+/* Hover is a pointer affordance only. design.md: pair it with a real pressed
+   state rather than relying on hover, which is dead weight on a phone and can
+   stick after a tap on iOS. */
+@media (hover: hover) {
+  .chess-square:not(:disabled):hover::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-color: rgba(255, 255, 255, 0.12);
+    pointer-events: none;
+  }
+}
+
+.chess-square:not(:disabled):active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+
+.chess-square:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+  z-index: 1;
+}

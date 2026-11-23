@@ -729,15 +729,75 @@ export function PacmanRules() {
   );
 }
 
+function ChessRules() {
+  return (
+    <Section title="Chess">
+      <p>
+        The classic game against the computer. Pick a strength and whether you play
+        White or Black, then tap a piece to pick it up and tap a square to move it. The
+        squares you may go to are dotted; a piece you can capture is ringed.
+      </p>
+      <ul className="flex list-disc flex-col gap-1 pl-5">
+        <li>
+          <strong className="text-ink">Three strengths.</strong>{" "}
+          <strong className="text-ink">Beginner</strong> looks one move ahead, does not
+          check whether a piece it takes is defended, and now and then plays something
+          at random &mdash; it is meant to be beaten.{" "}
+          <strong className="text-ink">Intermediate</strong> looks three moves ahead and
+          sees most captures coming. <strong className="text-ink">Advanced</strong>{" "}
+          searches as deep as a few seconds allow and will not hand you material.
+        </li>
+        <li>
+          <strong className="text-ink">Undo</strong> takes back your move{" "}
+          <em>and</em> the computer&rsquo;s reply, so it is your turn again. There is no
+          limit on it at any strength.
+        </li>
+        <li>
+          <strong className="text-ink">Hint</strong> shows the move the engine would
+          play, marked in blue on the board. It always asks at Advanced strength, even
+          in a Beginner game &mdash; a hint you cannot trust is worse than none.
+        </li>
+        <li>
+          <strong className="text-ink">Offer draw</strong> is accepted unless the
+          computer judges itself clearly better &mdash; about a piece ahead. Being a
+          pawn up is not enough for it to refuse.
+        </li>
+        <li>
+          All the real rules are here: castling, capturing{" "}
+          <em>en passant</em>, and promoting a pawn (you choose the piece). A game is
+          drawn by stalemate, by the fifty-move rule, by the same position coming up
+          three times, or when neither side has enough material to checkmate.
+        </li>
+      </ul>
+      <p>
+        <strong className="text-ink">Saving.</strong> The game saves itself after every
+        move, so closing the board and coming back offers to resume &mdash; on any
+        device, not just the one you played on. <strong className="text-ink">Save</strong>{" "}
+        also keeps a game under a name, and you can keep up to twenty of those;{" "}
+        <strong className="text-ink">Load</strong> brings one back. Saving under a name
+        you have used before replaces that game.{" "}
+        <strong className="text-ink">Export PGN</strong> gives you the moves in the
+        format any other chess program reads.
+      </p>
+      <p>
+        <strong className="text-ink">Scoring.</strong> Only a win scores: 100, 200 or
+        300 points for Beginner, Intermediate or Advanced, less one point per move, and
+        never below 40% of that. A loss or a draw scores nothing &mdash; the rule
+        Bridge and Mahjong follow too.
+      </p>
+    </Section>
+  );
+}
+
 function ArcadeInstructions() {
   return (
     <>
       <p className="text-sm text-muted">
         A small arcade. Pick a game, play it in the browser, and your result goes onto a
-        scoreboard shared by everyone in the house. Twelve games so far: 2048, the Arrow
-        Clearing maze puzzle, Tetris, Sudoku, Blackjack, Minesweeper, Mahjong Match, the
-        four-player Mahjong, Bridge, Pac-Man, Pictionary, and the Word Wizard crossword
-        tile game.
+        scoreboard shared by everyone in the house. Fourteen games so far: 2048, the
+        Arrow Clearing maze puzzle, Tetris, Sudoku, Blackjack, Minesweeper, Mahjong
+        Match, the four-player Mahjong, Bridge, Pac-Man, Pictionary, the Word Wizard
+        crossword tile game, Battleship, and Chess.
       </p>
       <Section title="How this module is laid out">
         <ul className="flex list-disc flex-col gap-1 pl-5">
@@ -767,6 +827,7 @@ function ArcadeInstructions() {
       <PacmanRules />
       <PictionaryRules />
       <WordWizardRules />
+      <ChessRules />
 
       <Section title="When a score is saved">
         <p>
@@ -775,9 +836,15 @@ function ArcadeInstructions() {
           top; for Sudoku, when the last cell is filled in correctly; for Blackjack, when
           you cash out or run out of chips; for Minesweeper, when the last safe square is
           uncovered; for Pac-Man, when the last life goes; for Word Wizard, when you beat the
-          bot. Abandoning a game part-way saves
+          bot; for Chess, when the game ends by any route &mdash; though only a win is
+          worth anything. Abandoning a game part-way saves
           nothing, so a
           refresh mid-game costs you the board rather than posting a low score.
+        </p>
+        <p>
+          Chess is the exception to that last line: it saves itself after every move, so
+          a refresh offers to put you back where you were rather than costing you the
+          game.
         </p>
       </Section>
     </>
@@ -838,6 +905,7 @@ function ConfigurationInstructions() {
  * handles that case; `games-arcade-view.tsx` only offers the button when it resolves.
  */
 const RULES_BY_GAME: Record<string, () => React.ReactNode> = {
+  chess: ChessRules,
   "2048": Game2048Rules,
   "arrow-clearing-hard": ArrowClearingRules,
   tetris: TetrisRules,

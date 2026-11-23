@@ -10,4 +10,6 @@ export {
   testServerResizeImage,
   type ServerResizeTestDeps,
 } from "./test-server-resize-image";
+export { MAX_SCAN, pickTestPhotos, type PickedPhotos, type ScannedPhoto } from "./pick-test-photos";
+export { runServerResizeSuite } from "./run-server-resize-suite";
 export { SharpImageLibProbe, createTimedPhotoReader } from "./image-lib-probe";

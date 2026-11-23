@@ -14,10 +14,15 @@ import {
   isJournalCalendarScope,
   journalCalendarRange,
   listCategories,
+  listEnabledPrefillTemplates,
   listEntriesInDateRange,
   listTags,
+  resolveJournalPreferences,
   type JournalCalendarScope,
 } from "@/lib/journal";
+import { listDashboardTextures } from "@/lib/dashboard-texture";
+import { listModuleSettingsFor } from "@/lib/module-settings";
+import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { todayIsoLocal } from "@/lib/shared/date";
 import { deps } from "@/lib/wiring";
 import { cookies } from "next/headers";
@@ -87,6 +92,13 @@ export async function JournalCalendarPanel({
   // A separate grant from the journal one the route already checked — plenty of
   // readers have one module and not the other. The real guard is inside
   // `expensesOnDateAction`; this only decides whether the control is drawn.
+  // The Merge bulk action mounts the ordinary entry form, so it needs the same
+  // reads the Entries panel makes.
+  const journalModule = getModuleBySlug(deps.moduleRepo, "journal");
+  const preferences = resolveJournalPreferences(
+    journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
+  );
+
   const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
   const expenseModule = getModuleBySlug(deps.moduleRepo, EXPENSE_MODULE_SLUG);
@@ -106,6 +118,17 @@ export async function JournalCalendarPanel({
       tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
       canSeeExpense={canSeeExpense}
       categoryColors={categoryColorMap(categories)}
+      mergeFormOptions={{
+        categoryOptions: categories.map((category) => category.name),
+        tagOptions: tags.map((tag) => tag.name),
+        preferences,
+        contentTextures: listDashboardTextures(deps.dashboardTextureRepo),
+        prefillTemplates: listEnabledPrefillTemplates(deps.journalRepo),
+        locationCategoryOptions: listLocationCategories(deps.sysLocationRepo).map(
+          (row) => row.name,
+        ),
+        locationTagOptions: listLocationTags(deps.sysLocationRepo).map((row) => row.name),
+      }}
     />
   );
 }

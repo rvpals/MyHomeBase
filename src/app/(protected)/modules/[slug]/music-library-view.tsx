@@ -387,23 +387,36 @@ function Albums({
                 onClick={() => onPick(String(album.id))}
                 className="group w-full text-left"
               >
-                <span className="block overflow-hidden rounded-lg border border-line bg-brass-soft">
-                  {album.hasCoverImage ? (
-                    /* A plain <img>, not next/image: the bytes come from our own
-                       authenticated route, so there is nothing for the optimizer to
-                       fetch or cache at build time. */
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`/api/music/albums/${album.id}/cover`}
-                      alt=""
-                      loading="lazy"
-                      className="aspect-square w-full object-cover transition group-hover:opacity-90"
-                    />
-                  ) : (
-                    <span className="flex aspect-square w-full items-center justify-center">
-                      <TreeIcon name="window" className="h-8 w-8 text-muted" />
-                    </span>
-                  )}
+                {/* Sleeve with a vinyl record peeking out behind it; the record slides
+                    out a little on hover. */}
+                <span className="relative block aspect-[1.2/1] w-full">
+                  <span
+                    aria-hidden="true"
+                    className="absolute right-0 top-[4%] flex aspect-square h-[92%] items-center justify-center rounded-full bg-ink transition-transform duration-300 group-hover:translate-x-[6%]"
+                  >
+                    <span className="absolute inset-[10%] rounded-full border border-paper/20" />
+                    <span className="absolute inset-[22%] rounded-full border border-paper/20" />
+                    <span className="h-[30%] w-[30%] rounded-full bg-brass-soft" />
+                    <span className="absolute h-[4%] w-[4%] rounded-full bg-ink" />
+                  </span>
+                  <span className="absolute left-0 top-0 block aspect-square h-full overflow-hidden rounded-lg border border-line bg-brass-soft shadow-sm">
+                    {album.hasCoverImage ? (
+                      /* A plain <img>, not next/image: the bytes come from our own
+                         authenticated route, so there is nothing for the optimizer to
+                         fetch or cache at build time. */
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/music/albums/${album.id}/cover`}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover transition group-hover:opacity-90"
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center">
+                        <TreeIcon name="vinyl" className="h-8 w-8 text-muted" />
+                      </span>
+                    )}
+                  </span>
                 </span>
                 <span className="mt-1.5 block truncate text-sm text-ink">{album.name}</span>
                 <span className="block truncate text-xs text-muted">

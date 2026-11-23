@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Button } from "@/components/button";
+import { ShipPicture } from "@/components/ship-picture";
 import { useGameSounds } from "@/components/use-game-sounds";
 import {
   BATTLESHIP_DIFFICULTIES,
@@ -541,12 +542,16 @@ export function GameBattleshipView({ bestScore }: { bestScore: number }) {
                   aria-checked={selected === kind}
                   onClick={() => setSelected(kind)}
                   className={[
-                    "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm",
+                    "flex flex-col items-center gap-1 rounded-lg border px-2.5 py-1.5 text-sm",
                     selected === kind
                       ? "border-brass bg-brass/15 text-ink"
                       : "border-line bg-paper-raised text-muted hover:text-ink",
                   ].join(" ")}
                 >
+                  <ShipPicture
+                    kind={kind}
+                    className={`w-20 max-lg:w-16 ${placed ? "text-brass" : ""}`}
+                  />
                   <span>{name}</span>
                   <span className="flex gap-0.5" aria-hidden>
                     {Array.from({ length }, (_, step) => (
@@ -819,12 +824,15 @@ function FleetStatus({ title, sunk }: { title: string; sunk: readonly Battleship
   return (
     <div className="flex flex-col items-center gap-1">
       <span className="uppercase tracking-wide text-muted">{title}</span>
-      <ul className="flex flex-wrap justify-center gap-x-2 gap-y-0.5">
+      <ul className="flex flex-wrap justify-center gap-x-3 gap-y-1">
         {BATTLESHIP_SHIP_KINDS.map((kind) => (
           <li
             key={kind}
-            className={sunk.includes(kind) ? "text-red-400 line-through" : "text-ink"}
+            className={`flex flex-col items-center gap-0.5 ${
+              sunk.includes(kind) ? "text-red-400 line-through" : "text-ink"
+            }`}
           >
+            <ShipPicture kind={kind} className={`w-10 max-lg:w-8 ${sunk.includes(kind) ? "opacity-50" : ""}`} />
             {BATTLESHIP_FLEET[kind].name}
           </li>
         ))}

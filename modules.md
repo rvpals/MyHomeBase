@@ -1145,13 +1145,73 @@ is never retried at all. So a track is asked about at most once, ever.
 **Games** (`games`) — a small arcade with a shared high-score board. Sections:
 **Arcade** (the list of games; Play opens the board full-bleed), **Scores**, and
 **Configuration** (the catalogue read-only, plus Pictionary's word bank). Library:
-`src/lib/games`. Three tables: `gam_scores` (`migrations/0074`, registered by `0075`),
-`gam_pictionary_words` (`migrations/0164`) and `gam_saved_runs` (`migrations/0171`: runs
-in progress, one per player per game key, so a board can be resumed on any device. Only
-Arrow Clearing uses it so far, through `arrow-save.ts` and `saved-runs.ts`). Thirteen games so far: **2048**,
+`src/lib/games`. Four tables: `gam_scores` (`migrations/0074`, registered by `0075`),
+`gam_pictionary_words` (`migrations/0164`), `gam_saved_runs` (`migrations/0171`: runs
+in progress, one per player per game key, so a board can be resumed on any device —
+Arrow Clearing through `arrow-save.ts` and `saved-runs.ts`, and the chess autosave) and
+`gam_chess_saves` (`migrations/0173`: chess games kept under a name, many per player).
+Fourteen games so far: **2048**,
 **Arrow Clearing**, **Tetris**, **Sudoku**, **Blackjack**, **Minesweeper**,
-**Mahjong Match**, **Mahjong**, **Bridge**, **Pac-Man**, **Pictionary**, **Word Wizard**
-and **Battleship**.
+**Mahjong Match**, **Mahjong**, **Bridge**, **Pac-Man**, **Pictionary**, **Word Wizard**,
+**Battleship** and **Chess**.
+
+**Chess** (`chess`) is the player against the computer, and the module's largest game by
+some distance. The engine is **hand-written and takes no dependency**: `chess-board.ts`
+(squares and FEN), `chess-moves.ts` (move generation and application), `game-chess.ts`
+(the game — status, draws, undo, scoring), `chess-notation.ts` (SAN, coordinates, PGN),
+`chess-bot.ts` (evaluation, search, the three levels) and `chess-save.ts` (saving and
+loading). The board is [`ChessBoard`](./components.md#chessboard), the first reusable
+component a game here has needed beyond `PlayingCard` and `MahjongTile`. Six choices
+worth knowing:
+
+- **No dependency, and the reason is the levels.** `chess.js` would be the app's first
+  runtime game-rules dependency, and a Stockfish WASM build is GPL and far stronger than
+  any of these three levels wants. More to the point, the point of three levels is to be
+  beatable in three *different* ways, which a world-class engine throttled down is bad
+  at: it plays strong moves and then one absurd one, where a human beginner plays
+  plausible moves that do not look far enough ahead. So strength is built **up** from how
+  far the search looks rather than cut down from perfect play. Same argument
+  `src/lib/calculator` records for not taking `mathjs`.
+- **Correctness is proved by perft**, not by hand-picked cases. `chess-moves.test.ts`
+  counts the legal positions at a given depth from the six standard test positions and
+  compares them with the published numbers. That is what catches castling through an
+  attacked square, the en-passant capture that exposes a rank, and the pinned piece whose
+  capture is not legal — none of which anybody reliably remembers to write a case for. A
+  perft count is all-or-nothing, and the depth it first disagrees at says where to look.
+  `npm run cli -- chess --perft 4` runs the same function against a real board.
+- **Three knobs per level, not just depth.** `CHESS_LEVEL_SETUP` carries a search depth,
+  a time budget, whether **quiescence** is on, a blunder chance and a noise amount.
+  Quiescence — searching captures past the depth limit until the position is quiet — is
+  the single biggest difference between Beginner and Intermediate: without it a search
+  that ends on "I take your pawn" never sees the queen that recaptures, so it hangs
+  pieces on its last ply at any depth. Beginner has it **off** and also throws a move away
+  outright 30% of the time, which is what makes it genuinely beatable by a new player.
+- **The computer thinks in a Web Worker** (`chess-worker.ts`), because Advanced searches
+  for up to 2.5 seconds and doing that on the main thread freezes the page — including
+  the "Thinking…" line that would explain the freeze. The worker is a thin shim over
+  `chooseChessMove` and holds no rules, and the view falls back to the same engine on the
+  main thread if a worker cannot be created: a frozen second is bad, a board that never
+  moves is worse. The search uses **iterative deepening**, so running out of budget
+  discards only the unfinished depth and the move played is always one a complete search
+  chose.
+- **Two save stores, and they answer different questions.** The **autosave** is one row
+  in `gam_saved_runs` under the `chess` key — "put me back where I was", written after
+  every move, disposable, and deleted when it cannot be restored (Arrow Clearing's rule).
+  **Named saves** are `gam_chess_saves` — "keep this game", up to twenty per player, and a
+  damaged one is reported as unreadable and **never** deleted, because a game somebody
+  named and kept is not disposable. Both store the same `ChessSave` through one
+  build/restore pair. Migration 0173 records why neither table could carry both.
+- **A save is the moves, not the board.** Loading replays them through the rules, which
+  rebuilds the move list, the repetition keys and the status without storing any of them,
+  and refuses a save whose moves are not all legal — so an edited row cannot put an
+  impossible position on screen. A FEN of the current position alone would also have cost
+  undo, the move list, threefold repetition and PGN export on a loaded game.
+
+Scoring follows Battleship's shape: one card, one scoreboard, a level multiplier. A win
+is `(100 × 1/2/3) − full moves`, floored at 40% of the level's base so a long grind still
+pays; a loss or a draw is 0, the rule Bridge and Mahjong apply. Reachable from the CLI as
+`npm run cli -- chess` — `--new`, `--move`, `--reply`, `--undo`, `--list`, `--pgn`,
+plus `--best` and `--perft`, which touch no storage.
 
 **Battleship** (`battleship`) is the player against the computer. Rules in
 `game-battleship.ts` (placement validation, Randomize Fleet, a placement → battle →

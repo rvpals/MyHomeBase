@@ -60,6 +60,7 @@ pattern instead of inventing one.
 | [`FloatingLayer`](#floatinglayer) | **A component that floats over the page** — puck in a corner, window card when opened | [src/components/floating-layer.tsx](src/components/floating-layer.tsx) | yes |
 | [`ClockFace`](#clockface) | The clock itself — digital or analog, with date/weekday/weather toggles | [src/components/clock-face.tsx](src/components/clock-face.tsx) | yes |
 | [`CalculatorKeypad`](#calculatorkeypad) | A calculator's display and keypad — scientific keys, optional keyboard capture | [src/components/calculator-keypad.tsx](src/components/calculator-keypad.tsx) | yes |
+| [`ShipPicture`](#shippicture) | A flat side-on silhouette of a Battleship ship — carrier, battleship, cruiser, submarine, destroyer | [src/components/ship-picture.tsx](src/components/ship-picture.tsx) | no |
 | [`Comments`](#comments) | A note/instruction parked beside a feature, behind a small accent glyph | [src/components/comments.tsx](src/components/comments.tsx) | yes |
 | [`CollapsibleCard`](#collapsiblecard) | A titled section that expands/collapses | [src/components/collapsible-card.tsx](src/components/collapsible-card.tsx) | yes |
 | [`CullControls`](#cullcontrols) | **Photo culling controls** — the Cull button, keep-best-N, the keeper/set-aside counts and the dim toggle | [src/components/cull-controls.tsx](src/components/cull-controls.tsx) | yes |
@@ -92,6 +93,7 @@ pattern instead of inventing one.
 | [`PlayingCard`](#playingcard) | **One playing card** — face, back, or empty slot | [src/components/playing-card.tsx](src/components/playing-card.tsx) | no |
 | [`CardHand`](#cardhand) | A row of cards with a title, total and badge | [src/components/card-hand.tsx](src/components/card-hand.tsx) | no |
 | [`MahjongTile`](#mahjongtile) | **One mahjong tile** — face, back, or empty slot | [src/components/mahjong-tile.tsx](src/components/mahjong-tile.tsx) | no |
+| [`ChessBoard`](#chessboard) | **A chessboard** — 64 squares, the pieces, and the move marks | [src/components/chess-board.tsx](src/components/chess-board.tsx) | no |
 | [`MahjongWall`](#mahjongwall) | A rack, wall or discard pool of tiles, with a title and count | [src/components/mahjong-wall.tsx](src/components/mahjong-wall.tsx) | no |
 | [`JournalPinButton`](#journalpinbutton) | **Pin a journal entry** — the pushpin toggle on both entry forms | [src/components/journal-pin-button.tsx](src/components/journal-pin-button.tsx) | yes |
 | [`Avatar`](#avatar) | A user's picture, or initials fallback | [src/components/avatar.tsx](src/components/avatar.tsx) | no |
@@ -1324,6 +1326,29 @@ make the page unusable with a screen reader.
 The `weather` prop is a **node, not forecast data**: this is a client component and the
 weather strip is not, so taking the `WeatherForecast` would drag the whole strip into the
 browser bundle to render markup that never changes.
+
+## ShipPicture
+
+A flat, side-on silhouette of one Battleship ship, drawn as inline SVG. All five share a
+120x28 canvas, bow to the right, waterline at the same height, so they line up when shown
+in a row.
+
+- **Source:** [src/components/ship-picture.tsx](src/components/ship-picture.tsx)
+- **Import:** `import { ShipPicture } from "@/components/ship-picture";`
+- **Client component:** no
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `kind` | `"carrier" \| "battleship" \| "cruiser" \| "submarine" \| "destroyer"` | Matches `BattleshipShipKind` in `@/lib/games`. |
+| `label?` | `string` | Accessible name. Omit when the ship's name is printed beside it — it is then decorative and `aria-hidden`. |
+| `className?` | `string` | Merged last. Set the **width** (`w-16`) and colour (`text-ink`, `text-brass`) here. |
+
+**Used by:** [`GameBattleshipView`](src/app/(protected)/modules/[slug]/game-battleship-view.tsx) —
+the placement ship picker and the two fleet-status lists.
+
+**Notes.** Filled with `currentColor`, so it follows the theme through the caller's text
+class. Not an icon slot: a ship is a game piece, not a place, like the ✕ and miss dot.
+Responsive by size alone — the caller picks a smaller width under `max-lg:`.
 
 ## Comments
 
@@ -2814,6 +2839,75 @@ Blackjack does this by resetting on an empty table
 `useDealtCards`).
 
 ---
+
+## ChessBoard
+
+A chessboard: eight by eight squares, the pieces standing on them, and the marks that
+say what is going on — the square you have picked up, where that piece may go, the move
+just played, a king in check, and a hinted move. **Any screen showing a chess position
+uses this**; do not hand-roll a grid of divs with Unicode chess glyphs in them (see the
+notes).
+
+- **Source:** [src/components/chess-board.tsx](src/components/chess-board.tsx)
+- **Import:** `import { ChessBoard, ChessPieceGlyph } from "@/components/chess-board";`
+- **Client component:** no (it renders no hooks; it is used inside client views)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `squares` | `readonly (ChessBoardPiece \| null)[]` | The 64 squares in **board order** — index 0 is a8. Never in display order; see the notes. |
+| `orientation?` | `ChessColor` | Which side sits at the bottom. Default `"w"`. |
+| `selected?` | `number` | The square the player has picked up. |
+| `targets?` | `readonly number[]` | Where that piece may go — a dot on an empty square, a ring over a capture. |
+| `lastMove?` | `{ from, to }` | The move just played, marked amber on both squares. |
+| `checkSquare?` | `number` | A king in check, drawn with a red radial glow. |
+| `hint?` | `{ from, to }` | A suggested move, marked blue. |
+| `onSquare?` | `(square: number) => void` | Raised with the **board** index, whatever the orientation. |
+| `disabled?` | `boolean` | Stops every square being pressed. Does **not** dim the board — see the notes. |
+| `showCoordinates?` | `boolean` | File letters and rank digits in the edge squares. Default `true`. |
+| `className?` | `string` | |
+
+`ChessPieceGlyph` is exported separately, for the pieces that appear away from the
+board — the captured row, and the promotion picker.
+
+```tsx
+<ChessBoard
+  squares={game.position.board}
+  orientation={game.humanColor}
+  selected={selected}
+  targets={chessMoveTargets(game, selected)}
+  onSquare={handleSquare}
+  disabled={!isHumanTurn(game)}
+/>
+```
+
+**Used by:** [Chess](<src/app/(protected)/modules/[slug]/game-chess-view.tsx>).
+
+**Notes.**
+
+- **Props in, events out, and no rules.** It does not know whose turn it is, which moves
+  are legal, or what a piece is worth. Every one of those is decided in
+  `src/lib/games/game-chess.ts` and handed in — which is what lets the same component
+  draw a live game, a replayed position or a puzzle.
+- **`squares` is always in board order, and flipping is the component's job.** A caller
+  that reversed the array itself would get a board that is mirrored on one screen and
+  not another, and the `onSquare` indexes would stop meaning what the library means by
+  them.
+- **The pieces are SVG, not the Unicode chess block.** U+2654–U+265F exists everywhere,
+  but the white pieces are outlines and the black ones solid, so which is which depends
+  on the font — and several platforms render them as emoji, at a size and colour the
+  page does not control. Same call `PlayingCard` and `MahjongTile` both make, for the
+  same reason. Both colours are drawn from one set of paths and told apart by fill and
+  stroke, so a white piece reads on a light square and a black one on a dark square.
+- **The board's colours are literal and do not invert.** That is the licence `design.md`
+  grants the mahjong tile — *it's an object, not a surface* — and it stops at the
+  board's edge: every control and panel around it is on theme tokens. The values live in
+  `globals.css` under `--chess-*`.
+- **`disabled` does not dim anything.** A board that greyed out while the computer
+  thought would look broken for a second a move, so the squares stay fully legible and
+  are merely unpressable.
+- **The squares are plain `<button>`s, not `Button`.** 64 hard offset shadows in one
+  grid is what `design.md` → *A dense grid of keys is not a row of buttons* rules out;
+  this follows `.sudoku-cell` and `.calc-key`.
 
 ## MahjongTile
 

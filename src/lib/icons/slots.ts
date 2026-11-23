@@ -1514,6 +1514,15 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    id: "games_card_chess",
+    label: "Chess",
+    group: "Games cards",
+    where: "Games & Puzzles → Arcade → the Chess card.",
+    defaultConcept: "game-chess",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      Expense — nav sections.
@@ -1848,7 +1857,7 @@ export const ICON_SLOTS: IconSlot[] = [
     label: "Artists tab",
     group: "Music Library view tabs",
     where: "My Music Library → Library → the Artists tab in the view strip.",
-    defaultConcept: "users",
+    defaultConcept: "musician",
     wired: true,
     namespace: "tree",
   },
@@ -1857,12 +1866,9 @@ export const ICON_SLOTS: IconSlot[] = [
     label: "Albums tab",
     group: "Music Library view tabs",
     where: "My Music Library → Library → the Albums tab in the view strip.",
-    // `window` because a cover is a square framed picture, and because browse.test.ts
-    // asserts every view tab draws a DISTINCT glyph -- `grid` is already the Folders tab.
-    // There is no album concept in TREE_ICONS and an invented key renders NOTHING rather
-    // than falling back; a dedicated glyph would mean hand-drawing it across all 12
-    // generated sets, so the slot lets one be uploaded without touching code.
-    defaultConcept: "window",
+    // A vinyl record -- a hand-drawn glyph, identical in every icon set. browse.test.ts
+    // asserts every view tab draws a DISTINCT glyph.
+    defaultConcept: "vinyl",
     wired: true,
     namespace: "tree",
   },

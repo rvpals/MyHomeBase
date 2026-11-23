@@ -87,6 +87,10 @@ export const TREE_ICON_NAMES = [
   "photo",
   "photo-folder",
   "album",
+  // Music Library view tabs. A vinyl record for Albums and a bewigged composer's bust
+  // for Artists -- hand-drawn in every icon set (no themed set ships either).
+  "vinyl",
+  "musician",
   // The Arcade game cards.
   "game-2048",
   "game-arrows",
@@ -103,6 +107,10 @@ export const TREE_ICON_NAMES = [
   "game-word-wizard",
   // Battleship. A hull on the waterline with a funnel, over a wave.
   "game-battleship",
+  // Chess. A knight in profile on its base — the piece that says "chess" at 16px when
+  // a board does not: an 8x8 grid shrinks into the same grey square as Sudoku's and
+  // Minesweeper's, which sit a few cards away in the very same list.
+  "game-chess",
   // Journal's Location Manager. A map pin — the mark for a single saved place.
   // Deliberately not `flash`/`plus`: this says *where*, not *do something*.
   "pin",
