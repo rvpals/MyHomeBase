@@ -44,4 +44,9 @@ export interface JournalReportRepository {
   findReportEntries(where: CompiledWhere, orderBy: string, limit: number): JournalEntry[];
   /** How many entries the selection matches, without hydrating any of them. */
   countReportEntries(where: CompiledWhere): number;
+  /**
+   * Id -> current name of every row in the saved-location library, so a pin
+   * linked to one can be labelled by it. Rows with a blank name are omitted.
+   */
+  getLibraryPlaceNames(): Map<number, string>;
 }

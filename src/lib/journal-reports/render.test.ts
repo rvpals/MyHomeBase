@@ -406,3 +406,91 @@ describe("wrapReportDocument", () => {
     expect(wrapReportDocument("<script>x</script>", "")).not.toContain("<script>x</script>");
   });
 });
+
+describe("places from pinned locations", () => {
+  const pin = (over: Partial<NonNullable<JournalEntry["locations"]>[number]> = {}) => ({
+    id: 1,
+    entryId: 1,
+    latitude: 40.1,
+    longitude: -74.2,
+    locationName: "",
+    sortOrder: 0,
+    ...over,
+  });
+  const placesDetails = details([
+    { part: "header", html: "{{table.topPlaces}}{{table.placeMentions}}" },
+  ]);
+
+  it("ignores the free-text place name and counts pins only", () => {
+    const rendered = renderReport({
+      report: report(),
+      details: placesDetails,
+      entries: [entry({ placeName: "Oslo", locations: [] })],
+      generatedAt: AT,
+    });
+    expect(rendered.html).not.toContain("Oslo");
+    expect(rendered.html).toContain("No place data.");
+  });
+
+  it("labels a library-linked pin by the live library name", () => {
+    const rendered = renderReport({
+      report: report(),
+      details: placesDetails,
+      entries: [entry({ locations: [pin({ locationName: "Old name", savedLocationId: 7 })] })],
+      libraryNames: new Map([[7, "Grandma's house"]]),
+      generatedAt: AT,
+    });
+    expect(rendered.html).toContain("Grandma&#39;s house");
+    expect(rendered.html).not.toContain("Old name");
+  });
+
+  it("falls back to the entry's copy when the library row is gone", () => {
+    const rendered = renderReport({
+      report: report(),
+      details: placesDetails,
+      entries: [entry({ locations: [pin({ locationName: "Copied name", savedLocationId: 99 })] })],
+      libraryNames: new Map(),
+      generatedAt: AT,
+    });
+    expect(rendered.html).toContain("Copied name");
+  });
+
+  it("labels an unnamed, unlinked pin by its coordinates", () => {
+    const rendered = renderReport({
+      report: report(),
+      details: placesDetails,
+      entries: [entry({ locations: [pin()] })],
+      generatedAt: AT,
+    });
+    expect(rendered.html).toContain("40.10000, -74.20000");
+  });
+
+  it("counts a place once per entry and totals visits across entries", () => {
+    const twoPins = entry({
+      id: 1,
+      locations: [pin({ locationName: "Pier" }), pin({ id: 2, locationName: "Pier", sortOrder: 1 })],
+    });
+    const other = entry({ id: 2, date: "2026-07-28", locations: [pin({ locationName: "Pier" })] });
+    const rendered = renderReport({
+      report: report(),
+      details: details([{ part: "header", html: "{{table.topPlaces}}" }]),
+      entries: [twoPins, other],
+      generatedAt: AT,
+    });
+    expect(rendered.html).toContain("<td>Pier</td><td>2</td>");
+  });
+
+  it("lists one mention row per place on each entry", () => {
+    const rendered = renderReport({
+      report: report(),
+      details: details([{ part: "header", html: "{{table.placeMentions}}" }]),
+      entries: [
+        entry({
+          locations: [pin({ locationName: "A" }), pin({ id: 2, locationName: "B", sortOrder: 1 })],
+        }),
+      ],
+      generatedAt: AT,
+    });
+    expect(rendered.html.match(/<tr><td>2026-07-27<\/td>/g)).toHaveLength(2);
+  });
+});

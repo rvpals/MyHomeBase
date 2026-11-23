@@ -392,14 +392,23 @@ function Albums({
                 <span className="relative block aspect-[1.2/1] w-full">
                   <span
                     aria-hidden="true"
-                    className="absolute right-0 top-[4%] flex aspect-square h-[92%] items-center justify-center rounded-full bg-ink transition-transform duration-300 group-hover:translate-x-[6%]"
+                    className="absolute right-0 top-[4%] flex aspect-square h-[92%] items-center justify-center rounded-full shadow-md transition-transform duration-300 group-hover:translate-x-[6%]"
+                    /* Red vinyl is a physical colour like cover art, not a theme colour,
+                       so it is literal. Fine concentric grooves over a conic sheen. */
+                    style={{
+                      backgroundImage:
+                        "repeating-radial-gradient(circle at center, rgba(0,0,0,0.22) 0 0.6px, rgba(0,0,0,0) 0.6px 2.2px), conic-gradient(from 20deg, #a30f17, #e0252f 12%, #8a0a11 28%, #b8131c 45%, #e8343d 58%, #8a0a11 75%, #c4161f 90%, #a30f17)",
+                    }}
                   >
-                    <span className="absolute inset-[10%] rounded-full border border-paper/20" />
-                    <span className="absolute inset-[22%] rounded-full border border-paper/20" />
-                    <span className="h-[30%] w-[30%] rounded-full bg-brass-soft" />
-                    <span className="absolute h-[4%] w-[4%] rounded-full bg-ink" />
+                    {/* Lead-in and run-out bands between the groove zones. */}
+                    <span className="absolute inset-[7%] rounded-full border border-black/30" />
+                    <span className="absolute inset-[34%] rounded-full border border-black/30" />
+                    {/* Centre label: solid red with a darker rim and the spindle hole. */}
+                    <span className="flex h-[32%] w-[32%] items-center justify-center rounded-full border-2 border-[#7a0910] bg-[#d1202a]">
+                      <span className="h-[14%] w-[14%] min-h-[3px] min-w-[3px] rounded-full bg-ink" />
+                    </span>
                   </span>
-                  <span className="absolute left-0 top-0 block aspect-square h-full overflow-hidden rounded-lg border border-line bg-brass-soft shadow-sm">
+                  <span className="absolute left-0 top-0 block aspect-square h-full overflow-hidden rounded-lg border border-line bg-ink shadow-md">
                     {album.hasCoverImage ? (
                       /* A plain <img>, not next/image: the bytes come from our own
                          authenticated route, so there is nothing for the optimizer to
@@ -413,7 +422,7 @@ function Albums({
                       />
                     ) : (
                       <span className="flex h-full w-full items-center justify-center">
-                        <TreeIcon name="vinyl" className="h-8 w-8 text-muted" />
+                        <TreeIcon name="vinyl" className="h-8 w-8 text-paper" />
                       </span>
                     )}
                   </span>

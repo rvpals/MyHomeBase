@@ -209,6 +209,7 @@ export function renderReportFor(
     report,
     details,
     entries,
+    libraryNames: repo.getLibraryPlaceNames(),
     dismissedWords: options.dismissedWords,
     generatedAt: options.generatedAt,
   });

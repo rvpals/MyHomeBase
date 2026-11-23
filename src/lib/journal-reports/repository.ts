@@ -77,6 +77,8 @@ interface LocationRow {
   // Migration 0139. NULL for every row written before it, and for any pin added
   // without an address lookup.
   street_address: string | null;
+  // Migration 0151. NULL for a pin that was not copied from the library.
+  saved_location_id: number | null;
   sort_order: number;
 }
 
@@ -119,6 +121,7 @@ function locationToDomain(row: LocationRow): EntryLocation {
     longitude: row.longitude,
     locationName: row.location_name,
     streetAddress: row.street_address ?? undefined,
+    savedLocationId: row.saved_location_id ?? undefined,
     sortOrder: row.sort_order,
   };
 }
@@ -332,6 +335,13 @@ export class SqliteJournalReportRepository implements JournalReportRepository {
       .prepare(`SELECT COUNT(*) AS count FROM jrn_entries e WHERE ${where.sql}`)
       .get(where.params) as { count: number };
     return row.count;
+  }
+
+  getLibraryPlaceNames(): Map<number, string> {
+    const rows = this.db
+      .prepare(`SELECT id, name FROM sys_locations WHERE TRIM(name) <> ''`)
+      .all() as { id: number; name: string }[];
+    return new Map(rows.map((row) => [row.id, row.name]));
   }
 
   /**

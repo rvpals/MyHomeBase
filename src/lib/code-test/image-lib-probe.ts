@@ -87,5 +87,19 @@ export function createTimedPhotoReader(
       if (photo === undefined) return undefined;
       return { data: photo.data, ms: now() - startedAt };
     },
+
+    async stat(relativePath) {
+      const startedAt = now();
+      const stat = await store.statPhoto(relativePath);
+      if (stat === undefined) return undefined;
+      return { bytes: stat.bytes, ms: now() - startedAt };
+    },
+
+    async readHeader(relativePath, byteCount) {
+      const startedAt = now();
+      const data = await store.readHeader(relativePath, byteCount);
+      if (data === undefined) return undefined;
+      return { data, ms: now() - startedAt };
+    },
   };
 }

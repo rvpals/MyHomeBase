@@ -1,5 +1,17 @@
 # Change History
 
+## 2026-11-23 — Chess: Messages panel and machine log; Locations Visited reads pins; Code Tester suite; red vinyl
+
+**One migration: `0174_locations_visited_uses_pins` (data change to a built-in journal report, no schema change); must be applied on the NAS before the Locations Visited report shows pinned places.** No new package, no paid or outside service.
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted, tested or opened in a browser this session. The chess worker's progress messages are covered by no test.
+
+- **Chess — Messages panel:** a collapsible card in the side panel (open on a desktop, closed on a phone, remembered) holding a **See machine log** switch, off by default. With it on, the computer narrates its search live: a heading per move, the legal-move count and depth, one line per finished depth (favoured move, score, positions, time), a "Chose … in 1.4s" line and a "Thinking… 0.8s" counter. Beginner/Intermediate add plain-English notes (one move ahead only, no recapture check, rolled the dice). Hint and Offer draw narrate too. With the switch off nothing is built. Clear empties the log. Files: chess-bot.ts (+test), chess-worker.ts, game-chess-view.tsx, games/index.ts, modules.md.
+- **Journal → Locations Visited:** the built-in report now counts an entry's pinned locations (library name followed on rename, then the entry's own copy, then coordinates) instead of the free-text place. New `{{table.placeMentions}}` placeholder: one row per place on each entry. Migration 0174 rewrites the built-in only; copies keep their text. Files: render.ts (+test), fields.ts, journal-reports.ts, ports.ts, repository.ts, fake-report-repository.ts, migrations/0174.
+- **Admin → Code Tester:** the server-resize card is now a four-experiment suite ("Run the suite"): a cheap whole-folder scan, size distribution, resizes to 160/1024/2048px, embedded-preview vs whole-file fallback, and resize throughput at 1–4 at once. Files: run-server-resize-suite.ts, pick-test-photos.ts, test-resize-concurrency.ts, test-thumbnail-paths.ts, report-format.ts, ports.ts, image-lib-probe.ts, index.ts, actions.ts, view.tsx (+ tests and a fake-archive fixture).
+- **Music → Albums:** the vinyl behind each cover is now red with fine grooves and a red centre label. Presentation only (music-library-view.tsx).
+- Docs: modules.md checked and updated; components.md, design.md, coding-guide.md, ARCHITECTURE.md, CLAUDE.md, START_HERE.md and INSTRUCTION_SETUP_SYNOLOGY.md checked, nothing stale.
+
 ## 2026-11-22 — Games: Chess against the computer, with saved games
 
 **One migration: `0173_create_chess_saves` (new table `gam_chess_saves`); must be applied on the NAS before the Save/Load buttons work.** No new package, no paid or outside service.

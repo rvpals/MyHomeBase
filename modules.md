@@ -1194,6 +1194,19 @@ worth knowing:
   moves is worse. The search uses **iterative deepening**, so running out of budget
   discards only the unfinished depth and the move played is always one a complete search
   chose.
+- **The Messages panel narrates the search, and only when asked.** A collapsible card in
+  the side panel holds a **See machine log** switch (off by default). With it on, the
+  engine reports each finished depth of its iterative-deepening search — the move it
+  favours, the score, how many positions it looked at, the elapsed time — plus plain-English
+  notes for what makes a level weak (it rolled the dice; it does not check recaptures; it
+  scored every move and added randomness) and a line for the move finally chosen, with a
+  live "Thinking… 1.2s" under it. Hint and Offer draw narrate too. **With the switch off
+  nothing is built:** `searchChessMove` takes an optional `onProgress` and
+  `chooseChessMove`/`chessHint`/`shouldAcceptChessDraw` an optional `onEvent`, and a call
+  without one does no SAN, no score text and no candidate list. The worker is told by a
+  `log` flag on the request and posts progress messages while it searches, so the panel
+  fills in live; on the main-thread fallback the same lines arrive in one burst at the end.
+  The events (`ChessThinkingEvent`) carry display-ready text, so the view only lays them out.
 - **Two save stores, and they answer different questions.** The **autosave** is one row
   in `gam_saved_runs` under the `chess` key — "put me back where I was", written after
   every move, disposable, and deleted when it cannot be restored (Arrow Clearing's rule).

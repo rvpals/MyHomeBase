@@ -1,6 +1,14 @@
 import { readEmbeddedThumbnail } from "@/lib/journal-photos/embedded-thumbnail";
 import { isSafeRelativePath, normaliseRelativePath } from "@/lib/journal-photos/paths";
-import type { ImageLibProbe, TimedPhotoReader } from "./ports";
+import type { CodeTestDeps, ImageLibProbe } from "./ports";
+import {
+  formatBytes,
+  formatMb,
+  formatMs,
+  line,
+  messageOf,
+  reductionOf,
+} from "./report-format";
 
 // Experiment: would resizing photos on the server (the NAS) be worth it?
 //
@@ -16,15 +24,8 @@ import type { ImageLibProbe, TimedPhotoReader } from "./ports";
 /** The long edges measured, in pixels: a strip thumbnail, a phone screen, a monitor. */
 export const RESIZE_LONG_EDGES = [160, 1024, 2048] as const;
 
-export interface ServerResizeTestDeps {
-  reader: TimedPhotoReader;
-  imageLib: ImageLibProbe;
-  /** Milliseconds from an arbitrary origin, for the total. `performance.now` in production. */
-  now: () => number;
-}
-
-/** Column the values start in, so the report lines up in a monospace block. */
-const LABEL_WIDTH = 16;
+/** The old name for `CodeTestDeps`, kept so existing call sites read the same. */
+export type ServerResizeTestDeps = CodeTestDeps;
 
 /** The report, one labelled line or block per fact. */
 export async function testServerResizeImage(
@@ -138,32 +139,3 @@ export async function testServerResizeImage(
   return finish();
 }
 
-function line(label: string, value: string): string {
-  return `${`${label}:`.padEnd(LABEL_WIDTH)}${value}`;
-}
-
-/** Fixed locale, so the report is the same on every server and in tests. */
-function formatBytes(bytes: number): string {
-  return `${bytes.toLocaleString("en-US")} bytes`;
-}
-
-function formatMb(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function formatMs(ms: number): string {
-  return `${Math.round(ms).toLocaleString("en-US")} ms`;
-}
-
-/** "97.3% smaller", or "12.0% larger" for an output that grew (it can, at 2048px). */
-function reductionOf(originalBytes: number, outputBytes: number): string {
-  if (originalBytes === 0) return "reduction n/a (empty original)";
-  const percent = (1 - outputBytes / originalBytes) * 100;
-  return percent >= 0 ? `${percent.toFixed(1)}% smaller` : `${(-percent).toFixed(1)}% larger`;
-}
-
-/** The first line of an error's message: native-module errors run to a wall of advice. */
-function messageOf(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
-  return text.split("\n")[0];
-}

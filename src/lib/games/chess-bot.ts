@@ -6,6 +6,7 @@ import {
   isInCheck,
 } from "./chess-moves";
 import { isChessGameOver } from "./game-chess";
+import { moveToSan } from "./chess-notation";
 import {
   CHESS_LEVEL_SETUP,
   CHESS_SQUARE_COUNT,
@@ -212,6 +213,41 @@ interface SearchContext {
   aborted: boolean;
 }
 
+/** One completed depth of the search, reported as it finishes. */
+export interface ChessSearchProgress {
+  depth: number;
+  /** The best move found so far — it can change as the search looks deeper. */
+  move: ChessMove;
+  /** Centipawns, for the side to move. */
+  score: number;
+  nodes: number;
+  elapsedMs: number;
+}
+
+/**
+ * What the computer says while it thinks, for the Messages panel.
+ *
+ * **Only produced when a caller passes `onEvent`.** With no listener nothing here is
+ * computed — no SAN, no score text, no candidate list — so the panel's "See machine log"
+ * switch being off costs the search exactly nothing.
+ *
+ * Events carry display-ready text (`san`, `scoreText`) rather than raw moves and
+ * centipawns, so the view only lays them out and the CLI could print the same lines.
+ */
+export type ChessThinkingEvent =
+  | {
+      kind: "start";
+      label: string;
+      legalMoves: number;
+      depth: number;
+      budgetMs: number;
+      quiescence: boolean;
+    }
+  | { kind: "depth"; depth: number; san: string; scoreText: string; nodes: number; elapsedMs: number }
+  | { kind: "candidates"; items: { san: string; scoreText: string }[] }
+  | { kind: "note"; text: string }
+  | { kind: "chosen"; san: string; elapsedMs: number; depth?: number; nodes?: number };
+
 export interface ChessSearchResult {
   move?: ChessMove;
   score: number;
@@ -238,11 +274,14 @@ export function searchChessMove(
     timeMs: number;
     quiescence: boolean;
     now?: () => number;
+    /** Called after each depth that completes. Absent means no reporting work at all. */
+    onProgress?: (progress: ChessSearchProgress) => void;
   },
 ): ChessSearchResult {
   const now = options.now ?? Date.now;
+  const startedAt = now();
   const context: SearchContext = {
-    deadline: now() + options.timeMs,
+    deadline: startedAt + options.timeMs,
     now,
     quiescence: options.quiescence,
     nodes: 0,
@@ -284,6 +323,13 @@ export function searchChessMove(
     best = depthBest;
     bestScore = depthScore;
     completedDepth = depth;
+    options.onProgress?.({
+      depth,
+      move: best,
+      score: bestScore,
+      nodes: context.nodes,
+      elapsedMs: now() - startedAt,
+    });
 
     // Searching deeper cannot improve on a forced mate already found, and continuing
     // would spend the whole budget re-proving it.
@@ -418,31 +464,79 @@ function moveOrderScore(move: ChessMove): number {
 export function chooseChessMove(
   position: ChessPosition,
   level: ChessLevel,
-  options: { rng?: () => number; now?: () => number } = {},
+  options: {
+    rng?: () => number;
+    now?: () => number;
+    /** Narrates the search. Omit it and no narration is built. */
+    onEvent?: (event: ChessThinkingEvent) => void;
+  } = {},
 ): ChessMove | undefined {
   const rng = options.rng ?? Math.random;
+  const now = options.now ?? Date.now;
+  const emit = options.onEvent;
   const setup = CHESS_LEVEL_SETUP[level];
+  const startedAt = emit ? now() : 0;
 
   const moves = generateLegalMoves(position);
   if (moves.length === 0) return undefined;
-  if (moves.length === 1) return moves[0];
+
+  emit?.({
+    kind: "start",
+    label: setup.label,
+    legalMoves: moves.length,
+    depth: setup.depth,
+    budgetMs: setup.timeMs,
+    quiescence: setup.quiescence,
+  });
+
+  /** Reports the move chosen, then returns it — every exit below goes through here. */
+  const finish = (
+    move: ChessMove | undefined,
+    detail?: { depth: number; nodes: number },
+  ): ChessMove | undefined => {
+    if (emit && move) {
+      emit({ kind: "chosen", san: moveToSan(position, move), elapsedMs: now() - startedAt, ...detail });
+    }
+    return move;
+  };
+
+  if (moves.length === 1) {
+    emit?.({ kind: "note", text: "Only one legal move, so it played it without searching." });
+    return finish(moves[0]);
+  }
+
+  if (emit) {
+    if (setup.depth <= 1) {
+      emit({ kind: "note", text: "Looks one move ahead only. It does not consider your reply." });
+    }
+    if (!setup.quiescence) {
+      emit({
+        kind: "note",
+        text: "Does not check whether a piece it takes can be taken back.",
+      });
+    }
+  }
 
   // The blunder. A level's beatability comes from here rather than from a worse search:
   // this is a player who did not look, which is what a human beginner actually does,
   // where a shallower search is a player who looked and judged badly.
   if (setup.blunderChance > 0 && rng() < setup.blunderChance) {
-    return moves[Math.floor(rng() * moves.length) % moves.length];
+    emit?.({
+      kind: "note",
+      text: `Rolled the dice (${Math.round(setup.blunderChance * 100)}% chance at ${setup.label}) and is playing a random move instead of searching.`,
+    });
+    return finish(moves[Math.floor(rng() * moves.length) % moves.length]);
   }
 
   if (setup.noiseCentipawns <= 0) {
-    return (
-      searchChessMove(position, {
-        depth: setup.depth,
-        timeMs: setup.timeMs,
-        quiescence: setup.quiescence,
-        now: options.now,
-      }).move ?? moves[0]
-    );
+    const result = searchChessMove(position, {
+      depth: setup.depth,
+      timeMs: setup.timeMs,
+      quiescence: setup.quiescence,
+      now: options.now,
+      onProgress: emit && depthReporter(position, emit),
+    });
+    return finish(result.move ?? moves[0], { depth: result.depth, nodes: result.nodes });
   }
 
   // With noise, every root move is scored and then nudged, so the computer does not
@@ -454,6 +548,7 @@ export function chooseChessMove(
   const childDepth = setup.depth - 1;
   let best = moves[0]!;
   let bestScore = -Infinity;
+  const scored: { move: ChessMove; ours: number; nudged: number }[] = [];
 
   for (const move of moves) {
     const child = applyChessMove(position, move);
@@ -471,12 +566,48 @@ export function chooseChessMove(
         : evaluateChessPosition(child);
 
     const score = -raw + (rng() * 2 - 1) * setup.noiseCentipawns;
+    if (emit) scored.push({ move, ours: -raw, nudged: score });
     if (score > bestScore) {
       bestScore = score;
       best = move;
     }
   }
-  return best;
+
+  if (emit) {
+    emit({
+      kind: "note",
+      text: `Scored all ${moves.length} legal moves, looking ${Math.max(1, setup.depth)} ahead, then added up to ±${setup.noiseCentipawns} centipawns of randomness so it does not replay the same game.`,
+    });
+    emit({
+      kind: "candidates",
+      // Ordered by the nudged score, which is what it actually chose from, but shown with
+      // the honest score — so a move can sit above a better one, and that is the point.
+      items: [...scored]
+        .sort((left, right) => right.nudged - left.nudged)
+        .slice(0, 5)
+        .map((entry) => ({
+          san: moveToSan(position, entry.move),
+          scoreText: formatChessScore(entry.ours, position.turn, position.turn),
+        })),
+    });
+  }
+  return finish(best);
+}
+
+/** Turns each finished depth into a display-ready thinking event. */
+function depthReporter(
+  position: ChessPosition,
+  emit: (event: ChessThinkingEvent) => void,
+): (progress: ChessSearchProgress) => void {
+  return (progress) =>
+    emit({
+      kind: "depth",
+      depth: progress.depth,
+      san: moveToSan(position, progress.move),
+      scoreText: formatChessScore(progress.score, position.turn, position.turn),
+      nodes: progress.nodes,
+      elapsedMs: progress.elapsedMs,
+    });
 }
 
 /**
@@ -488,16 +619,40 @@ export function chooseChessMove(
  */
 export function chessHint(
   game: ChessGame,
-  options: { now?: () => number } = {},
+  options: { now?: () => number; onEvent?: (event: ChessThinkingEvent) => void } = {},
 ): { move: ChessMove; score: number } | undefined {
   if (isChessGameOver(game)) return undefined;
   const advanced = CHESS_LEVEL_SETUP.advanced;
+  const emit = options.onEvent;
+  const now = options.now ?? Date.now;
+  const startedAt = emit ? now() : 0;
+
+  emit?.({
+    kind: "start",
+    label: "Hint (Advanced strength)",
+    legalMoves: generateLegalMoves(game.position).length,
+    depth: advanced.depth,
+    budgetMs: advanced.timeMs,
+    quiescence: true,
+  });
+
   const result = searchChessMove(game.position, {
     depth: advanced.depth,
     timeMs: advanced.timeMs,
     quiescence: true,
     now: options.now,
+    onProgress: emit && depthReporter(game.position, emit),
   });
+
+  if (emit && result.move) {
+    emit({
+      kind: "chosen",
+      san: moveToSan(game.position, result.move),
+      elapsedMs: now() - startedAt,
+      depth: result.depth,
+      nodes: result.nodes,
+    });
+  }
   return result.move ? { move: result.move, score: result.score } : undefined;
 }
 
@@ -515,21 +670,39 @@ export function chessHint(
  */
 export function shouldAcceptChessDraw(
   game: ChessGame,
-  options: { now?: () => number } = {},
+  options: { now?: () => number; onEvent?: (event: ChessThinkingEvent) => void } = {},
 ): boolean {
   if (isChessGameOver(game)) return false;
 
   const computer = oppositeColor(game.humanColor);
+  const emit = options.onEvent;
+
+  emit?.({
+    kind: "start",
+    label: "Draw offer",
+    legalMoves: generateLegalMoves(game.position).length,
+    depth: 2,
+    budgetMs: 400,
+    quiescence: true,
+  });
+
   const result = searchChessMove(game.position, {
     depth: 2,
     timeMs: 400,
     quiescence: true,
     now: options.now,
+    onProgress: emit && depthReporter(game.position, emit),
   });
 
   // The search scores for whoever is to move, so it is flipped when that is the player.
   const fromComputer = game.position.turn === computer ? result.score : -result.score;
-  return fromComputer < CHESS_PIECE_VALUES.n;
+  const accepts = fromComputer < CHESS_PIECE_VALUES.n;
+
+  emit?.({
+    kind: "note",
+    text: `It rates its own position ${formatChessScore(fromComputer, computer, computer)}, and accepts a draw unless that is better than about a piece (+3.2). ${accepts ? "Accepted." : "Declined."}`,
+  });
+  return accepts;
 }
 
 /** Whether a score means a forced mate, for the analysis line the hint shows. */

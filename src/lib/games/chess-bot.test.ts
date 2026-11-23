@@ -9,6 +9,7 @@ import {
   isChessMateScore,
   searchChessMove,
   shouldAcceptChessDraw,
+  type ChessThinkingEvent,
 } from "./chess-bot";
 import { generateLegalMoves } from "./chess-moves";
 import { moveToUci } from "./chess-notation";
@@ -280,6 +281,124 @@ describe("formatChessScore", () => {
     });
     expect(formatChessScore(mate.score, "w", "w")).toMatch(/^mate in \d+$/);
     expect(formatChessScore(mate.score, "b", "w")).toMatch(/^mated in \d+$/);
+  });
+});
+
+/** Everything a call narrates, in order. */
+function collect(run: (onEvent: (event: ChessThinkingEvent) => void) => void): ChessThinkingEvent[] {
+  const events: ChessThinkingEvent[] = [];
+  run((event) => events.push(event));
+  return events;
+}
+
+describe("the machine log", () => {
+  it("reports each completed depth from the search, in order", () => {
+    const depths: number[] = [];
+    searchChessMove(startPosition(), {
+      depth: 3,
+      timeMs: 5_000,
+      quiescence: true,
+      onProgress: (progress) => depths.push(progress.depth),
+    });
+    expect(depths).toEqual([1, 2, 3]);
+  });
+
+  it("reports nothing from the search when no one is listening", () => {
+    // The off switch's whole promise: no listener, no work, and the answer is unchanged.
+    const quiet = searchChessMove(positionFrom(MATE_IN_ONE), {
+      depth: 2,
+      timeMs: 5_000,
+      quiescence: true,
+    });
+    const heard = searchChessMove(positionFrom(MATE_IN_ONE), {
+      depth: 2,
+      timeMs: 5_000,
+      quiescence: true,
+      onProgress: () => undefined,
+    });
+    expect(quiet.move && moveToUci(quiet.move)).toBe(heard.move && moveToUci(heard.move));
+  });
+
+  it("opens with a start event, narrates each depth and ends on the move chosen", () => {
+    const events = collect((onEvent) =>
+      chooseChessMove(positionFrom(MATE_IN_ONE), "advanced", { rng: fixedRng(0.99), onEvent }),
+    );
+
+    expect(events[0]).toMatchObject({ kind: "start", label: "Advanced", quiescence: true });
+    expect(events.some((event) => event.kind === "depth")).toBe(true);
+
+    const last = events.at(-1);
+    expect(last).toMatchObject({ kind: "chosen", san: "Qg7#" });
+  }, 30_000);
+
+  it("writes scores and moves as text a person can read", () => {
+    const events = collect((onEvent) =>
+      chooseChessMove(positionFrom(MATE_IN_ONE), "advanced", { rng: fixedRng(0.99), onEvent }),
+    );
+    const depth = events.find((event) => event.kind === "depth");
+    expect(depth).toMatchObject({ san: "Qg7#", scoreText: expect.stringMatching(/^mate in \d+$/) });
+  }, 30_000);
+
+  it("says so when a level rolls the dice instead of searching", () => {
+    const events = collect((onEvent) =>
+      chooseChessMove(startPosition(), "beginner", { rng: fixedRng(0, 0), onEvent }),
+    );
+    const notes = events.filter((event) => event.kind === "note");
+    expect(notes.some((event) => event.kind === "note" && /rolled the dice/i.test(event.text))).toBe(true);
+    // A blunder never searches, so there are no depth lines — only the move it grabbed.
+    expect(events.some((event) => event.kind === "depth")).toBe(false);
+    expect(events.at(-1)?.kind).toBe("chosen");
+  });
+
+  it("explains what makes Beginner weak when it does search", () => {
+    const events = collect((onEvent) =>
+      chooseChessMove(startPosition(), "beginner", { rng: fixedRng(0.99), onEvent }),
+    );
+    const text = events.flatMap((event) => (event.kind === "note" ? [event.text] : []));
+    expect(text.some((line) => /one move ahead/i.test(line))).toBe(true);
+    expect(text.some((line) => /taken back/i.test(line))).toBe(true);
+  });
+
+  it("lists the top candidates it scored at the levels that add randomness", () => {
+    const events = collect((onEvent) =>
+      chooseChessMove(startPosition(), "beginner", { rng: fixedRng(0.99), onEvent }),
+    );
+    const candidates = events.find((event) => event.kind === "candidates");
+    expect(candidates?.kind === "candidates" && candidates.items.length).toBe(5);
+  });
+
+  it("says when there was only one legal move", () => {
+    const events = collect((onEvent) =>
+      chooseChessMove(positionFrom("7k/8/8/8/8/8/5r2/7K w - - 0 1"), "advanced", {
+        rng: fixedRng(0.99),
+        onEvent,
+      }),
+    );
+    expect(events.some((event) => event.kind === "note" && /only one legal move/i.test(event.text))).toBe(
+      true,
+    );
+    expect(events.at(-1)?.kind).toBe("chosen");
+  });
+
+  it("says nothing at all when there is no move to make", () => {
+    const events = collect((onEvent) =>
+      chooseChessMove(positionFrom(STALEMATE), "beginner", { rng: fixedRng(0.99), onEvent }),
+    );
+    expect(events).toEqual([]);
+  });
+
+  it("narrates a hint, labelled so it is not mistaken for the computer's own move", () => {
+    const game = startChessGame({ humanColor: "w", level: "beginner", fen: MATE_IN_ONE });
+    const events = collect((onEvent) => chessHint(game, { onEvent }));
+    expect(events[0]).toMatchObject({ kind: "start", label: expect.stringMatching(/hint/i) });
+    expect(events.at(-1)).toMatchObject({ kind: "chosen", san: "Qg7#" });
+  }, 30_000);
+
+  it("narrates a draw offer and ends on the verdict", () => {
+    const game = startChessGame({ humanColor: "w", level: "intermediate" });
+    const events = collect((onEvent) => shouldAcceptChessDraw(game, { onEvent }));
+    const verdict = events.at(-1);
+    expect(verdict?.kind === "note" && /Accepted\.|Declined\./.test(verdict.text)).toBe(true);
   });
 });
 

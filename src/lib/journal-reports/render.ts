@@ -192,12 +192,63 @@ function wordTally(entries: JournalEntry[], dismissed: readonly string[], limit:
 
 const TOP_N = 10;
 
+/** Library id -> the live name of that `sys_locations` row. */
+export type LibraryPlaceNames = ReadonlyMap<number, string>;
+
+/**
+ * The places one entry was written at, one label per distinct place.
+ *
+ * Reads the entry's pins, NOT the free-text `placeName` field. A pin linked to
+ * the saved-location library is labelled by the library row's current name, so a
+ * rename there is followed; a library row that was deleted (the link is a bare id
+ * with no foreign key, so that is ordinary) or has a blank name falls back to the
+ * entry's own copy of the name. A pin with neither -- dropped on the map -- is
+ * labelled by its coordinates, which is all it has.
+ *
+ * Distinct per entry, so two pins at one place count as one visit.
+ */
+export function entryPlaceLabels(entry: JournalEntry, library: LibraryPlaceNames): string[] {
+  const labels: string[] = [];
+  for (const pin of entry.locations) {
+    const live = pin.savedLocationId === undefined ? "" : (library.get(pin.savedLocationId) ?? "").trim();
+    const own = pin.locationName.trim();
+    const label = live !== "" ? live : own !== "" ? own : coordinateLabel(pin);
+    if (!labels.includes(label)) labels.push(label);
+  }
+  return labels;
+}
+
+function coordinateLabel(pin: { latitude: number; longitude: number }): string {
+  return `${pin.latitude.toFixed(5)}, ${pin.longitude.toFixed(5)}`;
+}
+
+/** Date / Place / Title, one row per (entry, place). The empty-state line when none. */
+function placeMentionsTable(entries: JournalEntry[], library: LibraryPlaceNames): string {
+  const rows: string[] = [];
+  for (const entry of entries) {
+    for (const place of entryPlaceLabels(entry, library)) {
+      rows.push(
+        `    <tr><td>${escapeHtml(entry.date)}</td><td>${escapeHtml(place)}</td><td>${escapeHtml(entry.title)}</td></tr>`,
+      );
+    }
+  }
+  if (rows.length === 0) return "<p><em>No places data.</em></p>";
+  return `<table>
+  <thead><tr><th>Date</th><th>Place</th><th>Title</th></tr></thead>
+  <tbody>
+${rows.join("\n")}
+  </tbody>
+</table>`;
+}
+
 export interface RenderReportInput {
   report: JournalReport;
   details: JournalReportDetail[];
   entries: JournalEntry[];
   /** Words the reader dismissed from the journal's word stats. */
   dismissedWords?: readonly string[];
+  /** Live names of the saved-location library, for labelling linked pins. */
+  libraryNames?: LibraryPlaceNames;
   /** Injected so a test can assert a fixed timestamp. */
   generatedAt?: Date;
 }
@@ -211,7 +262,8 @@ function reportValues(input: RenderReportInput): Record<string, string> {
 
   const categories = tally(entries.flatMap((entry) => entry.categories));
   const tags = tally(entries.flatMap((entry) => entry.tags));
-  const places = tally(entries.map((entry) => entry.placeName));
+  const library = input.libraryNames ?? new Map<number, string>();
+  const places = tally(entries.flatMap((entry) => entryPlaceLabels(entry, library)));
   const months = tally(dates.map((date) => date.slice(0, 7)));
   const words = wordTally(entries, input.dismissedWords ?? [], TOP_N);
 
@@ -239,6 +291,7 @@ function reportValues(input: RenderReportInput): Record<string, string> {
     "table.topCategories": twoColumnTable(categories.slice(0, TOP_N), ["Category", "Entries"]),
     "table.topTags": twoColumnTable(tags.slice(0, TOP_N), ["Tag", "Entries"]),
     "table.topPlaces": twoColumnTable(places.slice(0, TOP_N), ["Place", "Visits"]),
+    "table.placeMentions": placeMentionsTable(entries, library),
     "table.topWords": twoColumnTable(words, ["Word", "Uses"]),
   };
 }

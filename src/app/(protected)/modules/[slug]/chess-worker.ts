@@ -1,6 +1,12 @@
 /// <reference lib="webworker" />
 
-import { chooseChessMove, moveToUci, parseFen, type ChessLevel } from "@/lib/games";
+import {
+  chooseChessMove,
+  moveToUci,
+  parseFen,
+  type ChessLevel,
+  type ChessThinkingEvent,
+} from "@/lib/games";
 
 /**
  * The computer's move, worked out off the main thread.
@@ -18,6 +24,12 @@ import { chooseChessMove, moveToUci, parseFen, type ChessLevel } from "@/lib/gam
  *
  * It takes a FEN rather than a game, because a position is all the search needs and a
  * FEN is a string — no structured clone of a 64-element board per move.
+ *
+ * **Narration is opt-in.** `log` is true only while the Messages panel's "See machine
+ * log" switch is on; with it off no listener is handed to the engine, so no event is
+ * built and no progress message is posted. Events are posted *while the search runs* —
+ * a worker's `postMessage` is delivered immediately, even from inside synchronous
+ * code — which is what lets the panel show the search deepening in real time.
  */
 
 export interface ChessWorkerRequest {
@@ -25,15 +37,27 @@ export interface ChessWorkerRequest {
   id: number;
   fen: string;
   level: ChessLevel;
+  /** Whether to narrate the search. Off means nothing is built or posted. */
+  log?: boolean;
 }
 
+/** A progress line, posted while the search is still running. */
+export interface ChessWorkerProgress {
+  id: number;
+  event: ChessThinkingEvent;
+}
+
+/** The final answer. `done` is what tells it apart from a progress line. */
 export interface ChessWorkerReply {
   id: number;
+  done: true;
   /** The chosen move in coordinate form, or undefined when there is none to make. */
   uci?: string;
   /** Set when the position could not even be read. */
   error?: string;
 }
+
+export type ChessWorkerMessage = ChessWorkerProgress | ChessWorkerReply;
 
 /*
   Reached through `globalThis` rather than `self`.
@@ -46,27 +70,31 @@ export interface ChessWorkerReply {
 */
 const worker = globalThis as unknown as DedicatedWorkerGlobalScope;
 
+function post(message: ChessWorkerMessage): void {
+  worker.postMessage(message);
+}
+
 worker.addEventListener("message", (event: MessageEvent<ChessWorkerRequest>) => {
-  const { id, fen, level } = event.data;
+  const { id, fen, level, log } = event.data;
 
   try {
     const position = parseFen(fen);
     if (!position) {
-      worker.postMessage({
-        id,
-        error: "That position could not be read.",
-      } satisfies ChessWorkerReply);
+      post({ id, done: true, error: "That position could not be read." });
       return;
     }
 
-    const move = chooseChessMove(position, level);
-    worker.postMessage({ id, uci: move ? moveToUci(move) : undefined } satisfies ChessWorkerReply);
+    const move = chooseChessMove(position, level, {
+      onEvent: log ? (thinking) => post({ id, event: thinking }) : undefined,
+    });
+    post({ id, done: true, uci: move ? moveToUci(move) : undefined });
   } catch (error) {
     // Never let the worker die silently: the view would wait for a reply that is never
     // coming, and the board would sit on "Thinking…" for ever.
-    worker.postMessage({
+    post({
       id,
+      done: true,
       error: error instanceof Error ? error.message : "The computer could not move.",
-    } satisfies ChessWorkerReply);
+    });
   }
 });

@@ -49,8 +49,8 @@ export async function listCodeTestFoldersAction(date: string): Promise<CodeTestF
 }
 
 /**
- * Runs the server-resize experiment on three photos picked from one folder: one with an
- * EXIF preview, one without, and the largest.
+ * Runs the whole experiment suite over one folder: scan, resize sizes, thumbnail paths,
+ * concurrency. Tens of seconds, by design -- it is an admin experiment, not a page load.
  *
  * The report carries its own errors as lines, so `ok: false` here means only that the
  * INPUT was refused, or the folder could not be listed, before anything ran.

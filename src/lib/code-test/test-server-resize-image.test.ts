@@ -14,6 +14,16 @@ class FakeReader implements TimedPhotoReader {
     if (this.file instanceof Error) throw this.file;
     return this.file === undefined ? undefined : { data: this.file, ms: 812 };
   }
+  // Unused by this experiment, which always reads whole files; present because the port
+  // carries them for the scan and the thumbnail-path experiment.
+  async stat(relativePath: string) {
+    const file = await this.read(relativePath);
+    return file === undefined ? undefined : { bytes: file.data.length, ms: 1 };
+  }
+  async readHeader(relativePath: string, byteCount: number) {
+    const file = await this.read(relativePath);
+    return file === undefined ? undefined : { data: file.data.subarray(0, byteCount), ms: 2 };
+  }
 }
 
 const INFO: ImageLibInfo = { version: "0.35.4", detail: "libvips 8.17.1", platform: "linux", arch: "arm64" };

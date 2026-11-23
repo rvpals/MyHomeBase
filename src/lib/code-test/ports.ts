@@ -4,15 +4,51 @@
 // no native module. The real adapters are `createTimedPhotoReader` (over the read-only
 // `PhotoFileStore`) and `SharpImageLibProbe`.
 
-/** One photo's bytes from the archive, and how long the read took. */
+/**
+ * Timed reads of the archive, for an experiment to measure.
+ *
+ * READ-ONLY, all three: this sits on `PhotoFileStore`, which has no write method, so an
+ * experiment cannot modify the archive. `stat` and `readHeader` are OBSERVATIONS in the
+ * same sense that port's doc comment uses -- they add no capability, they only let an
+ * experiment measure the cheap reads the app already makes in production.
+ */
 export interface TimedPhotoReader {
-  /**
-   * The whole file, or `undefined` when it is missing or unreadable.
-   *
-   * READ-ONLY: this sits on `PhotoFileStore`, which has no write method, so an
-   * experiment cannot modify the archive.
-   */
+  /** The whole file, or `undefined` when it is missing or unreadable. */
   read(relativePath: string): Promise<{ data: Uint8Array; ms: number } | undefined>;
+
+  /**
+   * The file's size without reading its contents, or `undefined` when unreadable.
+   *
+   * What makes scanning a whole folder affordable: a stat per photo instead of pulling
+   * every multi-megabyte file over SMB to learn how big it is.
+   */
+  stat(relativePath: string): Promise<{ bytes: number; ms: number } | undefined>;
+
+  /**
+   * The first `byteCount` bytes, or `undefined` when unreadable.
+   *
+   * The read the shipped thumbnail route actually makes (`readPhotoThumbnail` takes
+   * `EXIF_HEADER_BYTES`), so an experiment can time the real path rather than a
+   * whole-file read production never performs.
+   */
+  readHeader(
+    relativePath: string,
+    byteCount: number,
+  ): Promise<{ data: Uint8Array; ms: number } | undefined>;
+}
+
+/**
+ * What every Code Tester experiment needs: timed archive reads, the image library under
+ * measurement, and a clock.
+ *
+ * One shared shape because the experiments run together in one report and must be timed
+ * on the same clock. `ServerResizeTestDeps` is the old name for it.
+ */
+export interface CodeTestDeps {
+  reader: TimedPhotoReader;
+  imageLib: ImageLibProbe;
+  /** Milliseconds from an arbitrary origin, for the totals. `performance.now` in production. */
+  now: () => number;
 }
 
 /** Facts about the image library, for the report's header. */

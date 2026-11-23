@@ -360,7 +360,9 @@ export {
   isChessMateScore,
   searchChessMove,
   shouldAcceptChessDraw,
+  type ChessSearchProgress,
   type ChessSearchResult,
+  type ChessThinkingEvent,
 } from "./chess-bot";
 export {
   autosaveChessGame,

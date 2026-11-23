@@ -84,7 +84,8 @@ export const JOURNAL_REPORT_TABLE_FIELDS: readonly JournalReportField[] = [
   { token: "table.entriesByMonth", label: "Entries by month", description: "A table of month, entries, words.", scope: "report" },
   { token: "table.topCategories", label: "Top categories", description: "A table of category and count.", scope: "report" },
   { token: "table.topTags", label: "Top tags", description: "A table of tag and count.", scope: "report" },
-  { token: "table.topPlaces", label: "Top places", description: "A table of place and visit count.", scope: "report" },
+  { token: "table.topPlaces", label: "Top places", description: "A table of place and visit count, from the entries' pinned locations.", scope: "report" },
+  { token: "table.placeMentions", label: "Place mentions", description: "A table of date, place and title -- one row per place on each entry.", scope: "report" },
   { token: "table.topWords", label: "Top words", description: "A table of word and count.", scope: "report" },
 ];
 

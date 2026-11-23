@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { ChessBoard, ChessPieceGlyph } from "@/components/chess-board";
+import { CollapsibleCard } from "@/components/collapsible-card";
 import { Modal } from "@/components/modal";
 import { useGameSounds } from "@/components/use-game-sounds";
+import { useIsCompact } from "@/components/viewport-context";
 import {
   CHESS_LEVELS,
   CHESS_LEVEL_SETUP,
@@ -40,8 +42,9 @@ import {
   type ChessPieceType,
   type ChessPromotionType,
   type ChessSaveSummary,
+  type ChessThinkingEvent,
 } from "@/lib/games";
-import type { ChessWorkerReply, ChessWorkerRequest } from "./chess-worker";
+import type { ChessWorkerMessage, ChessWorkerRequest } from "./chess-worker";
 import {
   autosaveChessAction,
   deleteChessGameAction,
@@ -141,7 +144,16 @@ function useSounds(enabled: boolean) {
 function useChessEngine() {
   const workerRef = useRef<Worker | undefined>(undefined);
   const nextId = useRef(0);
-  const pending = useRef<Map<number, (uci: string | undefined) => void>>(new Map());
+  const pending = useRef<
+    Map<
+      number,
+      {
+        resolve: (uci: string | undefined) => void;
+        /** Present only while the machine log is on; see `chess-worker.ts`. */
+        onEvent?: (event: ChessThinkingEvent) => void;
+      }
+    >
+  >(new Map());
 
   useEffect(() => {
     // Copied once here, and used in the cleanup instead of `pending.current`. The ref
@@ -153,17 +165,24 @@ function useChessEngine() {
     let worker: Worker | undefined;
     try {
       worker = new Worker(new URL("./chess-worker.ts", import.meta.url));
-      worker.addEventListener("message", (event: MessageEvent<ChessWorkerReply>) => {
-        const resolve = pending.current.get(event.data.id);
-        if (!resolve) return;
+      worker.addEventListener("message", (event: MessageEvent<ChessWorkerMessage>) => {
+        const entry = pending.current.get(event.data.id);
+        if (!entry) return;
+
+        // A progress line: hand it on and keep waiting for the answer.
+        if (!("done" in event.data)) {
+          entry.onEvent?.(event.data.event);
+          return;
+        }
+
         pending.current.delete(event.data.id);
-        resolve(event.data.uci);
+        entry.resolve(event.data.uci);
       });
       worker.addEventListener("error", () => {
         // Give up on the worker for the rest of the session and answer every request
         // still outstanding, so nothing is left waiting on a thread that has died.
         workerRef.current = undefined;
-        for (const [, resolve] of inflight) resolve(undefined);
+        for (const [, entry] of inflight) entry.resolve(undefined);
         inflight.clear();
       });
       workerRef.current = worker;
@@ -178,8 +197,17 @@ function useChessEngine() {
     };
   }, []);
 
-  /** The computer's move for a position, in coordinate form. */
-  return useCallback((fen: string, level: ChessLevel): Promise<string | undefined> => {
+  /**
+   * The computer's move for a position, in coordinate form.
+   *
+   * `onEvent` is the machine log. Passing nothing means nothing is narrated: the worker
+   * is told not to build events, and the fallback passes the engine no listener.
+   */
+  return useCallback((
+    fen: string,
+    level: ChessLevel,
+    onEvent?: (event: ChessThinkingEvent) => void,
+  ): Promise<string | undefined> => {
     const worker = workerRef.current;
 
     if (!worker) {
@@ -189,7 +217,9 @@ function useChessEngine() {
         // appears.
         setTimeout(() => {
           const position = parseFen(fen);
-          const move = position ? chooseChessMove(position, level) : undefined;
+          // On this path the events arrive in one burst when the search ends, because
+          // the search holds the thread — the log is complete but not live.
+          const move = position ? chooseChessMove(position, level, { onEvent }) : undefined;
           resolve(move ? moveToUci(move) : undefined);
         }, 0);
       });
@@ -197,8 +227,8 @@ function useChessEngine() {
 
     const id = nextId.current++;
     return new Promise((resolve) => {
-      pending.current.set(id, resolve);
-      worker.postMessage({ id, fen, level } satisfies ChessWorkerRequest);
+      pending.current.set(id, { resolve, onEvent });
+      worker.postMessage({ id, fen, level, log: onEvent !== undefined } satisfies ChessWorkerRequest);
     });
   }, []);
 }
@@ -220,6 +250,13 @@ export function GameChessView({ bestScore }: { bestScore: number }) {
   const [dialog, setDialog] = useState<"save" | "load" | "resign" | "pgn" | undefined>(undefined);
   const [saveName, setSaveName] = useState("");
   const [pgn, setPgn] = useState("");
+
+  // The machine log. Off by default, and while it is off **nothing is narrated at all** —
+  // no listener reaches the engine, so no events are built. Entries survive the switch
+  // being turned off (so a log is not lost by a stray click) and are cleared by Clear.
+  const [logOn, setLogOn] = useState(false);
+  const [log, setLog] = useState<ChessLogEntry[]>([]);
+  const logKey = useRef(0);
 
   const sounds = useSounds(soundOn);
   const think = useChessEngine();
@@ -271,7 +308,12 @@ export function GameChessView({ bestScore }: { bestScore: number }) {
     let live = true;
     const started = Date.now();
 
-    void think(toFen(game.position), game.level).then(async (uci) => {
+    // Read once, when the search starts: switching the log on mid-search takes effect
+    // from the next move, because the search in flight has already been told whether to
+    // narrate.
+    const narrate = logOn ? narrator(game) : undefined;
+
+    void think(toFen(game.position), game.level, narrate).then(async (uci) => {
       // A reply for a position the player has since left (undo, New game, a load) is
       // dropped rather than played.
       if (!live) return;
@@ -341,6 +383,28 @@ export function GameChessView({ bestScore }: { bestScore: number }) {
     // how many games were actually played.
     void saveScoreAction(GAME_KEY, scoreChessGame(game), game.moves.length);
   }, [game, over, sounds]);
+
+  /** Appends one line to the machine log. Only ever called from a callback or handler. */
+  function pushLog(item: ChessLogItem) {
+    const key = logKey.current++;
+    // Capped, so a long game cannot grow the list without limit.
+    setLog((current) => [...current.slice(-299), { key, item }]);
+  }
+
+  /**
+   * The listener handed to the engine: each search opens with a heading naming whose
+   * move it is, then every event the engine reports is appended as it arrives.
+   */
+  function narrator(forGame: ChessGame): (event: ChessThinkingEvent) => void {
+    const move = forGame.position.fullmoveNumber;
+    const side = forGame.position.turn === "w" ? "White" : "Black";
+    return (event) => {
+      if (event.kind === "start") {
+        pushLog({ kind: "heading", text: `${event.label} · move ${move} (${side})` });
+      }
+      pushLog(event);
+    };
+  }
 
   /** Plays the sound and sets the line that describes what just happened. */
   function announce(next: ChessGame, san: string) {
@@ -436,7 +500,7 @@ export function GameChessView({ bestScore }: { bestScore: number }) {
     // The hint always searches at Advanced strength (see `chessHint`), so it is the one
     // place a Beginner game pays Advanced's budget.
     setTimeout(() => {
-      const found = chessHint(game);
+      const found = chessHint(game, { onEvent: logOn ? narrator(game) : undefined });
       setBusy(false);
       if (!found) return;
       setHint({ from: found.move.from, to: found.move.to });
@@ -448,7 +512,9 @@ export function GameChessView({ bestScore }: { bestScore: number }) {
     if (!game || over) return;
     setBusy(true);
     setTimeout(() => {
-      const accepted = shouldAcceptChessDraw(game);
+      const accepted = shouldAcceptChessDraw(game, {
+        onEvent: logOn ? narrator(game) : undefined,
+      });
       setBusy(false);
       if (accepted) {
         const drawn = agreeChessDraw(game);
@@ -554,6 +620,10 @@ export function GameChessView({ bestScore }: { bestScore: number }) {
           notice={notice}
           scored={scored}
           bestScore={bestScore}
+          logOn={logOn}
+          onLogOn={setLogOn}
+          log={log}
+          onClearLog={() => setLog([])}
         />
       </div>
 
@@ -847,15 +917,27 @@ function ChessPanel({
   notice,
   scored,
   bestScore,
+  logOn,
+  onLogOn,
+  log,
+  onClearLog,
 }: {
   game: ChessGame;
   thinking: boolean;
   notice?: string;
   scored?: number;
   bestScore: number;
+  logOn: boolean;
+  onLogOn: (on: boolean) => void;
+  log: ChessLogEntry[];
+  onClearLog: () => void;
 }) {
   const over = isChessGameOver(game);
   const computerColor = oppositeColor(game.humanColor);
+  // Open on a desktop, where there is room beside the board, and closed on a phone,
+  // where it would push the board's controls a long way down. Only the first visit's
+  // default: `CollapsibleCard` remembers whatever the reader chooses after that.
+  const compact = useIsCompact();
 
   return (
     <aside className="flex w-72 shrink-0 flex-col gap-3 max-lg:w-full">
@@ -905,7 +987,189 @@ function ChessPanel({
           {game.moves.length === 0 && <li className="py-0.5 text-muted">No moves yet.</li>}
         </ol>
       </div>
+
+      <CollapsibleCard title="Messages" defaultOpen={!compact}>
+        <MachineLog
+          on={logOn}
+          onToggle={onLogOn}
+          entries={log}
+          thinking={thinking}
+          onClear={onClearLog}
+        />
+      </CollapsibleCard>
     </aside>
+  );
+}
+
+/** One line of the machine log: an engine event, or a heading the view adds. */
+type ChessLogItem = ChessThinkingEvent | { kind: "heading"; text: string };
+
+interface ChessLogEntry {
+  key: number;
+  item: ChessLogItem;
+}
+
+/** Milliseconds as a person reads them: `412 ms`, `0.9s`. */
+function formatElapsed(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** A node count, abbreviated: `880`, `9.1k`, `1.2M`. */
+function formatNodes(nodes: number): string {
+  if (nodes < 1000) return String(nodes);
+  if (nodes < 1_000_000) return `${(nodes / 1000).toFixed(1)}k`;
+  return `${(nodes / 1_000_000).toFixed(1)}M`;
+}
+
+/**
+ * The Messages card's contents: the "See machine log" switch and, when it is on, what
+ * the computer reported while it thought.
+ *
+ * Presentation only. Every line was written by the engine (`ChessThinkingEvent`) and is
+ * laid out here; nothing is computed from the board. With the switch off the engine is
+ * never asked to narrate, so this is an empty prompt and not a hidden list.
+ */
+function MachineLog({
+  on,
+  onToggle,
+  entries,
+  thinking,
+  onClear,
+}: {
+  on: boolean;
+  onToggle: (on: boolean) => void;
+  entries: ChessLogEntry[];
+  thinking: boolean;
+  onClear: () => void;
+}) {
+  const listRef = useRef<HTMLOListElement>(null);
+
+  // Keeps the newest line in view as the search deepens. DOM only — no state is set.
+  useEffect(() => {
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [entries.length, thinking]);
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(event) => onToggle(event.target.checked)}
+          className="h-4 w-4 accent-brass"
+        />
+        See machine log
+      </label>
+
+      {!on && (
+        <p className="text-xs text-muted">
+          Turn this on to watch the computer think: the move it is favouring at each depth,
+          how many positions it looked at, and how long it took. With it off, nothing is
+          recorded.
+        </p>
+      )}
+
+      {on && (
+        <>
+          <ol
+            ref={listRef}
+            className="max-h-64 overflow-auto font-mono text-xs text-ink max-lg:max-h-40"
+            aria-live="off"
+          >
+            {entries.length === 0 && !thinking && (
+              <li className="py-0.5 text-muted">Waiting for the computer&rsquo;s next move.</li>
+            )}
+            {entries.map((entry) => (
+              <MachineLogLine key={entry.key} item={entry.item} />
+            ))}
+            {thinking && <ThinkingTicker />}
+          </ol>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="text-xs text-muted hover:underline"
+              onClick={onClear}
+              disabled={entries.length === 0}
+            >
+              Clear
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MachineLogLine({ item }: { item: ChessLogItem }) {
+  switch (item.kind) {
+    case "heading":
+      return (
+        <li className="mt-2 border-t border-line pt-1 font-display text-xs text-brass-dark first:mt-0 first:border-t-0">
+          {item.text}
+        </li>
+      );
+    case "start":
+      return (
+        <li className="py-0.5 text-muted">
+          {item.legalMoves} legal moves · up to depth {item.depth} in {formatElapsed(item.budgetMs)}
+          {" · "}recapture check {item.quiescence ? "on" : "off"}
+        </li>
+      );
+    case "depth":
+      return (
+        <li className="py-0.5">
+          <span className="text-muted">depth {item.depth}</span> best{" "}
+          <strong>{item.san}</strong> {item.scoreText}
+          <span className="text-muted">
+            {" "}
+            · {formatNodes(item.nodes)} positions · {formatElapsed(item.elapsedMs)}
+          </span>
+        </li>
+      );
+    case "candidates":
+      return (
+        <li className="py-0.5">
+          <span className="text-muted">top choices </span>
+          {item.items.map((entry) => `${entry.san} ${entry.scoreText}`).join(", ")}
+        </li>
+      );
+    case "note":
+      return <li className="py-0.5 italic text-muted">{item.text}</li>;
+    case "chosen":
+      return (
+        <li className="py-0.5 font-semibold text-ink">
+          Chose {item.san} in {formatElapsed(item.elapsedMs)}
+          {item.depth !== undefined && item.nodes !== undefined && (
+            <span className="font-normal text-muted">
+              {" "}
+              (depth {item.depth}, {formatNodes(item.nodes)} positions)
+            </span>
+          )}
+        </li>
+      );
+  }
+}
+
+/**
+ * "Thinking… 1.2s", counting up while the computer searches.
+ *
+ * Its own component so it exists only while there is a search to time: mounting starts the
+ * clock from zero and unmounting stops it, which is what lets the count restart on every
+ * move with no reset logic. It is a view-side stopwatch — the engine's own elapsed figures
+ * are the ones on the lines above it.
+ */
+function ThinkingTicker() {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    const timer = setInterval(() => setElapsed(Date.now() - startedAt), 100);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <li className="py-0.5 text-brass-dark">Thinking… {formatElapsed(elapsed)}</li>
   );
 }
 

@@ -33,6 +33,8 @@ export class FakeJournalReportRepository implements JournalReportRepository {
   lastWhere?: CompiledWhere;
   lastOrderBy?: string;
   lastLimit?: number;
+  /** What `getLibraryPlaceNames` hands back. */
+  libraryNames = new Map<number, string>();
 
   constructor(seed: { report: JournalReport; details?: { part: ReportPartKind; html: string }[] }[] = []) {
     for (const item of seed) {
@@ -148,5 +150,9 @@ export class FakeJournalReportRepository implements JournalReportRepository {
   countReportEntries(where: CompiledWhere): number {
     this.lastWhere = where;
     return this.entries.length;
+  }
+
+  getLibraryPlaceNames(): Map<number, string> {
+    return this.libraryNames;
   }
 }

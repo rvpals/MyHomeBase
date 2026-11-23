@@ -146,6 +146,23 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-23 — Chess: Messages panel and machine log
+
+**No migration; republish needed.** Not seen on screen — nothing here has been run.
+Items 7 and 8 are phone-width.
+
+- [ ] **1.** Chess → a **Messages** card in the side panel, open on a desktop and closed on a phone; clicking its header collapses and opens it, and it stays how you left it next time
+- [ ] **2.** Inside it, a **See machine log** switch, off by default, with a line saying nothing is recorded while it is off
+- [ ] **3.** With it off, play a few moves: nothing appears anywhere, and the computer replies as before
+- [ ] **4.** Switch it on and play a move at Advanced: a heading (e.g. "Advanced · move 3 (Black)"), a "N legal moves · up to depth 6" line, then a line per depth showing the favoured move, score, positions and time, then "Chose … in 1.4s" — the depth lines should appear **one at a time while it thinks**, not all at once at the end
+- [ ] **5.** "Thinking… 0.8s" counts up while it searches and disappears when the move is played; the list scrolls to keep the newest line in view
+- [ ] **6.** Beginner and Intermediate show plain-English notes (looks one move ahead only; does not check recaptures; "Rolled the dice … random move" now and then; "top choices" with scores)
+- [ ] **7.** Phone width: the card sits under the board, the log is readable without sideways scrolling, and it does not push the board's controls off screen
+- [ ] **8.** Phone width: the switch and Clear are easy to tap
+- [ ] **9.** **Hint** and **Offer draw** add their own headed entries when the log is on ("Hint (Advanced strength)", "Draw offer" ending in Accepted/Declined), and nothing when it is off
+- [ ] **10.** Turning the switch off keeps what was already logged (it comes back when switched on); **Clear** empties it; switching it on mid-search starts logging from the next move
+- [ ] **11.** If the worker cannot start, the log still fills in, but all at once after the move
+
 ## 2026-11-22 — Games: Chess
 
 **Migration 0173 (`gam_chess_saves`); republish needed.** Not seen on screen — none of

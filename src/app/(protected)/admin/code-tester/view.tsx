@@ -108,10 +108,11 @@ function ServerResizeCard() {
     <>
       <CollapsibleCard title="Test Image Serve Resize Load" defaultOpen>
         <p className="text-sm text-muted">
-          Scans a folder of the archive, picks three photos (one with an EXIF preview, one
-          without, and the largest file) and, for each, resizes it on the server to 160, 1024
-          and 2048px, timing each step and comparing the bytes with the original. The archive
-          is only read, never written.
+          Scans a whole folder of the archive cheaply (a stat and the first 128KB per photo,
+          never the whole file), then runs four experiments on photos chosen from it: the
+          size distribution, resizes to 160/1024/2048px, the strip&rsquo;s embedded-preview
+          path against the whole-file fallback, and resize throughput at 1&ndash;4 at once.
+          The archive is only read, never written.
         </p>
 
         {/* Stacked on a phone, one row on a desktop. */}
@@ -170,15 +171,15 @@ function ServerResizeCard() {
 
         <div className="mt-4 max-lg:[&>*]:w-full">
           <Button onClick={() => void runTest()} disabled={folderPath === "" || busy !== undefined}>
-            {busy === "test" ? "Running…" : "Run 3 tests"}
+            {busy === "test" ? "Running…" : "Run the suite"}
           </Button>
         </div>
       </CollapsibleCard>
 
       <BusyOverlay
         isBusy={busy === "test"}
-        message="Scanning the folder and running 3 tests…"
-        detail="Reading the folder's photos from the NAS, then resizing three of them three times each. This can take a minute."
+        message="Scanning the folder and running the suite…"
+        detail="Scanning every photo in the folder, then resizing a few of them many times over. Expect 30 to 60 seconds."
         progress="indeterminate"
       />
 
