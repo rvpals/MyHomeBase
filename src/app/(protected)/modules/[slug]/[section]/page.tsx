@@ -25,6 +25,8 @@ import { ToolsSection } from "../tools-section";
 import { isToolsSection } from "../tools-sections";
 import { ClipsSection } from "../clips-section";
 import { isClipsSection } from "../clips-sections";
+import { CodeLibrarySection } from "../code-library-section";
+import { isCodeLibrarySection } from "../code-library-sections";
 import { DocumentsSection } from "../documents-section";
 import { isDocumentsEditorRoute, isDocumentsSection } from "../documents-sections";
 import { HouseholdSection } from "../household-section";
@@ -48,6 +50,7 @@ const TOOLS_MODULE_SLUG = "tools";
 const HOUSEHOLD_MODULE_SLUG = "household";
 const CLIPS_MODULE_SLUG = "clips";
 const DOCUMENTS_MODULE_SLUG = "documents";
+const CODE_LIBRARY_MODULE_SLUG = "code-library";
 
 /**
  * A module's sub-section, e.g. /modules/expense/transactions or
@@ -92,6 +95,7 @@ function renderSection(
   requestedTreeDocumentId: number | undefined,
   documentsContents: boolean,
   documentsKeyword: string | undefined,
+  codeLanguage: string | undefined,
 ) {
   if (slug === CLASSROOM_MODULE_SLUG && isClassroomSection(section)) {
     return (
@@ -187,6 +191,27 @@ function renderSection(
         // is open", not a second name for the same idea.
         requestedTab={requestedTab}
         isAdmin={isAdmin}
+      />
+    );
+  }
+  // Gated on the slug AND on this module's own guard, like every branch here.
+  //
+  // Today `main` is the only section and it maps to the module root, so this branch
+  // is reached only by someone typing `/modules/code-library/main` — which renders
+  // the home screen, exactly as `/modules/clips/main` does. It is registered now so
+  // that adding Categories & Tags later is a string in `code-library-sections.ts`
+  // and nothing here.
+  if (slug === CODE_LIBRARY_MODULE_SLUG && isCodeLibrarySection(section)) {
+    // Reuses the shared `search` param, like Household, Clips and Documents: all
+    // four filter a list by its text, and a fourth spelling of the same idea would
+    // only make a URL harder to read. `language` is this module's own.
+    return (
+      <CodeLibrarySection
+        section={section}
+        search={recipeSearch}
+        language={codeLanguage}
+        category={recipeCategory}
+        tag={recipeTag}
       />
     );
   }
@@ -322,6 +347,9 @@ export default async function ModuleSectionPage({
     // Separate from ?search=, which is the reader's own typed text — see the prop's
     // note in `documents-section.tsx`.
     keyword?: string | string[];
+    // The Code Library's language filter. Its own param rather than reusing
+    // `category`: a language is a column on the snippet, not a taxonomy row.
+    language?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -353,6 +381,7 @@ export default async function ModuleSectionPage({
     doc,
     contents,
     keyword,
+    language,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -422,6 +451,10 @@ export default async function ModuleSectionPage({
   // the module's own rule, and an unrankable value lists no documents rather than
   // 404ing a link that was valid before the library changed.
   const documentsKeyword = Array.isArray(keyword) ? keyword[0] : keyword;
+  // The Code Library's language filter. Same first-element rule, and raw: a value
+  // naming a language that no longer exists must narrow the list to nothing rather
+  // than 404 a link that was valid when it was made.
+  const codeLanguage = Array.isArray(language) ? language[0] : language;
   // Same first-element rule. Raw again: an unknown tab key is ignored by the
   // strip rather than 404ing a link that was valid before a tab was renamed.
   const requestedTab = Array.isArray(tab) ? tab[0] : tab;
@@ -502,6 +535,7 @@ export default async function ModuleSectionPage({
     requestedTreeDocumentId,
     documentsContents,
     documentsKeyword,
+    codeLanguage,
   );
   if (!body) notFound();
 

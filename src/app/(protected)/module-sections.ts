@@ -62,6 +62,12 @@ import {
   clipsSectionHref,
 } from "./modules/[slug]/clips-sections";
 import {
+  CODE_LIBRARY_SECTIONS,
+  CODE_LIBRARY_SECTION_ICONS,
+  CODE_LIBRARY_SECTION_INFO,
+  codeLibrarySectionHref,
+} from "./modules/[slug]/code-library-sections";
+import {
   DOCUMENTS_SECTIONS,
   DOCUMENTS_SECTION_ICONS,
   DOCUMENTS_SECTION_INFO,
@@ -212,6 +218,17 @@ const SECTION_BUILDERS: Record<string, () => TreeSection[]> = {
       DOCUMENTS_SECTION_INFO,
       DOCUMENTS_SECTION_ICONS,
       documentsSectionHref,
+    ),
+  // One row for now — the home screen is the module. Registered anyway rather than
+  // left out: a module with no entry here still renders, but as a tree heading that
+  // expands to nothing, and adding Categories & Tags later should be a string in
+  // `code-library-sections.ts` and nothing more.
+  "code-library": () =>
+    toSections(
+      CODE_LIBRARY_SECTIONS,
+      CODE_LIBRARY_SECTION_INFO,
+      CODE_LIBRARY_SECTION_ICONS,
+      codeLibrarySectionHref,
     ),
 };
 

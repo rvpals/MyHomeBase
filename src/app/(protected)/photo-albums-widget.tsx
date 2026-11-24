@@ -14,15 +14,31 @@
 // cycling forever on a screen that may be left open all day. The timer also stops
 // while the tab is hidden, so a background tab pulls nothing.
 //
-// NEVER ENLARGED. The thumbnail is THUMBNAIL_SIZE (160px) on its short side, so a
-// full-width 4:3 frame blew it up ~2.5x and it read as fuzzy. The frame is now a fixed
-// 176px-tall band and the picture sits inside it at its own size (max-h/max-w only, no
-// h-full w-full) -- so it is downscaled at most, never upscaled. The band keeps the
-// card's height stable as portrait and landscape slides alternate.
+// A SMALL CARD, SIZED TO THE PICTURE. The thumbnail is THUMBNAIL_SIZE (160px) on its
+// short side, so stretching it across a ~700px desktop grid column blew it up ~3x and
+// it read as fuzzy. The card is capped at 18rem instead -- about the width of the
+// widest thumbnail plus the card's own padding -- and the picture sits inside at its
+// own size (max-h/max-w only, never h-full w-full), so it is downscaled at most and
+// never enlarged. A small card with a sharp photo, rather than a big card with a
+// blurred one.
 //
-// NARROW: that band is the same at every width, so the card behaves the same in the
-// phone's single stack as in either desktop column. The picker is a native <select>,
-// which is the phone-friendly control anyway.
+// THAT CAP IS WHY THE PICKER SITS IN THE BODY. A <select> in the header's headerAction
+// slot puts a ~400px floor under the card's width, beside the title and the Open link,
+// which is wider than the whole card is now allowed to be. Under the picture it gets
+// the full content width and costs the header nothing.
+//
+// The 12rem band is fixed rather than shrink-to-fit, so the card does not resize itself
+// every few seconds as portrait and landscape slides alternate.
+//
+// NARROW: the cap applies at every width, so this is the same object in the phone's
+// single stack as in either desktop column. The picker is a native <select>, which is
+// the phone-friendly control anyway.
+//
+// IT ALSO OWNS ITS ✕ (`ownsClose`, as Daily Quote does). The grid's own corner button
+// is positioned against the *cell*, which stays a full grid column wide -- so against
+// an 18rem card it would hover in the empty space beside it, attached to nothing. The
+// header slot the picker just vacated is exactly where it belongs instead. The grid
+// still owns the confirmation and the hidden state; only the button's position moves.
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -34,6 +50,7 @@ import { SlotIcon } from "@/components/slot-icon";
 import type { HomeAlbumOption, HomeAlbumSlides } from "@/lib/albums";
 import { HOME_ALBUM_INTERVAL_MS, nextSlideIndex } from "@/lib/albums/slideshow";
 import { getIconSlot } from "@/lib/icons";
+import { useHomeWidgetClose } from "./home-widget-grid";
 import { selectHomeAlbumAction } from "./photo-albums-widget-actions";
 
 // Resolved once at module scope — `getIconSlot` reads the static registry, so this is
@@ -41,6 +58,25 @@ import { selectHomeAlbumAction } from "./photo-albums-widget-actions";
 const CARD_SLOT = getIconSlot("homescreen_card_photo_albums");
 
 const ALBUMS_HREF = "/modules/picture-gallery/albums";
+
+/** Local rather than shared: Daily Quote keeps its own copy too, and twelve lines of
+  * path data is not worth a registered component until a third card wants one. */
+function CloseIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
 
 /** The small rendition. Encoded whole: these folder names contain spaces. */
 function thumbUrl(relativePath: string): string {
@@ -69,6 +105,9 @@ export function PhotoAlbumsWidget({
   initialAlbum?: HomeAlbumSlides;
   className?: string;
 }) {
+  // Opens the grid's "close this card?" confirmation. Undefined wherever the widget is
+  // drawn outside the grid, and the button is then simply not rendered.
+  const onClose = useHomeWidgetClose();
   const [album, setAlbum] = useState<HomeAlbumSlides | undefined>(initialAlbum);
   const [index, setIndex] = useState(0);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -125,7 +164,7 @@ export function PhotoAlbumsWidget({
         value={album?.id ?? ""}
         disabled={pending}
         onChange={(event) => void handleSelect(event.target.value)}
-        className="max-w-[11rem] truncate rounded-md border border-line bg-paper px-2 py-1 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-60"
+        className="w-full truncate rounded-md border border-line bg-paper px-2 py-1 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass disabled:opacity-60"
       >
         {albums.map((option) => (
           <option key={option.id} value={option.id}>
@@ -148,8 +187,23 @@ export function PhotoAlbumsWidget({
           Open
         </Link>
       }
-      headerAction={picker}
-      className={className}
+      headerAction={
+        onClose ? (
+          <button
+            type="button"
+            draggable={false}
+            onClick={onClose}
+            title="Close Photo Albums"
+            aria-label="Close Photo Albums"
+            // `xl:` only, matching the grid's own button: the layout controls do not
+            // exist below that width, so neither does closing a card.
+            className="hidden rounded-md p-1 text-muted transition-colors hover:bg-brass-soft hover:text-brass-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass motion-reduce:transition-none xl:inline-flex"
+          >
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        ) : undefined
+      }
+      className={`w-full max-w-[18rem] ${className ?? ""}`}
     >
       {error && (
         <p
@@ -174,7 +228,7 @@ export function PhotoAlbumsWidget({
         <Link
           href={ALBUMS_HREF}
           aria-label={`Open ${album?.name ?? "this album"} in Picture Gallery`}
-          className="relative flex h-44 w-full items-center justify-center overflow-hidden rounded-lg bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          className="relative flex h-48 w-full items-center justify-center overflow-hidden rounded-lg bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         >
           {/* A plain <img>, not next/image: the bytes come from an authenticated
               route that already serves a small rendition, so the optimiser has
@@ -191,6 +245,8 @@ export function PhotoAlbumsWidget({
           </span>
         </Link>
       )}
+
+      {picker && <div className="mt-3">{picker}</div>}
     </CollapsibleCard>
   );
 }

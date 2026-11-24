@@ -36,23 +36,25 @@ const RECYCLED_SLOT = getIconSlot("journal_card_recycled_entries")!;
 /**
  * Which cards to render.
  *
- * `"both"` is the Correct tab, unchanged. `"recycled"` is the standalone Recycle
- * Bin section, which shows only the second card.
+ * `"duplicates"` is the Duplicate entries section and `"recycled"` is the Recycle
+ * Bin section — one card each. `"both"` renders the pair, which is what the Correct
+ * tab under CSV Import did; no call site passes it since that tab was retired, and
+ * it is kept because the two-card arrangement is what the shared state machine
+ * below is written for, not a mode to be reasoned about separately.
  *
- * This is a prop rather than a second component because the two cards share one
- * state machine on purpose (see the component docblock): a delete moves an entry
- * from one card to the other, and every action replaces both lists wholesale.
- * Splitting the recycle card out would mean duplicating all five action handlers
- * for a view that is already written and proven.
+ * This is a prop rather than three components because the cards share one state
+ * machine on purpose (see the component docblock): a delete moves an entry from one
+ * to the other, and every action replaces both lists wholesale. Splitting them
+ * would mean a second and third copy of all five action handlers.
  */
-export type JournalCorrectViewMode = "both" | "recycled";
+export type JournalCorrectViewMode = "both" | "duplicates" | "recycled";
 
 export interface JournalCorrectViewProps {
   duplicateGroups: DuplicateGroup[];
   recycledEntries: RecycledJournalEntry[];
   categoryIcons: Record<string, string>;
   tagIcons: Record<string, string>;
-  /** Defaults to `"both"`, so the existing Correct tab call site is unchanged. */
+  /** Defaults to `"both"` — both cards, the arrangement this view was written for. */
   show?: JournalCorrectViewMode;
 }
 
@@ -60,8 +62,9 @@ export interface JournalCorrectViewProps {
  * Find duplicate entries and delete the redundant ones, then restore or purge
  * what those deletes produced.
  *
- * Two call sites, one component (see `show`): the Correct tab under CSV Import
- * renders both cards, and the Recycle Bin section renders only the second.
+ * Two call sites, one component (see `show`): the Duplicate entries section renders
+ * the first card and the Recycle Bin section the second. They were one screen — the
+ * Correct tab under CSV Import — until each got a name of its own in the nav.
  *
  * Both lists are `DataGrid`s — the registered result grid, which brings paging,
  * search, per-column filters, selection pruned to the filtered set, CSV export
@@ -258,7 +261,7 @@ export function JournalCorrectView({
       {error && <p className="text-sm text-red-400">{error}</p>}
       {notice && <p className="text-sm text-muted">{notice}</p>}
 
-      {show === "both" && (
+      {show !== "recycled" && (
         <CollapsibleCard
           title="Duplicates"
           titleIcon={<SlotIcon slot={DUPLICATES_SLOT} className="h-4 w-4" />}
@@ -268,7 +271,7 @@ export function JournalCorrectView({
             <p className="text-xs text-muted">
               Entries sharing a date and a title — including ones written at different times of
               the same day. Click a row to read the whole entry, tick the copies you don&apos;t
-              want, and Delete moves them to the recycle bin below rather than destroying them.
+              want, and Delete moves them to the Recycle Bin section rather than destroying them.
             </p>
 
             <DataGrid
@@ -304,74 +307,76 @@ export function JournalCorrectView({
         </CollapsibleCard>
       )}
 
-      <CollapsibleCard
-        title="Recycled Entries"
-        titleIcon={<SlotIcon slot={RECYCLED_SLOT} className="h-4 w-4" />}
-        headerAction={
-          recycled.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setConfirm({ kind: "empty", count: recycled.length })}
-              disabled={isBusy}
-              title="Empty the recycle bin"
-              aria-label="Empty the recycle bin"
-              className="rounded-md p-1 text-muted hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
-            >
-              <TreeIcon name="trash" className="h-4 w-4" />
-            </button>
-          ) : undefined
-        }
-      >
-        <div className="flex flex-col gap-3">
-          <p className="text-xs text-muted">
-            Deleted entries wait here. Restoring one puts it back with its categories, tags and
-            locations. Deleting it forever cannot be undone.
-          </p>
+      {show !== "duplicates" && (
+        <CollapsibleCard
+          title="Recycled Entries"
+          titleIcon={<SlotIcon slot={RECYCLED_SLOT} className="h-4 w-4" />}
+          headerAction={
+            recycled.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setConfirm({ kind: "empty", count: recycled.length })}
+                disabled={isBusy}
+                title="Empty the recycle bin"
+                aria-label="Empty the recycle bin"
+                className="rounded-md p-1 text-muted hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+              >
+                <TreeIcon name="trash" className="h-4 w-4" />
+              </button>
+            ) : undefined
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-muted">
+              Deleted entries wait here. Restoring one puts it back with its categories, tags and
+              locations. Deleting it forever cannot be undone.
+            </p>
 
-          <DataGrid
-            columns={recycledColumns}
-            rows={recycled}
-            getRowKey={(entry) => entry.recycledId}
-            emptyMessage="The recycle bin is empty."
-            exportFileName="journal-recycle-bin"
-            storageKey="journal-recycled-grid"
-            enableSelection
-            onRowClick={(entry) => setOpenEntry({ entry, isRecycled: true })}
-            enableRecordView={false}
-            renderSelectionActions={(selectedRows, clearSelection) => (
-              <>
-                <Button
-                  size="sm"
-                  disabled={isBusy}
-                  onClick={() =>
-                    setConfirm({
-                      kind: "restore",
-                      ids: selectedRows.map((entry) => entry.recycledId),
-                      clearSelection,
-                    })
-                  }
-                >
-                  Restore entries
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={isBusy}
-                  onClick={() =>
-                    setConfirm({
-                      kind: "purge",
-                      ids: selectedRows.map((entry) => entry.recycledId),
-                      clearSelection,
-                    })
-                  }
-                >
-                  Delete forever
-                </Button>
-              </>
-            )}
-          />
-        </div>
-      </CollapsibleCard>
+            <DataGrid
+              columns={recycledColumns}
+              rows={recycled}
+              getRowKey={(entry) => entry.recycledId}
+              emptyMessage="The recycle bin is empty."
+              exportFileName="journal-recycle-bin"
+              storageKey="journal-recycled-grid"
+              enableSelection
+              onRowClick={(entry) => setOpenEntry({ entry, isRecycled: true })}
+              enableRecordView={false}
+              renderSelectionActions={(selectedRows, clearSelection) => (
+                <>
+                  <Button
+                    size="sm"
+                    disabled={isBusy}
+                    onClick={() =>
+                      setConfirm({
+                        kind: "restore",
+                        ids: selectedRows.map((entry) => entry.recycledId),
+                        clearSelection,
+                      })
+                    }
+                  >
+                    Restore entries
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={isBusy}
+                    onClick={() =>
+                      setConfirm({
+                        kind: "purge",
+                        ids: selectedRows.map((entry) => entry.recycledId),
+                        clearSelection,
+                      })
+                    }
+                  >
+                    Delete forever
+                  </Button>
+                </>
+              )}
+            />
+          </div>
+        </CollapsibleCard>
+      )}
 
       {openEntry && (
         <Modal
@@ -515,7 +520,7 @@ function confirmDescription(pending: PendingConfirm): string {
     case "recycle":
       return `Are you sure you want to remove the checked ${count} ${plural(
         count,
-      )}? They move to the recycle bin below, so this can be undone.`;
+      )}? They move to the Recycle Bin section, so this can be undone.`;
     case "restore":
       return `Are you sure you want to restore ${count} ${plural(
         count,

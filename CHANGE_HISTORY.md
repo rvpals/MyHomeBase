@@ -1,5 +1,73 @@
 # Change History
 
+## 2026-11-24 — Code Library module; Journal: Duplicate entries section; Photo Albums card resized; lint-clean React patterns
+
+**Seven migrations, `0178`–`0184`: `0178_create_code_library` (`cod_snippets`),
+`0179_seed_code_library_module` (registers the module), `0180_create_code_library_taxonomy`
+(categories + tags), `0181_add_pinned_to_code_snippets`, `0182_add_card_color_to_code_snippets`,
+`0183_create_code_library_recycle_bin` (bin + mirror tables), `0184_code_snippet_encryption_and_source`.
+All seven must be applied on the NAS before the Code Library opens.** Dependency changes:
+`@types/node` ^20 → ^24, `vitest` ^5.0.1 → ^3.2.7 (lockfile regenerated). No paid or outside service.
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted,
+tested or opened in a browser as part of this release. Treat it as unverified and work
+through the Testing List (it has Journal items for this release but none yet for the Code Library).
+
+### Code Library (new module, slug `code-library`)
+
+- **A shelf of code snippets** stored as plain text (not sanitized HTML like Clips), so a
+  snippet round-trips byte for byte. Home screen of cards with a syntax-highlighted
+  block, a **Copy** button (copies the whole snippet, not the visible lines), language,
+  search and filters, and a list/card view mode remembered per reader.
+- **Highlighting follows the running theme.** `deriveCodeTokens` rotates the theme's accent
+  hue per token role and clamps each colour until it clears AA against that theme's paper;
+  `layout.tsx` emits the six `--code-*` variables with the rest of the theme block. No fixed
+  editor palette, so it works on light themes and admin-created ones.
+- **Categories and tags** (AND-combined filters), a **Metadata** section, **pinning**,
+  a **card tint** stored as a theme key never a hex, per-snippet **encryption** (shared
+  with Journal/Clips), a **source URL** and **notes**.
+- **Recycle Bin**: delete only ever moves a snippet to the bin (mirror tables); restore,
+  purge and empty-bin live there. An **Instructions** panel documents the module.
+- **CLI** `code-library`: list/show/labels/add/edit/pin/unpin/colour/delete/recycled/restore/
+  purge/empty-bin. `show` prints the snippet verbatim. Sealing is deliberately not reachable
+  from the CLI. Logic in `src/lib/code-library/` (+ tests); registered in `wiring.ts`,
+  `defaults.ts`, `module-sections.ts`.
+- **Icon slots:** `code_library_section_main`, `code_library_section_metadata` and the rest
+  of the Code Library group in `src/lib/icons/slots.ts`; republish for the nav icons.
+- **New shared pieces:** `CopyButton` (components.md), `useStoredValue` (an external-store
+  read of localStorage, SSR-safe), `code-tokens.ts` and `hexToHsl` in colour-themes.
+
+### Journal
+
+- **Duplicate entries is its own section** under Data Management (nav order: CSV Import,
+  Calendar Import, Duplicate entries, Review Data, Recycle Bin). The Correct tab is gone:
+  CSV Import is one screen with no tab strip, the Duplicates card lives in the new section
+  and the Recycled Entries card in **Recycle Bin**. Old `/modules/journal/import` bookmarks
+  still work. New slot `journal_section_duplicate_entries`; the two card slots' `where` text
+  updated. Files: journal-sections.ts, journal-section.tsx, journal-correct-view.tsx,
+  journal-import-view.tsx, journal-review-view.tsx, journal-calendar-view.tsx, CLI
+  `journal-same-date` / `journal-bulk-edit` wording.
+
+### Home
+
+- **Photo Albums card is small and sized to its picture** (capped at 18rem, 12rem image band)
+  so the 160px thumbnail is no longer stretched ~3×. The album picker moved under the
+  picture, and the card owns its ✕ (grid close confirmation unchanged).
+
+### Under the hood
+
+- React-compiler lint fixes with no intended behaviour change: `CollapsibleCard` /
+  `CustomizableCard` read their stored open state through `useStoredValue` instead of an
+  effect and claim their ordinal in a lazy `useState`; `usePuckDrag` exposes
+  `consumeDidDrag()` instead of a raw ref; `PersonalToolbar` destructures its drag hook.
+- Deleted the unused `src/lib/music/browse-icons.fixture.ts`; several test files adjusted
+  (documents keywords, expense auto-import, pictionary import, icons slots, journal-reports
+  render, journal metadata-export, music browse, scheduled-refresh settings, modules).
+- Docs: modules.md, components.md, coding-guide.md (`cod_` prefix), CLI_registry.md,
+  MyHomeBase_feature.md, Testing_List.md (Journal items only) updated alongside.
+
+---
+
 ## 2026-11-23 — Chess: a clock, board help, post-game analysis and a record per level; Journal: tag/category combos and template icons
 
 **Three migrations: `0175_create_chess_results` (new table `gam_chess_results`),

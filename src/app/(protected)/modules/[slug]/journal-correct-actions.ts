@@ -48,7 +48,7 @@ export async function loadJournalCorrectDataAction(): Promise<CorrectDataResult>
   try {
     return { ok: true, ...readCorrectData() };
   } catch (error) {
-    return toErrorResult(error, "Failed to load the Correct tab.");
+    return toErrorResult(error, "Failed to load that screen.");
   }
 }
 

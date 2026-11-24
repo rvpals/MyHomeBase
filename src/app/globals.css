@@ -5538,3 +5538,50 @@ html[data-color-theme="glass"] {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Code Library: a highlighted snippet.
+
+   The six `--code-*` variables are written into the theme block in layout.tsx by
+   `deriveCodeTokens`, which rotates the running theme's accent hue per role and
+   clamps each one's lightness until it clears WCAG AA against that theme's
+   paper. So there is no palette here — only the mapping from a token role to the
+   variable that was computed for it.
+
+   That indirection is the whole point. A fixed editor palette (Dracula, Solarized,
+   anything from VS Code) would be the same six colours on all eight built-in
+   themes, two of which are light, and on every theme an admin creates at runtime.
+   It is the same mistake `clp_clips.card_color` avoids by storing a key instead of
+   a hex. See src/lib/color-themes/code-tokens.ts.
+
+   The fallbacks matter: a page rendered before the theme block exists — or one
+   where a token was somehow not emitted — still shows readable code rather than
+   inheriting a colour that may not contrast at all.
+   --------------------------------------------------------------------------- */
+.code-block .tok-keyword {
+  color: var(--code-keyword, var(--brass));
+}
+
+.code-block .tok-string {
+  color: var(--code-string, var(--brass-dark));
+}
+
+.code-block .tok-number {
+  color: var(--code-number, var(--brass-dark));
+}
+
+.code-block .tok-entity {
+  color: var(--code-entity, var(--ink));
+}
+
+/* Italic as well as coloured, so a comment still reads as an aside for anyone
+   who cannot separate the two hues — the one role where that distinction is
+   worth carrying twice. */
+.code-block .tok-comment {
+  color: var(--code-comment, var(--muted));
+  font-style: italic;
+}
+
+.code-block .tok-punctuation {
+  color: var(--code-punctuation, var(--muted));
+}

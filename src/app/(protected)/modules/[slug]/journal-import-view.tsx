@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
-import { Tabs, type TabItem } from "@/components/tabs";
 import type {
   ColumnMapping,
   CsvPreview,
@@ -56,20 +55,19 @@ function readFileAsText(file: File): Promise<string> {
 
 export interface JournalImportViewProps {
   namedMappings: NamedMapping[];
-  /**
-   * The Correct tab's content, passed in as a slot.
-   *
-   * A slot rather than props because that tab is a server-rendered panel (it
-   * reads every entry to group the duplicates) and this is a client component.
-   * Handing it the finished element keeps the CSV importer free of any
-   * knowledge of duplicate finding or the recycle bin.
-   */
-  correctSlot?: ReactNode;
 }
 
+/**
+ * The CSV importer, and nothing else.
+ *
+ * It used to be the Import tab of a two-tab screen whose other tab, Correct, held
+ * the duplicate finder and the recycle bin. Both are sections of their own now
+ * (Duplicate entries, Recycle Bin), so the tab strip had one tab left and came out
+ * with them: a single-tab `Tabs` is chrome that says nothing. The `correctSlot`
+ * prop that carried the server-rendered panel in went with it.
+ */
 export function JournalImportView({
   namedMappings: initialNamedMappings,
-  correctSlot,
 }: JournalImportViewProps) {
   const router = useRouter();
   const [fileText, setFileText] = useState<string | undefined>(undefined);
@@ -549,16 +547,5 @@ export function JournalImportView({
     </div>
   );
 
-  // Supplied by the server section, not built here: the Correct tab reads the
-  // whole journal to find duplicates, which is a server job.
-  const correctPanel = correctSlot ?? (
-    <p className="text-sm text-muted">Nothing to correct here.</p>
-  );
-
-  const tabs: TabItem[] = [
-    { key: "import", label: "Import", content: importPanel },
-    { key: "correct", label: "Correct", content: correctPanel },
-  ];
-
-  return <Tabs items={tabs} />;
+  return importPanel;
 }

@@ -146,6 +146,25 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-24 — Journal: Duplicate entries becomes its own section
+
+**No migration.** One new icon slot (`journal_section_duplicate_entries`), so a republish
+is needed for the nav row's icon to be overridable. **Not seen on screen** — nothing below
+has been opened in a browser.
+
+- [ ] **1.** Journal → Data Management: the group reads CSV Import, Calendar Import, **Duplicate entries**, Review Data, Recycle Bin — on the desktop tree *and* in the compact bottom bar
+- [ ] **2.** Journal → CSV Import: the Import/Correct tab strip is gone and the importer fills the screen; a CSV still previews, maps and imports as before
+- [ ] **3.** Journal → Duplicate entries: the Duplicates card is there and the Recycled Entries card is **not**
+- [ ] **4.** Entries sharing a date and a title are listed, grouped by "date · title" with "2 of 3", and sorting by another column then back by group still reads as sets
+- [ ] **5.** Clicking a row opens the whole entry in the viewer (the grid only carries a 100-word excerpt)
+- [ ] **6.** Ticking copies and choosing **Delete checked** asks first, says the entries move to the **Recycle Bin section**, and they appear there afterwards
+- [ ] **7.** Journal → Recycle Bin still shows only the Recycled Entries card, and Restore / Delete forever / Empty all still work
+- [ ] **8.** Admin → Icons: the **Duplicate entries** slot appears under Journal sections, defaults to the two-sheets glyph, and an uploaded override shows on the nav row
+- [ ] **9.** The old `/modules/journal/import` bookmark still opens CSV Import, and `/modules/journal/duplicate-entries` opens the new section
+- [ ] **10.** Phone width (390px): the new section's grid falls back to the card layout and the bottom bar reaches it
+
+---
+
 ## 2026-11-23 — Journal: template icons, Date/Time and Categories & Tags group boxes, tag/category combos
 
 **Migrations 0176 (`jrn_prefill_templates.icon_image`) and 0177
@@ -679,7 +698,7 @@ section bar and a track playing.
 - [ ] **3.** Merge is greyed out with one row ticked (tooltip says to tick two or more) and enabled at two
 - [ ] **4.** Merge opens an editable draft: earliest date/time, titles joined with " / ", each entry's content under a time-and-title heading, categories and tags combined without repeats
 - [ ] **5.** Save merged entry creates one new entry, the grid shows it, and a "delete the originals?" box appears
-- [ ] **6.** Keep them: originals stay; Delete N: originals move to the recycle bin and the grid drops them (restorable under CSV Import → Correct)
+- [ ] **6.** Keep them: originals stay; Delete N: originals move to the recycle bin and the grid drops them (restorable under Data Management → Recycle Bin)
 - [ ] **7.** Close the draft without saving: nothing is created and nothing is deleted
 - [ ] **8.** Tick a locked entry along with unlocked ones and Merge: the locked one is left out and the dialog says how many; ticking only locked entries shows an error
 - [ ] **9.** Tick an encrypted entry and Merge: refused with a "remove encryption first" message
@@ -1111,7 +1130,7 @@ Needs migration 0152 applied on the NAS (Entries → Filtering card). Calendar r
 - [ ] **1.** Journal → Calendar: click a day with entries — every row has a Delete button
 - [ ] **2.** Journal → Calendar: Delete opens a dialog naming the entry, date and time; Cancel closes it and deletes nothing
 - [ ] **3.** Journal → Calendar: confirming Delete removes the row, the calendar cell title and the count
-- [ ] **4.** Journal → Calendar: the deleted entry appears in Data Management → Correct → Recycled Entries and Restore brings it back
+- [ ] **4.** Journal → Calendar: the deleted entry appears in Data Management → Recycle Bin and Restore brings it back
 - [ ] **5.** Journal → Calendar: deleting a locked entry shows the lock note, and its restore comes back locked
 - [ ] **6.** Journal → Calendar on a phone: the day list row with a long title, place and chips still reads cleanly beside Delete
 - [ ] **7.** Journal → Home screen layout: the section appears in the tree and loads
@@ -1340,7 +1359,7 @@ No migration. Phone-width items are marked (phone).
 - [ ] **18.** Navigation tree: Expand all opens every module including Administration, and persists
 - [ ] **19.** Navigation tree: both buttons are disabled while the filter box has text
 - [ ] **20.** Journal → Review: a same-date entry row has a red × that moves it to the recycle bin at once, with a notice, and the list does not jump or re-sort
-- [ ] **21.** Journal → Review: the deleted entry is restorable from Data Management → CSV Import → Correct
+- [ ] **21.** Journal → Review: the deleted entry is restorable from Data Management → Recycle Bin
 - [ ] **22.** Household: the HSA expense form has no Time field, and Use current date fills just the date
 
 ---
@@ -1396,7 +1415,7 @@ phone-only.
 - [ ] **15.** `npm run cli -- journal-reports list` and `run --id N` print the reports and rendered HTML
 - [ ] **16.** Journal → Data Management shows a Recycle Bin section with its own icon
 - [ ] **17.** Recycle Bin lists deleted entries; Restore, Delete forever and Empty work, with no Duplicates card
-- [ ] **18.** CSV Import → Correct still shows both the Duplicates and Recycled Entries cards
+- [ ] **18.** ~~CSV Import → Correct still shows both the Duplicates and Recycled Entries cards~~ *(superseded 2026-11-24 — the Correct tab became the Duplicate entries section and CSV Import has no tabs)*
 - [ ] **19.** Journal overview shows a fourth tile with the recycled count
 - [ ] **20.** Clicking an overview stat tile opens the Entries screen filtered to it; Total Entries is not a link
 - [ ] **21.** Admin → Configuration → Icons lists the Journal reports slots and "Recycle Bin", and an upload replaces them
@@ -1518,7 +1537,7 @@ journal with at least one locked entry and a few entries carrying tags already.
 - [ ] **17.** The entry's **"last updated"** timestamp moves after a categories/tags-only edit (not just after a place change)
 - [ ] **18.** **Delete** opens a confirm naming the count, says the entries go to the recycle bin, and Cancel leaves the ticks and the list alone
 - [ ] **19.** Deleting a selection **including a locked entry** moves it too, and the confirm says so up front
-- [ ] **20.** Deleted entries are in **Data Management → CSV Import → Correct → Recycled Entries**, and a restored one comes back **still locked**
+- [ ] **20.** Deleted entries are in **Data Management → Recycle Bin**, and a restored one comes back **still locked**
 - [ ] **21.** After any bulk action the ticks clear, the row count above the grid updates, and the list matches the server on reload
 - [ ] **22.** With a saved filter selected on Main, a bulk edit **re-queries that filter** — an entry edited out of it disappears from the list
 - [ ] **23.** On the Log tab, bulk-replacing categories so an entry loses "Log" makes it **disappear from that tab** (and it's still findable on Main)
@@ -1652,7 +1671,7 @@ needs network and may be slow.
 - [ ] **29.** Foreign Currencies: rates show their real precision (four decimals where the pair needs it), not rounded to cents
 - [ ] **30.** Foreign Currencies: the flags render as drawn shapes on Windows, not as letter pairs
 - [ ] **31.** Journal → Review: the locked marker is a padlock on the entry's title, not in the Time column
-- [ ] **32.** Journal → Correct: the locked marker is a padlock beside the group, not in the Time column
+- [ ] **32.** Journal → Duplicate entries: the locked marker is a padlock beside the group, not in the Time column
 - [ ] **33.** Journal: editing a locked entry still leaves it locked afterwards
 - [ ] **34.** Home screen: the up/down move buttons are gone from draggable cards; dragging the frame still reorders
 - [ ] **35.** Configuration → Icons → Icon Positions: `stock_card_currencies` and `household_section_configuration` can be given an uploaded icon
@@ -1727,7 +1746,7 @@ item 10 is desktop/phone parity, since the panel has to restack narrow.
 - [x] **61.** Journal → Review Data: if one of the ticked entries vanished before the
   merge ran, the cleanup dialog's count and offer reflect only the entries the merge
   actually read, not the original selection; choosing Delete N sends exactly those to
-  the recycle bin (undoable from CSV Import → Correct) — tested 2026-10-04
+  the recycle bin (undoable from Data Management → Recycle Bin) — tested 2026-10-04
 - [x] **62.** CLI: `npm run cli -- journal-same-date --merge 41,42,43 --save
   --delete-originals` creates the merged entry and then recycles the three sources in
   one command; omitting `--save` leaves `--delete-originals` with no effect — tested 2026-10-04
@@ -1907,12 +1926,12 @@ since a wrong backfill would silently swap Music's picture for the app-wide one.
 same reason — this ships off, so an existing install must render unchanged until an
 admin ticks it on.
 
-- [ ] **105.** Journal → Data Management → Review Data: the card lists every date carrying more than one entry, each row showing its position ("2 of 4"), time, title and a 100-word excerpt — including untitled entries, which the Correct tab beside it leaves out
+- [ ] **105.** Journal → Data Management → Review Data: the card lists every date carrying more than one entry, each row showing its position ("2 of 4"), time, title and a 100-word excerpt — including untitled entries, which Duplicate entries above it leaves out
 - [ ] **106.** Journal → Review Data: clicking a row opens the full entry, with an Edit button that opens the same form the single-entry screen uses; closing it returns to the list with page, sort and ticks intact
 - [ ] **107.** Journal → Review Data: Edit is disabled on a locked entry, the same as it is from `/entries/[id]`
 - [ ] **108.** Journal → Review Data: ticking several entries and choosing Merge drafts one new entry (earliest date/time, titles joined with `/`, each source's content under a `— HH:MM · Title` line, categories and tags combined) and opens it in the ordinary entry form — saving creates the new entry and leaves every source entry exactly where it was
 - [ ] **109.** Journal → Review Data: locations and weather are not carried into a merged draft, and the form still lets you add them
-- [ ] **110.** Journal → Review Data: ticking several entries and choosing Delete asks first, then moves them to the recycle bin (restorable from the Correct tab)
+- [ ] **110.** Journal → Review Data: ticking several entries and choosing Delete asks first, then moves them to the recycle bin (restorable from the Recycle Bin section)
 - [ ] **111.** CLI: `npm run cli -- journal-same-date`, `--merge 41,42,43` (prints only), `--merge ... --save` (creates), and `--delete 41,42` all behave as documented
 - [ ] **112.** Administration → Configuration → Module Configuration: the Music Library's background texture control shows "Its own uploaded picture" already selected, and the module's screens still show the same picture as before this release
 - [ ] **113.** Administration → Configuration → Module Configuration: a module with no picture of its own can pick "Pick one from the library" and choose a thumbnail from the App Texture library; that module's screens then show it with that picture's own opacity/blur
@@ -2181,7 +2200,7 @@ only when that one feature is used, not when the page loads.
 - [ ] **258.** Games: Blackjack
 - [ ] **259.** Games: Minesweeper
 - [ ] **260.** Journal: a recycle bin
-- [ ] **261.** Journal: a Correct tab
+- [ ] **261.** Journal: a Correct tab *(became the Duplicate entries section, 2026-11-24)*
 - [ ] **262.** Journal: metadata backup
 
 ## 2026-09-01 — Release

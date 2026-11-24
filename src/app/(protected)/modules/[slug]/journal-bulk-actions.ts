@@ -115,7 +115,7 @@ function refresh(scope: BulkRefreshScope): JournalEntry[] {
  * Moves the ticked entries to the recycle bin.
  *
  * The bin, not a hard delete — a mis-ticked row in a list of hundreds has to be
- * recoverable. They are restorable from Data Management → CSV Import → Correct.
+ * recoverable. They are restorable from Data Management → Recycle Bin.
  *
  * **Locked entries move too**, deliberately. The bin stores `isLocked` with the
  * row, so the lock survives the trip and a restore brings the entry back locked;

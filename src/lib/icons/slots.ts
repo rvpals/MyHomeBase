@@ -578,6 +578,22 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // The Duplicates card moved out of CSV Import's Correct tab and became a
+    // section of its own. The card keeps `journal_card_duplicates` below; this is
+    // the nav row, which is a different place and so a different slot. Derived by
+    // `sectionSlotId` from the section slug `duplicate-entries` (hyphen -> underscore).
+    id: "journal_section_duplicate_entries",
+    label: "Duplicate entries",
+    group: "Journal sections",
+    where: "Journal → section panel → Data Management → Duplicate entries.",
+    // `copy` — two offset sheets. The concept is registered under that name in
+    // TREE_ICON_NAMES, not "duplicate", which is what this said and which
+    // `TreeIcon` renders as nothing at all.
+    defaultConcept: "copy",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "journal_section_review_data",
     label: "Review Data",
     group: "Journal sections",
@@ -879,7 +895,7 @@ export const ICON_SLOTS: IconSlot[] = [
     id: "journal_card_duplicates",
     label: "Duplicates card",
     group: "Journal cards",
-    where: "Journal → Data Management → Correct → the Duplicates card header.",
+    where: "Journal → Data Management → Duplicate entries → the Duplicates card header.",
     defaultConcept: "list",
     wired: true,
     namespace: "tree",
@@ -888,7 +904,7 @@ export const ICON_SLOTS: IconSlot[] = [
     id: "journal_card_recycled_entries",
     label: "Recycled Entries card",
     group: "Journal cards",
-    where: "Journal → Data Management → Correct → the Recycled Entries card header.",
+    where: "Journal → Data Management → Recycle Bin → the Recycled Entries card header.",
     defaultConcept: "trash",
     wired: true,
     namespace: "tree",
@@ -1288,6 +1304,49 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Clips sections",
     where: "Clips → section panel → Configuration.",
     defaultConcept: "gear",
+    wired: true,
+    namespace: "tree",
+  },
+  /* ---------------------------------------------------------------------------------
+     Code Library (migrations 0178, 0179). One section for now — the home screen *is*
+     the module, as it is in Clips. The id namespace is `code_library`, with an
+     underscore, because `sectionSlotId` replaces hyphens in the section id but not in
+     the namespace: passing the `code-library` slug would mint
+     `code-library_section_main`. `CODE_LIBRARY_ICON_NAMESPACE` is the single place
+     that is declared, and the shell passes it to `TwoTierShell`.
+  --------------------------------------------------------------------------------- */
+  {
+    id: "code_library_section_main",
+    label: "Code Library home",
+    group: "Code Library sections",
+    where: "Code Library → section panel → Home screen.",
+    // `grid`, matching the Clips home row: a list of cards is what both screens
+    // are. There is no `code` concept in TREE_ICON_NAMES, and adding one means
+    // drawing it for the classic set and naming it in all twelve candidate maps in
+    // scripts/gen-icon-glyphs.mjs, where a missing concept is fatal by design.
+    defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "code_library_section_metadata",
+    label: "Categories & Tags",
+    group: "Code Library sections",
+    where: "Code Library → section panel → Categories & Tags.",
+    // `list`, matching the Clips row of the same name: both screens are two
+    // managed vocabularies side by side.
+    defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "code_library_section_recycled",
+    label: "Recycled Snippets",
+    group: "Code Library sections",
+    where: "Code Library → section panel → Recycled Snippets.",
+    // The bin, which is what the screen is — migration 0183. Deleting a snippet
+    // moves it here rather than destroying it.
+    defaultConcept: "trash",
     wired: true,
     namespace: "tree",
   },

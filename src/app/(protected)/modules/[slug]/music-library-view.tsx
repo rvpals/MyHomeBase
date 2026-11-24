@@ -110,8 +110,17 @@ export function MusicLibraryView() {
   // default instead of reaching a Tailwind class that doesn't exist.
   const columns = parseLibraryColumns(params.get("cols"));
 
-  const setParams = useCallback(
-    (next: { view?: LibraryView; group?: string | null; columns?: LibraryColumnCount }) => {
+  // A plain function, not a `useCallback`. The compiler could not preserve the
+  // manual memo and so skipped optimizing this whole component — and the memo
+  // was buying nothing anyway: `setParams` is only ever called from an event
+  // handler, never passed as a dependency to another hook, so a fresh identity
+  // per render costs no re-render. Letting the compiler memoize the component
+  // is worth more than hand-memoizing one callback inside it.
+  const setParams = (next: {
+    view?: LibraryView;
+    group?: string | null;
+    columns?: LibraryColumnCount;
+  }) => {
       const updated = new URLSearchParams(params.toString());
       if (next.view !== undefined) updated.set("view", next.view);
       if (next.group === null) updated.delete("group");
@@ -121,9 +130,7 @@ export function MusicLibraryView() {
       if (next.columns === 1) updated.delete("cols");
       else if (next.columns !== undefined) updated.set("cols", String(next.columns));
       router.replace(`?${updated.toString()}`, { scroll: false });
-    },
-    [params, router],
-  );
+  };
 
   // The two tree/grid views never show a track list, and a grouping view shows one only
   // once a group is picked -- offering a column choice that changes nothing on screen

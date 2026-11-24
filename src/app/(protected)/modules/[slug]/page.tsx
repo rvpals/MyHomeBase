@@ -14,6 +14,7 @@ import { JournalSection } from "./journal-section";
 import { MusicSection } from "./music-section";
 import { StockSection } from "./stock-section";
 import { ClipsSection } from "./clips-section";
+import { CodeLibrarySection } from "./code-library-section";
 import { DocumentsSection } from "./documents-section";
 import { HouseholdSection } from "./household-section";
 import { ToolsSection } from "./tools-section";
@@ -36,6 +37,7 @@ const TOOLS_MODULE_SLUG = "tools";
 const HOUSEHOLD_MODULE_SLUG = "household";
 const CLIPS_MODULE_SLUG = "clips";
 const DOCUMENTS_MODULE_SLUG = "documents";
+const CODE_LIBRARY_MODULE_SLUG = "code-library";
 
 function ModuleBody({
   slug,
@@ -46,6 +48,7 @@ function ModuleBody({
   clipsTag,
   clipsTab,
   documentsContents,
+  codeLanguage,
 }: {
   slug: string;
   isCurrentUserAdmin: boolean;
@@ -58,6 +61,13 @@ function ModuleBody({
   clipsTab?: string;
   /** The Document Library's "search inside files" toggle (migration 0165). */
   documentsContents?: boolean;
+  /**
+   * The Code Library's language filter. Its own param rather than reusing
+   * `category`: a language is a column on the snippet, not a taxonomy row, and
+   * sharing a name with Clips' category chips would make a URL lie about what it
+   * filters. The text search *is* shared — see the `clipsSearch` note above.
+   */
+  codeLanguage?: string;
 }) {
   // Investments, My Journal, and Expense all use a tree nav: the module root
   // is their home/dashboard, and every other section is its own route under
@@ -115,6 +125,24 @@ function ModuleBody({
     );
   }
 
+  if (slug === CODE_LIBRARY_MODULE_SLUG) {
+    // The home screen *is* the module here too, so its filters live in this
+    // route's query string rather than a section route's.
+    // Reuses the shared `search`/`category`/`tag` params, as Clips and the
+    // Document Library do — all three filter a list by the same three ideas, and
+    // a third spelling would only make a URL harder to read. `language` is this
+    // module's own.
+    return (
+      <CodeLibrarySection
+        section="main"
+        search={clipsSearch}
+        language={codeLanguage}
+        category={clipsCategory}
+        tag={clipsTag}
+      />
+    );
+  }
+
   if (slug === DOCUMENTS_MODULE_SLUG) {
     // The same three filter params Clips uses — the home screen *is* the list here
     // too, so a filtered library has to be a real URL.
@@ -156,10 +184,11 @@ export default async function ModulePage({
     tag?: string | string[];
     tab?: string | string[];
     contents?: string | string[];
+    language?: string | string[];
   }>;
 }) {
   const { slug } = await params;
-  const { classId, search, category, tag, tab, contents } = await searchParams;
+  const { classId, search, category, tag, tab, contents, language } = await searchParams;
   // A repeated ?classId= yields an array; take the first rather than joining.
   const rawClassId = Array.isArray(classId) ? classId[0] : classId;
   const requestedClassId = Number(rawClassId) || undefined;
@@ -173,6 +202,10 @@ export default async function ModulePage({
   // The Document Library's "search inside files" toggle (migration 0165). Present
   // only when on, so the common URL is unchanged from before it existed.
   const documentsContents = (Array.isArray(contents) ? contents[0] : contents) === "1";
+  // The Code Library's language filter. Raw, like the four above: `snippetFilterSchema`
+  // takes it as a plain string on purpose, so a language that no longer exists
+  // narrows the list to nothing rather than 404ing.
+  const codeLanguage = Array.isArray(language) ? language[0] : language;
 
   // Before the lookup, because this slug no longer resolves to a module row.
   if (slug === RETIRED_ATTENDANCE_SLUG) {
@@ -200,6 +233,7 @@ export default async function ModulePage({
         clipsTag={clipsTag}
         clipsTab={clipsTab}
         documentsContents={documentsContents}
+        codeLanguage={codeLanguage}
       />
     </div>
   );

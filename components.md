@@ -48,6 +48,7 @@ pattern instead of inventing one.
 | Component | Use it for | Source | Client? |
 |-----------|-----------|--------|---------|
 | [`Button`](#button) | Any button or button-styled link | [src/components/button.tsx](src/components/button.tsx) | no |
+| [`CopyButton`](#copybutton) | **Copy a string to the clipboard** — with a self-resetting "Copied" tick | [src/components/copy-button.tsx](src/components/copy-button.tsx) | yes |
 | [`DataGrid`](#datagrid) | **Result grid** — any table of records | [src/components/data-grid.tsx](src/components/data-grid.tsx) | yes |
 | [`DataGridCompact`](#datagridcompact) | `DataGrid`'s card list below 1024px — **not called directly** | [src/components/data-grid-compact.tsx](src/components/data-grid-compact.tsx) | yes |
 | [`DataGridCompact2`](#datagridcompact2) | `DataGrid`'s other compact form — one record per tab. Via `compactLayout="record"`, **not called directly** | [src/components/data-grid-compact-2.tsx](src/components/data-grid-compact-2.tsx) | yes |
@@ -268,6 +269,50 @@ switch. **Every** clickable action uses this — do not hand-roll a `<button cla
 
 **Notes:** `primary`/`secondary` take their fill and shadow from theme tokens; `danger`
 stays a fixed semantic red across every color theme. Respects `prefers-reduced-motion`.
+
+---
+
+## CopyButton
+
+**Copies a string to the clipboard and says so.** A `Button` that writes `text`, then
+shows "Copied" for 1.5s and resets itself. Use this rather than a sixth hand-rolled
+`navigator.clipboard` call.
+
+- **Source:** [src/components/copy-button.tsx](src/components/copy-button.tsx)
+- **Import:** `import { CopyButton } from "@/components/copy-button";`
+- **Client component:** yes (it owns the copied/failed state and its timer)
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `text` | `string` | Exactly what lands on the clipboard. Copied byte for byte — never trimmed, never reformatted. |
+| `label?` | `string` | Resting label. Default `"Copy"`. |
+| `title?` | `string` | Native tooltip. **Set it wherever the button sits beside a truncated view of the text** — "Copy all 42 lines" tells a reader they get the whole thing, which "Copy" beside six visible lines does not. |
+| `size?` | `"sm" \| "md"` | Default `"sm"` — it is usually a row action. |
+| `variant?` | `"primary" \| "secondary"` | Default `"secondary"`. No `danger`: copying destroys nothing. |
+| `disabled?` | `boolean` | |
+| `className?` | `string` | Merged last. |
+
+```tsx
+<CopyButton text={snippet.code} title={`Copy all ${snippet.lineCount} lines`} />
+```
+
+**Used by:** the Code Library snippet card
+[code-library-home-view.tsx](src/app/(protected)/modules/[slug]/code-library-home-view.tsx).
+
+**Notes:** It **never fetches** — the caller must already hold the text. That is what
+makes it reliable: the clipboard write happens inside the click with nothing awaited
+first, and an `await` before the write can spend the browser's user-gesture window,
+which is how a copy button comes to fail on Safari and nowhere else. If a caller only
+has an id, fetch before rendering the button, not inside it.
+
+A failed write (denied permission, insecure origin, no API) turns the label into
+"Copy failed" for the same 1.5s rather than raising a dialog — the text is on screen
+and selectable, which is the fallback either way, but silence reads as a broken button.
+
+Five older hand-rolled copies predate this and are **not** migrated: the clip viewer,
+the scratchpad, the AI-export view, the ticker consult dialog and the Admin code
+tester. The clip viewer's is genuinely different — it writes both a `text/html` and a
+`text/plain` flavour — so it is not simply a call site waiting to be converted.
 
 ---
 
@@ -1036,7 +1081,7 @@ confirmation
 [journal-calendar-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-view.tsx),
 which names the one entry rather than counting a selection, so it is a plain `Modal` and
 not [`BulkConfirm`](#bulkconfirm). That row delete recycles (it is restorable from Data
-Management → Correct) rather than hard-deleting as the entry screen's own Delete does, and
+Management → Recycle Bin) rather than hard-deleting as the entry screen's own Delete does, and
 stays enabled for a locked entry because the bin keeps the lock.
 
 `size="full"` drops the overlay's gutter and the panel's rounding so nothing of the page
@@ -3352,8 +3397,8 @@ server call arrives as a prop.
 
 **Not yet used by** MyJournal's importer
 [journal-import-view.tsx](src/app/(protected)/modules/[slug]/journal-import-view.tsx), which
-predates this component and still hand-rolls the same markup inside its own Import/Correct/Reset
-tabs. Migrating it is a separate change; until then, **build new importers on this** rather than
+predates this component and still hand-rolls the same markup (it has no tabs any more —
+Correct became the Duplicate entries section). Migrating it is a separate change; until then, **build new importers on this** rather than
 copying the journal view.
 
 **Row selection.** Every data row is listed with a tick-box (ticked = import),

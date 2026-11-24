@@ -41,8 +41,8 @@ import { parseFlags } from "./parse-flags";
  * web dialog's follow-up prompt offers. It always runs *after* the merged entry
  * is written, so a failure there leaves the originals intact.
  *
- * `--delete` moves entries to the recycle bin (the same bin the Correct tab
- * restores from), so it is undoable there rather than destructive here.
+ * `--delete` moves entries to the recycle bin (the same bin the web Recycle Bin
+ * section restores from), so it is undoable there rather than destructive here.
  *
  * `--lock` is the web card's "Lock & exclude from review": it marks the entries
  * settled, and since locked entries are dropped before grouping they — and any
@@ -196,8 +196,8 @@ function mergeSelection(raw: string, save: boolean, deleteOriginals: boolean): v
   }
 
   // Only now that the merged entry exists. The same `recycleEntries` the web
-  // path calls, so the originals are restorable from the Correct tab rather
-  // than destroyed.
+  // path calls, so the originals are restorable from the Recycle Bin section
+  // rather than destroyed.
   console.log(`Created entry #${created.id}.`);
   const { movedCount, skippedCount } = recycleEntries(
     deps.journalRepo,

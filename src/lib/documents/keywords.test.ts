@@ -150,8 +150,12 @@ describe("rankDocumentKeywords", () => {
 
     expect(ranking.keywords).toHaveLength(2);
     // The heading counts every word found, not the two that were returned — a list
-    // saying "2 keywords" over a library of five would be wrong.
-    expect(ranking.totalWords).toBe(5);
+    // saying "2 keywords" over a library of six would be wrong.
+    //
+    // Six, not five: titles are ranked alongside body text ("a title word is one
+    // occurrence like any other"), so "Words" counts too. The sibling tests above
+    // get away with ignoring their titles because "One" is a stopword.
+    expect(ranking.totalWords).toBe(6);
     expect(ranking.documentsScanned).toBe(1);
   });
 

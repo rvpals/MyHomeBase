@@ -411,8 +411,8 @@ export type {
   JournalMetadataRestoreSummary,
 } from "./metadata-export";
 
-// Duplicate finding for the Correct tab. Pure functions over a list of entries
-// — no repository, so the view can re-group a snapshot without a round trip.
+// Duplicate finding for the Duplicate entries section. Pure functions over a list
+// of entries — no repository, so the view can re-group a snapshot without a round trip.
 export {
   DUPLICATE_EXCERPT_WORDS,
   countDuplicateEntries,
@@ -443,7 +443,7 @@ export type {
   SameDateRow,
 } from "./same-date";
 
-// The recycle bin behind the Correct tab's bulk delete (migration 0079).
+// The recycle bin behind the Duplicate entries screen's bulk delete (migration 0079).
 export {
   countRecycledEntries,
   deleteRecycledEntriesForever,

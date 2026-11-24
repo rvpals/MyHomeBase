@@ -18,8 +18,9 @@
 // position inherits its remembered open/closed state, because position is the
 // key. While experimenting that is what you want.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useCardScope } from "@/components/collapsible-card-scope";
+import { useStoredValue, writeStoredValue } from "@/components/use-stored-value";
 import {
   cardStateStorageKey,
   parseCardStates,
@@ -97,7 +98,6 @@ export function CustomizableCard({
 }: CustomizableCardProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
   const isControlled = open !== undefined;
-  const isOpen = isControlled ? open : uncontrolledOpen;
 
   // Remembering this card's state, when it is uncontrolled and inside a scope.
   //
@@ -107,33 +107,32 @@ export function CustomizableCard({
   const scope = useCardScope();
   const persists = !isControlled && scope !== undefined;
 
-  // Claimed once, on first render, and held for this card's whole life. A ref
-  // rather than state because assigning it must not cause a render, and
-  // re-claiming on every render would hand the same card a new number each time.
-  const ordinalRef = useRef<number | undefined>(undefined);
-  if (persists && ordinalRef.current === undefined) {
-    ordinalRef.current = scope.claimOrdinal();
-  }
-  const ordinal = ordinalRef.current;
+  // Claimed once per mount, via a lazy `useState` initializer rather than a ref
+  // written during render — same reasoning as `collapsible-card.tsx`. Nothing
+  // calls the setter, so this still causes no re-render.
+  const [ordinal] = useState<number | undefined>(() =>
+    persists ? scope.claimOrdinal() : undefined,
+  );
 
-  // Read on mount, not in the `useState` initializer. localStorage doesn't
-  // exist during SSR, so reading it during render would make the server and the
-  // first client render disagree and blow up hydration — the reason `data-grid`
-  // and `chart-toolbar` both read in an effect too.
-  //
-  // The cost is one frame: a card with `defaultOpen` that the reader has since
-  // collapsed paints open, then closes. Accepted over a blocking inline script
-  // in the document head, which would have to duplicate the key scheme.
-  useEffect(() => {
-    if (!persists || ordinal === undefined) return;
-    const stored = parseCardStates(window.localStorage.getItem(cardStateStorageKey(scope.pathname)));
-    setUncontrolledOpen(resolveCardOpen(stored, ordinal, defaultOpen));
-    // Deliberately keyed on the route and this card's slot, not on `defaultOpen`:
-    // a parent that recomputes `defaultOpen` mid-life must not yank the card back
-    // from where the reader put it. Re-reads on navigation, which is when the
-    // stored map it should be reading actually changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persists, ordinal, scope?.pathname]);
+  // The stored map for this route, as an external store rather than an effect.
+  // `useStoredValue` returns `null` on the server and on the first client
+  // render, so hydration still matches and the card paints `defaultOpen` for
+  // one frame before settling — without the cascading render the effect caused.
+  const storageKey = persists ? cardStateStorageKey(scope.pathname) : "";
+  const storedRaw = useStoredValue(storageKey);
+  const storedStates = useMemo(() => parseCardStates(storedRaw), [storedRaw]);
+
+  // Resolved against the route and this card's slot. `defaultOpen` is only the
+  // fallback for a slot the store has never heard of — a parent recomputing it
+  // mid-life must not yank the card back from where the reader put it.
+  const storedOpen =
+    persists && ordinal !== undefined
+      ? resolveCardOpen(storedStates, ordinal, defaultOpen)
+      : undefined;
+
+  // Three sources, in precedence order: the owner of a controlled card, then
+  // what this reader stored for this slot, then this card's own local state.
+  const isOpen = isControlled ? open : (storedOpen ?? uncontrolledOpen);
 
   function toggle() {
     const next = !isOpen;
@@ -145,15 +144,17 @@ export function CustomizableCard({
       // cards on this page own their own entries, and re-reading means two
       // cards toggled in quick succession can't clobber each other with a
       // stale copy. A write is a handful of bytes, so the extra parse is free.
-      const key = cardStateStorageKey(scope.pathname);
+      // Re-read before writing: other cards on this page own their own entries,
+      // so two toggled in quick succession must not clobber each other with a
+      // stale copy. `writeStoredValue` swallows a storage failure and notifies
+      // this tab.
+      let stored = storedStates;
       try {
-        const stored = parseCardStates(window.localStorage.getItem(key));
-        window.localStorage.setItem(key, JSON.stringify(withCardState(stored, ordinal, next)));
+        stored = parseCardStates(window.localStorage.getItem(storageKey));
       } catch {
-        // Storage full, or blocked in a private window. The card still opens
-        // and closes — only the remembering is lost, which is not worth
-        // breaking a click over.
+        // Blocked store — the snapshot is as good as it gets.
       }
+      writeStoredValue(storageKey, JSON.stringify(withCardState(stored, ordinal, next)));
     }
   }
 

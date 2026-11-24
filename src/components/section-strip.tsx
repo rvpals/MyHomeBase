@@ -153,7 +153,13 @@ function SectionMenu({
 
   // Navigating closes it: the menu is a sibling of the page it links into, so
   // without this it would still be open behind the new route's first paint.
-  useEffect(() => setOpen(false), [activeHref]);
+  // Adjusted during render rather than in an effect — React's documented shape
+  // for this, and it closes before the paint rather than one frame after.
+  const [syncedHref, setSyncedHref] = useState(activeHref);
+  if (syncedHref !== activeHref) {
+    setSyncedHref(activeHref);
+    setOpen(false);
+  }
 
   return (
     <div ref={wrapRef} className="relative shrink-0">

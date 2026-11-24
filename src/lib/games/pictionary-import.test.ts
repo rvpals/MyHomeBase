@@ -117,8 +117,14 @@ describe("parseWordList", () => {
 
   it("only treats the first line as a header", () => {
     const parsed = parseWordList("cat\nword,tier", "easy");
-    // The second line is not a header, so it parses as a word plus a named tier.
-    expect(parsed.words.map((entry) => entry.word)).toEqual(["cat", "word"]);
+    // The second line is not a header, so **both** its cells import as prompts —
+    // which is the whole point of the header check being first-line-only.
+    //
+    // This used to expect ["cat", "word"], on the reading that "tier" would be
+    // taken as a tier name. It is not: the tiers are easy/medium/hard, and
+    // "tier" is a *column* name. A second cell only wins as a tier when it
+    // actually names one.
+    expect(parsed.words.map((entry) => entry.word)).toEqual(["cat", "word", "tier"]);
   });
 
   it("collapses internal whitespace", () => {

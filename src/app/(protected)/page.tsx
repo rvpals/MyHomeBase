@@ -389,6 +389,12 @@ export default async function Home({
                   {
                     id,
                     label: "Photo Albums",
+                    // `ownsClose`: this card is capped at 18rem so its photo is never
+                    // enlarged, while the wrapper stays a full column wide -- the grid's
+                    // corner ✕ would float in the gap beside it. The card puts it in its
+                    // own header instead. Same callback, same confirmation, same hidden
+                    // state; only the button's position moves.
+                    ownsClose: true,
                     node: (
                       <PhotoAlbumsWidget
                         albums={albumSlideshow.albums}

@@ -157,7 +157,7 @@ function previewSelection(ids: number[]): void {
 /**
  * `--delete` — move the selection to the recycle bin.
  *
- * The bin, not a hard delete, so this is undoable from the web Correct tab.
+ * The bin, not a hard delete, so this is undoable from the web Recycle Bin section.
  * Locked entries go too, keeping their lock; see the note at the top.
  */
 function deleteSelection(ids: number[]): void {

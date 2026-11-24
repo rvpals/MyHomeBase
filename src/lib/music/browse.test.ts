@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TREE_ICON_NAMES_FOR_TEST } from "./browse-icons.fixture";
+import { TREE_ICON_NAMES } from "@/lib/icons/tree-icon-names";
 import {
   LIBRARY_COLUMNS,
   LIBRARY_VIEWS,
@@ -42,7 +42,7 @@ describe("the library view registry", () => {
     // TreeIcon renders NOTHING for a name it does not know rather than falling back, so an
     // invented key is a silently blank icon. This is the guard against that.
     for (const view of LIBRARY_VIEWS) {
-      expect(TREE_ICON_NAMES_FOR_TEST).toContain(LIBRARY_VIEW_ICONS[view]);
+      expect(TREE_ICON_NAMES as readonly string[]).toContain(LIBRARY_VIEW_ICONS[view]);
     }
   });
 

@@ -1,4 +1,4 @@
-// Finding duplicate journal entries for the Correct tab.
+// Finding duplicate journal entries for the Duplicate entries section.
 //
 // A duplicate here is "same calendar date + same title", and deliberately NOT
 // the importer's date+time+title key (see `countEntriesMatching`). Two entries

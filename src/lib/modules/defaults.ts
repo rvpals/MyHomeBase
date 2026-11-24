@@ -20,7 +20,8 @@ import type { ModuleSeed } from "./types";
 // migrations/0143_rename_attendance_to_classroom.sql (which renamed the Attendance
 // module to Classroom, folding Attendance into it as a section group), and
 // migrations/0156_seed_clips_module.sql, and
-// migrations/0160_seed_documents_module.sql.
+// migrations/0160_seed_documents_module.sql, and
+// migrations/0179_seed_code_library_module.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_MODULES: ModuleSeed[] = [
   {
@@ -141,5 +142,19 @@ export const DEFAULT_MODULES: ModuleSeed[] = [
     sequence: 13,
     isVisible: true,
     icon: "folder",
+  },
+  {
+    // `book`, which no module was using. Unlike the three `folder` borrowings above
+    // this is a real fit rather than a placeholder — a library of snippets is a
+    // library — so no later migration owes it a bespoke glyph. A `code` concept
+    // would have to be drawn in all twelve generated icon sets to exist at all.
+    // See migrations/0179_seed_code_library_module.md.
+    slug: "code-library",
+    shortName: "Code Library",
+    longName: "Code Library",
+    description: "Reusable code snippets, filed by language and kept as plain text.",
+    sequence: 14,
+    isVisible: true,
+    icon: "book",
   },
 ];

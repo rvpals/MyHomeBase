@@ -48,18 +48,33 @@ export function CollapsibleCardScope({ children }: { children: ReactNode }) {
   // card mounting would re-render the whole subtree. Keyed by pathname so the
   // count restarts on navigation — `useRef` survives a route change, and
   // without this reset the second page's first card would be ordinal 7.
-  const counter = useRef({ pathname, next: 0 });
-  if (counter.current.pathname !== pathname) {
-    counter.current = { pathname, next: 0 };
-  }
+  const counter = useRef({ pathname: "", next: 0 });
 
-  const claimOrdinal = useCallback(() => {
+  // The reset moved **inside** the callback. It used to run during render,
+  // which `react-hooks/refs` forbids — the compiler cannot reason about when a
+  // render-phase ref write happened, and under concurrent rendering it might
+  // happen more than once or be thrown away.
+  //
+  // Doing it here instead is both legal and more honest about the invariant:
+  // the counter restarts for a new route the moment that route's *first card*
+  // asks for a number, which is exactly when it matters. A route whose cards
+  // never claim never needs a reset.
+  const claimOrdinal = useCallback((forPathname: string) => {
+    if (counter.current.pathname !== forPathname) {
+      counter.current = { pathname: forPathname, next: 0 };
+    }
     const ordinal = counter.current.next;
     counter.current.next += 1;
     return ordinal;
   }, []);
 
-  const value = useMemo(() => ({ pathname, claimOrdinal }), [pathname, claimOrdinal]);
+  // The pathname is bound here rather than exposed in the context's signature,
+  // so a card still calls `claimOrdinal()` with no arguments and cannot pass
+  // the wrong route by mistake.
+  const value = useMemo(
+    () => ({ pathname, claimOrdinal: () => claimOrdinal(pathname) }),
+    [pathname, claimOrdinal],
+  );
 
   return <CardScopeContext.Provider value={value}>{children}</CardScopeContext.Provider>;
 }

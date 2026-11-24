@@ -68,6 +68,7 @@ import { recipesCommand } from "./recipes";
 import { examsCommand } from "./exams";
 import { takeAttendanceCommand } from "./take-attendance";
 import { clipsCommand } from "./clips";
+import { codeLibraryCommand } from "./code-library";
 import { documentsBackfillHashesCommand } from "./documents-backfill-hashes";
 import { documentsDuplicatesCommand } from "./documents-duplicates";
 import { documentsTemplatesCommand } from "./documents-templates";
@@ -142,6 +143,7 @@ const commands: Record<string, Command> = {
   recipes: recipesCommand,
   hsa: hsaCommand,
   clips: clipsCommand,
+  "code-library": codeLibraryCommand,
   "list-documents": listDocumentsCommand,
   "documents-backfill-hashes": documentsBackfillHashesCommand,
   "documents-duplicates": documentsDuplicatesCommand,

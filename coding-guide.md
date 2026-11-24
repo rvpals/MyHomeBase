@@ -25,6 +25,7 @@ module is obvious from the name alone. New tables must follow this.
 | `hsh_` | Household | `hsh_recipes`, `hsh_recipe_tags`, `hsh_hsa_expenses`, `hsh_hsa_cards` |
 | `clp_` | Clips | `clp_clips`, `clp_categories`, `clp_tags`, `clp_clip_categories`, `clp_clip_tags`, `clp_clip_images`, `clp_clip_links` |
 | `doc_` | Document Library | `doc_documents`, `doc_attachments`, `doc_categories`, `doc_tags`, `doc_document_categories`, `doc_document_tags`, `doc_recycled_documents`, `doc_recycled_attachments`, `doc_recycled_document_categories`, `doc_recycled_document_tags` |
+| `cod_` | Code Library | `cod_snippets`, `cod_categories`, `cod_tags`, `cod_snippet_categories`, `cod_snippet_tags`, `cod_recycled_snippets`, `cod_recycled_snippet_categories`, `cod_recycled_snippet_tags` |
 
 **Attendance became Classroom in migration 0143**, and the prefix moved `att_` -> `cls_`
 with it. Attendance is now one of two *section groups* inside Classroom (the other is
@@ -1498,7 +1499,8 @@ rather than merging them.
 ### What is not done yet
 
 **MyJournal's importer predates `CsvImportPanel`** and still hand-rolls the same
-markup inside its own Import/Correct tabs
-([journal-import-view.tsx](src/app/(protected)/modules/[slug]/journal-import-view.tsx)).
+markup
+([journal-import-view.tsx](src/app/(protected)/modules/[slug]/journal-import-view.tsx)) —
+one screen now, since the Correct tab beside it became the Duplicate entries section.
 It works, so it has been left alone; migrating it onto the panel is its own
 change. Until then the panel — not that view — is what a new importer copies.

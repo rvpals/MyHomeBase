@@ -1755,8 +1755,8 @@ function DayEntriesPanel({
             {deleting.time === "" ? "" : ` at ${deleting.time.slice(0, 5)}`}
           </p>
           <p className="mt-2 text-sm text-muted">
-            It moves to the recycle bin and can be restored from Data Management → Correct →
-            Recycled Entries.
+            It moves to the recycle bin and can be restored from Data Management → Recycle
+            Bin.
           </p>
           {deleting.isLocked && (
             <p className="mt-2 text-sm text-muted">

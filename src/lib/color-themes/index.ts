@@ -38,6 +38,11 @@ export {
   type ContrastPair,
 } from "./contrast";
 export {
+  codeTokensToCss,
+  deriveCodeTokens,
+  type CodeTokens,
+} from "./code-tokens";
+export {
   createColorTheme,
   deleteColorTheme,
   generateColorThemes,

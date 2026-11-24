@@ -280,8 +280,21 @@ function usePuckDrag({
     puckRef,
     position: current,
     isDragging,
-    /** Whether the gesture just ended was a drag — the click handler checks this. */
-    didDrag,
+    /**
+     * Whether the gesture that just ended was a drag — and clears the flag.
+     *
+     * A method rather than the raw ref, which the click handler used to reach
+     * in and reset. Handing a ref out for a caller to mutate is what
+     * `react-hooks/immutability` refuses, and rightly: the reset is part of
+     * *this* hook's state machine, so it belongs here. Read-and-clear in one
+     * call also makes the single-use nature of the flag explicit, where two
+     * separate statements left room to read it and forget to clear it.
+     */
+    consumeDidDrag: () => {
+      const dragged = didDrag.current;
+      didDrag.current = false;
+      return dragged;
+    },
     handlers: enabled
       ? {
           onPointerDown: handlePointerDown,
@@ -362,7 +375,7 @@ export function FloatingPuck({
   const isCompact = useIsCompact();
   const canDrag = onMove !== undefined && !isCompact;
 
-  const { puckRef, position: livePosition, isDragging, didDrag, handlers } = usePuckDrag({
+  const { puckRef, position: livePosition, isDragging, consumeDidDrag, handlers } = usePuckDrag({
     enabled: canDrag,
     position: position ?? null,
     onCommit: (next) => onMove?.(next),
@@ -401,13 +414,11 @@ export function FloatingPuck({
         type="button"
         // A drag ends with a click on this button, so the gesture has to be told
         // apart from a tap — otherwise every drop would also reopen the window.
-        // `didDrag` is a ref precisely because it is read here, synchronously, before
-        // any state update from `pointerup` has been applied.
+        // Read synchronously, before any state update from `pointerup` has been
+        // applied — which is why the hook keeps it in a ref. Read-and-clear in
+        // one call, so a drop cannot also reopen the window.
         onClick={() => {
-          if (didDrag.current) {
-            didDrag.current = false;
-            return;
-          }
+          if (consumeDidDrag()) return;
           onRestore();
         }}
         aria-label={`${label} — restore`}

@@ -139,6 +139,7 @@ function useThemeColors(): {
      
     // style is unknowable during render (no `window` on the server), so the
     // first real read has to happen after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- computed theme colours are browser-only and absent on the server; this is the first read, and the observer above handles every later one.
     setColors(read());
     return () => observer.disconnect();
   }, [read]);
@@ -183,8 +184,24 @@ export function LocationGraphView<P extends SavedLocation>({
     moved: number;
   } | null>(null);
 
-  const litRef = useRef<Set<number> | null>(null);
-  litRef.current = hovered === null ? null : neighbourIndices(graph, hovered);
+  // Derived with `useMemo` and mirrored into a ref in an effect, rather than
+  // assigned during render — `react-hooks/refs` forbids the latter, because a
+  // render that is thrown away would still have written it.
+  //
+  // The ref exists so the draw loop can read the current neighbourhood without
+  // being torn down and rebuilt whenever the hover changes. Updating it after
+  // commit instead of during render costs at most one animation frame on a
+  // hover highlight, which is not perceptible — and it is the more honest
+  // ordering, since the ref now only ever holds a value that was actually
+  // painted.
+  const lit = useMemo(
+    () => (hovered === null ? null : neighbourIndices(graph, hovered)),
+    [graph, hovered],
+  );
+  const litRef = useRef<Set<number> | null>(lit);
+  useEffect(() => {
+    litRef.current = lit;
+  });
 
   /** Canvas pixel -> graph coordinate, through the current transform. */
   const toGraph = useCallback((clientX: number, clientY: number) => {

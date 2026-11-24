@@ -632,7 +632,10 @@ function VisualPanel({
   // server, and iOS Safari on iPhone has no element fullscreen at all. A control that
   // cannot work should not be offered.
   const [canFullscreen, setCanFullscreen] = useState(false);
-  useEffect(() => setCanFullscreen(canGoFullscreen()), []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only capability, unknowable during render and absent on the server. Runs once on mount, matching journal-entry-editor.
+    setCanFullscreen(canGoFullscreen());
+  }, []);
 
   return (
     <div>

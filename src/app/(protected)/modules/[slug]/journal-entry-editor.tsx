@@ -460,6 +460,7 @@ export function JournalEntryEditor(props: JournalEntryEditorProps) {
   // if nothing seeded or typed it first.
   useEffect(() => {
     if (isEdit) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the writer's clock is browser-only; seeding it during render would make the server's date and the client's disagree and break hydration. Runs once on mount.
     setForm((current) => (current.date !== "" ? current : { ...current, date: todayIso() }));
   }, [isEdit]);
 

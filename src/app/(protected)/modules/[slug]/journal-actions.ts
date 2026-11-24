@@ -421,7 +421,7 @@ export async function deleteJournalEntryAction(id: number): Promise<ActionResult
  * Deliberately NOT `deleteJournalEntryAction` above: that one hard-deletes and
  * refuses a locked entry. A row in the calendar's day list is a single stray
  * click away from a reader who was only browsing, so this one recycles, and the
- * entry comes back from Data Management → Correct → Recycled Entries.
+ * entry comes back from Data Management → Recycle Bin.
  *
  * Also not the Entries screen's `deleteJournalEntriesAction`, which recycles but
  * demands a `BulkRefreshScope` and hands back a 500-row grid list — the calendar

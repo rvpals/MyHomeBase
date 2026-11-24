@@ -17,6 +17,12 @@ export const SLOT_NAMESPACES: Record<string, string> = {
   "csv-analysis": "csv",
   "music-library": "music",
   "picture-gallery": "gallery",
+  // Not a rename like the four above — a normalisation. `sectionSlotId` replaces
+  // hyphens in the *section* id but not in the namespace, so the raw slug would
+  // derive `code-library_section_main`: a hyphen in an id every other module
+  // spells with underscores. Code Library is simply the first module whose slug
+  // has two words.
+  "code-library": "code_library",
 };
 
 /** The icon-slot namespace for a module slug — the slug itself, unless it is an exception. */

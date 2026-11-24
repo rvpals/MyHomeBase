@@ -53,6 +53,9 @@ describe("resolveScheduledRefreshSettings", () => {
     expect(resolveScheduledRefreshSettings([])).toEqual({
       autoRefreshEnabled: false,
       autoRefreshInterval: DEFAULT_REFRESH_INTERVAL,
+      // Added to the settings object after this test was written; the resolver
+      // defaults it on.
+      marketDaysOnly: true,
     });
   });
 

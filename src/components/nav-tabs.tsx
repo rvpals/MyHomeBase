@@ -152,8 +152,14 @@ export function NavTabs({
   }, [menuOpen]);
 
   // Navigating closes the menu — it would otherwise still be open behind the
-  // new route's first paint.
-  useEffect(() => setMenuOpen(false), [activeHref]);
+  // new route's first paint. Adjusted during render rather than in an effect,
+  // which is React's documented shape for "reset state when a value changes"
+  // and closes the menu *before* that paint rather than one frame after it.
+  const [syncedHref, setSyncedHref] = useState(activeHref);
+  if (syncedHref !== activeHref) {
+    setSyncedHref(activeHref);
+    setMenuOpen(false);
+  }
 
   const { visible, overflow } = splitTabs(tabbable, capacity, activeModuleSlug);
 

@@ -8,7 +8,12 @@ import { ToastProvider } from "@/components/toast-provider";
 import { ViewportCorrector } from "@/components/viewport-corrector";
 import { ViewportProvider } from "@/components/viewport-context";
 import { getAppVersion } from "@/lib/app-version";
-import { colorSchemeFor, resolveActiveTheme } from "@/lib/color-themes";
+import {
+  codeTokensToCss,
+  colorSchemeFor,
+  deriveCodeTokens,
+  resolveActiveTheme,
+} from "@/lib/color-themes";
 import { getOverrideMap } from "@/lib/icons";
 import { listSplashImages } from "@/lib/pwa";
 import {
@@ -307,7 +312,13 @@ export default async function RootLayout({
   const journalFontVar = scriptFontCssVar(
     getSetting(deps.settingsRepo, SCRIPT_FONT_SETTING_KEYS.journalHandwriting)?.value,
   );
-  const themeCss = `:root{color-scheme:${colorScheme};--paper:${theme.tokens.paper};--paper-raised:${theme.tokens.paperRaised};--ink:${theme.tokens.ink};--line:${theme.tokens.line};--muted:${theme.tokens.muted};--muted-inverse:${theme.tokens.mutedInverse};--brass:${theme.tokens.brass};--brass-dark:${theme.tokens.brassDark};--brass-soft:${theme.tokens.brassSoft};--font-display:${FONT_VAR_MAP[theme.tokens.fonts.display]};--font-body:${FONT_VAR_MAP[theme.tokens.fonts.body]};--font-mono-code:${FONT_VAR_MAP[theme.tokens.fonts.mono]};--chrome-outline-width:${borderWidths.outline}px;--chrome-divider-width:${borderWidths.divider}px;--line-width:${borderWidths.line}px;--font-script:var(${dailyQuoteFontVar});--font-script-journal:var(${journalFontVar});}`;
+  // Syntax-highlighting colours, computed from this theme's own accent and
+  // clamped until each clears AA against its paper. Emitted here with the rest of
+  // the tokens because they depend on which theme is active, which is only known
+  // at render — see `src/lib/color-themes/code-tokens.ts` for why no fixed
+  // editor palette could be used instead.
+  const codeTokens = codeTokensToCss(deriveCodeTokens(theme.tokens));
+  const themeCss = `:root{color-scheme:${colorScheme};--paper:${theme.tokens.paper};--paper-raised:${theme.tokens.paperRaised};--ink:${theme.tokens.ink};--line:${theme.tokens.line};--muted:${theme.tokens.muted};--muted-inverse:${theme.tokens.mutedInverse};--brass:${theme.tokens.brass};--brass-dark:${theme.tokens.brassDark};--brass-soft:${theme.tokens.brassSoft};--font-display:${FONT_VAR_MAP[theme.tokens.fonts.display]};--font-body:${FONT_VAR_MAP[theme.tokens.fonts.body]};--font-mono-code:${FONT_VAR_MAP[theme.tokens.fonts.mono]};--chrome-outline-width:${borderWidths.outline}px;--chrome-divider-width:${borderWidths.divider}px;--line-width:${borderWidths.line}px;--font-script:var(${dailyQuoteFontVar});--font-script-journal:var(${journalFontVar});${codeTokens};}`;
 
   return (
     <html

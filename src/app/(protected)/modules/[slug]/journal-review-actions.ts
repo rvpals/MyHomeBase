@@ -8,8 +8,7 @@
 //
 // Delete routes through the *existing* recycle bin (migration 0079) rather than
 // destroying rows, so a mis-click on this screen is recoverable in exactly the
-// place the reader already knows about: Data Management → CSV Import → Correct →
-// Recycled Entries. That is why there is no restore or purge action here — the
+// place the reader already knows about: Data Management → Recycle Bin. That is why there is no restore or purge action here — the
 // bin already has a screen, and giving it a second one would mean two views of
 // one list that can disagree about what is in it.
 
@@ -142,7 +141,7 @@ export interface SameDateEntryResult extends ActionResult {
 /**
  * One full entry, for the viewer modal.
  *
- * Same reasoning as the Correct tab's `getJournalEntryAction`: the list carries
+ * Same reasoning as Duplicate entries' `getJournalEntryAction`: the list carries
  * an excerpt, so opening a row fetches the entry it is about to show rather than
  * every row shipping its whole content up front. A separate action from that one
  * because each must authorise on its own first line — importing another route's

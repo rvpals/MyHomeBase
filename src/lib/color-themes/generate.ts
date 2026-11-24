@@ -49,6 +49,42 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/**
+ * The inverse of `hslToHex`. `undefined` when the string is not `#RRGGBB`.
+ *
+ * Added for `deriveCodeTokens`, which has to *read* a theme's accent hue in order
+ * to rotate it. Kept here beside its inverse rather than in the caller: the pair
+ * belongs together, and a second hand-rolled conversion elsewhere in the app is
+ * how two parts of the same screen come to disagree about what a colour is.
+ */
+export function hexToHsl(hex: string): { h: number; s: number; l: number } | undefined {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return undefined;
+
+  const value = Number.parseInt(match[1], 16);
+  const r = ((value >> 16) & 0xff) / 255;
+  const g = ((value >> 8) & 0xff) / 255;
+  const b = (value & 0xff) / 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const l = (max + min) / 2;
+
+  // A grey has no hue to speak of; reporting 0 rather than NaN keeps the caller
+  // from having to special-case a monochrome accent.
+  if (delta === 0) return { h: 0, s: 0, l: l * 100 };
+
+  const s = delta / (1 - Math.abs(2 * l - 1));
+
+  let h: number;
+  if (max === r) h = ((g - b) / delta) % 6;
+  else if (max === g) h = (b - r) / delta + 2;
+  else h = (r - g) / delta + 4;
+
+  return { h: (((h * 60) % 360) + 360) % 360, s: s * 100, l: l * 100 };
+}
+
 /** `#RRGGBB` for an HSL triple. `h` in degrees, `s`/`l` as percentages. */
 export function hslToHex(h: number, s: number, l: number): string {
   const hue = ((h % 360) + 360) % 360;

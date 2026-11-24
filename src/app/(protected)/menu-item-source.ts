@@ -19,6 +19,7 @@
 import type { MenuItemSeed, MenuItemSource } from "@/lib/menu-items";
 import { HOME_SECTION } from "@/lib/navigation";
 import { sectionSlotId } from "@/lib/icons";
+import { slotNamespaceFor } from "@/components/nav-slot-namespaces";
 import { ADMIN_TREE_MODULE } from "./admin-tree-module";
 import { moduleSectionSource } from "./module-sections";
 
@@ -42,18 +43,15 @@ import { moduleSectionSource } from "./module-sections";
  * item's icon would never match the one the nav draws. `menu-item-source.test.ts`
  * resolves every derived id against `ICON_SLOTS`, which is what caught two of these
  * four when this map was first written with only three entries.
+ *
+ * The table itself now lives in `nav-slot-namespaces.ts`, which is where
+ * `NavTree`, `NavTabs` and `SectionStrip` already read it. This file used to
+ * keep a second copy, and that copy had already drifted: it was missing
+ * `code-library`, so every Code Library menu item derived an id addressing no
+ * registered slot. That is precisely the silent failure the other file's own
+ * comment warns two copies would cause.
  */
-const ICON_NAMESPACES: Record<string, string> = {
-  investments: "stock",
-  "csv-analysis": "csv",
-  "picture-gallery": "gallery",
-  "music-library": "music",
-};
-
-/** The icon namespace for a module slug — itself, unless the table above says otherwise. */
-function namespaceFor(moduleSlug: string): string {
-  return ICON_NAMESPACES[moduleSlug] ?? moduleSlug;
-}
+const namespaceFor = slotNamespaceFor;
 
 /**
  * The menu item id for one module section.

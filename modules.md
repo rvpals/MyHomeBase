@@ -42,6 +42,7 @@ are the `snake_case` equivalents.
 | `household` | Household | Household | Recipes, receipts and the HSA — the household's paperwork. | 11 | `household` | `hsh_` |
 | `clips` | Clips | Clips | Rich-text notes with tags and pasted images, linkable to a journal entry. | 12 | `folder` | `clp_` |
 | `documents` | Documents | Document Library | Filed documents with categories, tags and their attachment files. | 13 | `folder` | `doc_` |
+| `code-library` | Code Library | Code Library | Reusable code snippets, filed by language and kept as plain text. | 14 | `book` | `cod_` |
 
 Sequence 1 is deliberately vacant: it belonged to the Real Estate module, retired
 in `migrations/0026_drop_real_estate_module`. Its `rei_` prefix is retired with
@@ -547,6 +548,11 @@ table wants the full page width. Its route is still `/import` and its icon slot 
 `journal_section_import`; only the label narrowed when Calendar Import joined it under the
 group heading.
 
+**It is a single screen, with no tabs.** It carried an *Import* / *Correct* pair until the
+Correct tab — the duplicate finder and the recycle bin — moved out into sections of their
+own; a one-tab tab strip is chrome that says nothing, so it came out with it. The
+`correctSlot` prop that passed the server-rendered panel into the client view went too.
+
 **CSV import is idempotent** (`migrations/0072`). Re-importing a file you have already
 imported adds nothing; each repeated row is reported as *"Duplicate of an existing
 entry"* in the same summary that reports a bad row. The Import screen has a **Skip
@@ -700,9 +706,33 @@ confirm-password rule cannot drift between them.
 - **The hint is stored in the clear**, which is what lets it be read before anything is
   decrypted. The form that collects it says so.
 
-**Review Data** is the third child of Data Management, and it answers a different
-question from the Correct tab next to it. Correct groups entries by **date + title** and
-calls the result a duplicate; Review Data groups by **date alone** and calls the result
+**Duplicate entries** is the third child of Data Management. It is the screen that finds
+entries sharing a date and a title, and it was the **Correct** tab of CSV Import until it
+got a name of its own — a tab inside an importer is not where a reader looks for the
+duplicates already in their journal, and it was two levels from anywhere a duplicate is
+made. The grouping rule is in `src/lib/journal/duplicates.ts` and is worth stating exactly:
+
+- **Two entries match on date + trimmed, lowercased title.** Nothing else. Time is
+  ignored on purpose — 09:00 and 21:00 on one day under one title is precisely what the
+  screen exists to surface — which makes it *looser* than the importer's date + time +
+  title key. Content, tags, categories and location are not compared at all.
+- **Untitled and encrypted entries are skipped.** Both have a blank title column
+  (migration 0131 for the encrypted ones), so three of either on one date would present
+  as a duplicate set on the strength of having no readable title. That is noise, not a
+  finding — and the opposite choice from Review Data below, for the reason given there.
+- **It finds candidates and never decides.** The delete path takes the ticked ids without
+  re-checking that they were duplicates at all, and it recycles rather than destroying.
+
+It renders the same `JournalCorrectView` the Recycle Bin does, with `show="duplicates"`
+instead of `show="recycled"` — one card each. The view keeps its `"both"` mode, which is
+what the Correct tab passed; no call site uses it now, but the shared state machine below
+is written for the two-card arrangement and unpicking that would buy nothing. Each mode
+skips the other's read: the duplicates screen never lists the bin, so it doesn't query it,
+and the bin never groups the journal.
+
+**Review Data** is the fourth child of Data Management, and it answers a different
+question from **Duplicate entries** above it. That one groups entries by **date + title**
+and calls the result a duplicate; Review Data groups by **date alone** and calls the result
 nothing — several entries on one day are perfectly normal, and the screen only lists them
 so a reader can decide. Four choices worth knowing:
 
@@ -764,19 +794,20 @@ so a reader can decide. Four choices worth knowing:
   Bin** section below owns that list; a second view of it could disagree with the first
   about what is in it, so this screen's confirmation dialog points the reader there.
 
-**Recycle Bin** is the fourth child of Data Management, and it exists for one reason:
+**Recycle Bin** is the last child of Data Management, and it exists for one reason:
 deleting an entry has always moved it somewhere, but the only way back in was CSV Import →
 Correct — a path whose name promises nothing about deleted entries, two levels from where
 the delete happened. The bin was reachable, not discoverable.
 
-- **It renders the same `JournalCorrectView` the Correct tab does**, with a `show` prop
-  (`"both" | "recycled"`) hiding the Duplicates card. Not a second component: the two cards
+- **It renders the same `JournalCorrectView` Duplicate entries does**, with a `show` prop
+  (`"both" | "duplicates" | "recycled"`) choosing which card. Not a second component: the two cards
   deliberately share one state machine, because a delete moves an entry from one to the
   other and every action replaces both lists wholesale. Splitting the recycle card out
   would have meant a second copy of all five action handlers, each of which would then
   have to be kept in step with the first.
-- **The Correct tab keeps its copy of the card.** Two entry points to one view, so nobody
-  who already knows the old path loses it. They cannot drift, being the same component.
+- **There is one way in, not two.** The Correct tab kept a second copy of this card while
+  it existed, so nobody who knew the old path lost it; the tab is gone now and the bin has
+  a single entry point. The two screens still cannot drift, being the same component.
 - **The standalone section skips the whole-journal read.** `findDuplicateGroups(listEntries(…))`
   is unbounded by design — it must see every entry to find a 2019 duplicate — but the
   Recycle Bin never renders that card, so the panel passes `[]` instead of paying for it.
@@ -3025,6 +3056,151 @@ Narrow: sections in the shared bottom bar, nothing custom. The toolbar wraps to 
 second row, the clip list is one column below `lg`, the viewer becomes a full-screen
 sheet, and a table inside a clip scrolls in its own container rather than forcing the
 page wide.
+
+**Code Library** (`code-library`) — reusable code snippets, filed by language.
+Three sections (Home screen, Categories & Tags, Recycled Snippets), one library
+module `src/lib/code-library`, eight `cod_` tables from migrations 0178 to 0184.
+Driveable as `npm run cli -- code-library <list|show|add|edit|delete|recycled|
+restore|purge|empty-bin|pin|unpin|colour|labels>`.
+
+The home screen **is** the module root, so its `?search=`/`?language=`/
+`?category=`/`?tag=` params are parsed in
+[`[slug]/page.tsx`](<src/app/(protected)/modules/[slug]/page.tsx>) as well as the
+section route — a filter box on a root screen is otherwise a box that navigates
+to a query string nothing reads. Three of those four names are shared with Clips
+and the Document Library on purpose: all three modules filter a list by the same
+ideas, and a third spelling only makes a URL harder to read. `language` is this
+module's own, because a language is a column on the snippet rather than a
+taxonomy row.
+
+**Why it is not a Clips feature.** Clips already has categories, tags, a bin and
+encryption, and reusing it was the first thing considered. It was rejected on the
+storage format. `clp_clips.content_html` holds **sanitized HTML**, because a clip
+is pasted email and `sanitizeClipHtml` is a real hostile-input boundary. Code
+wants verbatim text, and four separate problems all fall out of that one mismatch:
+a pasted snippet loses its indentation (HTML collapses whitespace runs), the clip
+editor has no way to mark a code block, highlighting is impossible because the
+sanitizer drops every `class` by design, and a `LIKE` search over entity-escaped
+HTML can never match `List<string>` or `a && b`. `cod_snippets.code` is plain
+`TEXT`, which removes all four at once and leaves the clip sanitizer untouched —
+the alternative was widening a security boundary so a `<pre>` could carry
+`class="language-py"`. The full argument is in
+`migrations/0178_create_code_library.md`.
+
+Sixteen decisions worth knowing:
+
+- **The body is verbatim and nothing escapes it on the way in.** A reader must get
+  back exactly the bytes they pasted — that round-trip is the module's purpose.
+  The presentation layer escapes on output: the home view renders the preview in a
+  `<pre>` as a React child, and **nothing here may use
+  `dangerouslySetInnerHTML`**, which would hand a snippet containing markup
+  straight to the browser.
+- **`language` is a column, not a tag.** The highlighter has to map it to a
+  grammar and a free-text tag cannot be relied on for that. The closed list is
+  `SNIPPET_LANGUAGES` in `src/lib/code-library/schema.ts`. Unlike an icon slot id
+  or a card-colour key these are **not** permanent: `toSnippetLanguage` degrades
+  an unrecognised stored value to `text`, so dropping a language later leaves its
+  snippets readable rather than orphaning them.
+- **Delete has only ever meant "move to the bin".** The bin (migration 0183) was
+  built *before* delete existed, deliberately — a delete shipped first would have
+  been permanent in a module with no undo of any kind. Mirror tables, not a
+  `deleted_at` flag, for the reason 0161 and 0079 both record: a flag means every
+  existing read has to learn to exclude binned rows and one missed `WHERE`
+  silently serves a deleted snippet. All three of a snippet's tables are
+  mirrored, so a restore brings its labels back too, and restore aims at the
+  **original id**. The pairing mirrors key on the *bin row's* id, not the
+  snippet's, because the same snippet can be binned, restored and binned again.
+  The CLI's `purge` names a bin row rather than a snippet, so a mistyped id
+  cannot destroy something still in the library.
+- **Sealing reuses the Journal's encryption and is not reachable from the CLI.**
+  Columns and blob format are migration 0131's, and `encryption.ts` is the shared
+  module this is the third caller of. Title and body are separate blobs under one
+  password, each with its own salt and IV. The taxonomy and the language stay
+  plaintext so a sealed snippet is still findable. Opening one **does not unseal
+  it** — the plaintext is returned, shown and dropped; unsealing is a separate
+  act. A sealed card hides Copy and Edit: there is no plaintext to copy, and an
+  editor opened on a blank body would save that blankness over the ciphertext.
+  No CLI path, because encrypting from a command line puts the password in shell
+  history, and a forgotten one loses the snippet for everyone with no recovery.
+- **`notes` is not part of `code`.** The body has to stay copy-pasteable
+  verbatim; an explanation commented into it would be pasted into a terminal
+  every time. `source_url` is `http(s)`-only and checked in the schema — the
+  field renders as a link, so `javascript:` would be a script vector in this
+  app's own origin, the same check `sanitizeClipHtml` makes on an `href`.
+- **The editor is a `<textarea>` in a `Modal`, never `RichTextEditor`.** A
+  contentEditable would reintroduce the collapsed indentation and stray markup
+  this module exists to avoid. `spellCheck`, `autoCorrect` and `autoCapitalize`
+  are all off on the body: a browser "correcting" an identifier would silently
+  change the snippet. The list stays a **server** component and the dialog is the
+  only client island on the screen.
+- **The list projection carries the whole body, for Copy alone.** `SnippetSummary`
+  holds `preview` *and* `code`. The exception is deliberate: copying is the
+  module's primary action, and a Copy button that fetches first must `await`
+  before writing to the clipboard, which can spend the browser's user-gesture
+  window and makes the button fail on Safari while working everywhere else.
+  Holding the text means the write happens inside the click. The cost is that a
+  list sends every body to the page — nothing for tens of small snippets, and if
+  this ever holds hundreds of large files the answer is to prefetch on hover, not
+  to make the common case unreliable.
+- **Edit still fetches.** It needs the body only after a deliberate click, and
+  `getSnippetAction` reads it fresh — so the editor cannot save a stale copy of a
+  snippet changed in another tab. Handing it the card's *preview* would be the
+  real hazard: it would save the truncation over the real snippet.
+- **Three filing axes, not one.** A `language` says what a snippet is written in
+  (a column), a category says what kind of thing it is, and a tag says what it is
+  about (both `cod_` taxonomy tables, migration 0180). Collapsing them into one
+  list would make "every Python snippet about Docker" unaskable. Filtering is
+  **AND** across all of them, via `HAVING COUNT(DISTINCT …)` over the pairings —
+  an `IN` alone would quietly mean either.
+- **Typing a label creates it.** `replacePairings` inserts any category or tag
+  that does not exist yet, so the editor's comma-separated boxes file the snippet
+  *and* grow the vocabulary. Categories & Tags is for tidying up afterwards —
+  renaming (which rewrites every pairing, because the name is the key) and
+  retiring. Deleting a word unfiles the snippets carrying it and leaves the
+  snippets alone; the count beside it says how many that will be.
+- **Pinning is shared and lives in the repository's one `ORDER BY`.** There is no
+  per-user snippet, so there is no per-user pin. The home screen splits the band
+  in the *view*, from rows the repository already ordered — splitting in SQL
+  would let the two halves sort differently. A save from the editor never touches
+  `is_pinned`, so an edit in one tab cannot undo a pin made in another.
+- **Highlighting is a tokenizer in `src/lib/`, not Prism.** Two reasons. The repo
+  already hand-rolls both sanitizers rather than taking DOMPurify, because
+  `src/lib/` must run under the CLI and Vitest with no browser — and the same
+  constraint pays off here, because a server-side tokenizer means a highlighted
+  snippet is plain server-rendered markup with no client island and no flash.
+  The second reason is blunter: `npm install` cannot add a dependency to this
+  project at all right now (`@types/node@^20` against `vitest@^5`'s
+  `^22 || >=24`, ERESOLVE on any install). `highlight.ts` is not a parser and
+  will mislabel what a parser would get right; the invariant that keeps that
+  cosmetic is that **concatenating every token reproduces the input exactly**,
+  asserted over every fixture.
+- **The code colours are derived, never chosen.** `deriveCodeTokens` rotates the
+  running theme's accent hue per role and walks lightness until each clears WCAG
+  AA against that theme's paper. No shipped editor palette could work: a theme
+  here is nine colours, admins create new ones at runtime, and two built-ins are
+  light. `contrast.ts` is warn-only by design, but this is the one case that must
+  *enforce* — nobody picks these, so there is nobody to warn.
+- **The card tint is a key and the palette is shared.** `TINT_COLORS` from
+  `src/lib/shared/tint.ts`, the same six Clips uses, and the CSS classes are
+  literally Clips' (`.clip-tint-*`) because those rules are generic and only the
+  name says "clip". The keys are permanent — see `migrations/0182`.
+- **Board or list is a device preference, not a URL.** It lives in
+  `localStorage`, unlike every filter on this screen: a link to a filtered
+  library should open in whichever shape the person following it prefers. One
+  switch sits above both bands, so the pinned band and the rest cannot disagree
+  about their own shape.
+- **The icon namespace is `code_library`, not the slug.** `sectionSlotId` replaces
+  hyphens in the *section* id but not in the namespace, so passing `code-library`
+  would mint `code-library_section_main` — a hyphen in an id every other module
+  spells with underscores. `CODE_LIBRARY_ICON_NAMESPACE` is the one declaration,
+  and `slots.test.ts` asserts the two agree.
+
+Narrow: sections in the shared bottom bar, nothing custom. The card header is
+`flex-wrap`, so the language and line count drop onto their own line whenever the
+title leaves them no room — no breakpoint involved, which means a long title wraps
+on a desktop too. A long line of code scrolls inside its own `<pre>` rather than
+forcing the page wide.
+
 
 ### Icons
 

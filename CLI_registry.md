@@ -105,6 +105,7 @@ alongside its row here.
 | [`hsa`](#hsa) | read (writes with `--add`/`--reimburse`/`--delete`/the card flags) | no |
 | [`todo`](#todo) | read (writes with `--add`/`--done`/`--delete`/the list flags) | no |
 | [`clips`](#clips) | read (writes with `add`/`pin`/`colour`/`items`/`tick`/`link`/`delete`/`restore`; destroys with `delete --forever`/`purge`/`empty-bin`) | no |
+| [`code-library`](#code-library) | read (writes with `add`/`edit`/`pin`/`unpin`/`colour`/`delete`/`restore`; destroys with `purge`/`empty-bin`) | no |
 | [`list-documents`](#list-documents) | read (writes a file with `--zip`) | no |
 | [`documents-backfill-hashes`](#documents-backfill-hashes) | writes (fills `doc_attachments.content_hash`) | no |
 | [`documents-templates`](#documents-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
@@ -648,7 +649,7 @@ sources are only binned if `--delete-originals` is given — after the write, ne
 That is the terminal's form of the web dialog's "would you like to delete the original
 *n* entries?" prompt; a terminal can't ask mid-command, so the answer comes up front.
 Every delete here moves entries to the recycle bin (migration 0079), so it is undone from
-the web Correct tab rather than being final.
+the web Recycle Bin section rather than being final.
 
 This command is the section's layering check: the grouping, the reading order, the
 excerpt and the whole merged draft come from `src/lib/journal/same-date.ts`, so if the
@@ -4397,3 +4398,65 @@ retrying the delete would not fix it.
 not exist, a schema rejects a value, or a receipt file could not be deleted.
 Source: [src/cli/hsa.ts](src/cli/hsa.ts)
 
+
+---
+
+## `code-library`
+
+Reads the Code Library from the terminal — the same use-cases the web app calls,
+through the same `index.ts` and the same `deps`.
+
+```
+npm run cli -- code-library list
+npm run cli -- code-library list --search "group by"
+npm run cli -- code-library list --language sql
+npm run cli -- code-library list --category Query --tag postgres
+npm run cli -- code-library show --id 3
+npm run cli -- code-library labels
+npm run cli -- code-library pin --id 3
+npm run cli -- code-library unpin --id 3
+npm run cli -- code-library colour --id 3 --colour ocean
+npm run cli -- code-library delete --id 3
+npm run cli -- code-library recycled
+npm run cli -- code-library restore --recycled 5
+npm run cli -- code-library purge --recycled 5
+npm run cli -- code-library empty-bin
+npm run cli -- code-library add --file ./query.sql --title "Monthly rollup" --language sql
+npm run cli -- code-library add --code "SELECT 1" --language sql
+npm run cli -- code-library edit --id 3 --file ./query.sql
+npm run cli -- code-library edit --id 3 --language python
+```
+
+`show` prints the snippet **verbatim** on stdout and nothing else, so
+`npm run cli -- code-library show --id 3 > thing.sql` produces the file the snippet
+was. The title and language go to stderr, where a terminal still shows them and a
+pipe does not pick them up. That round-trip is only possible because the body is
+stored as plain text rather than the sanitized HTML a clip carries — see
+`migrations/0178_create_code_library.md`.
+
+`--file` is the way in that matches that promise. A snippet's whole point is its
+exact bytes, and passing those on argv means a shell has already mangled the tabs,
+the newlines and anything that looked like a variable. Reading a file leaves them
+alone. `--code` is there for one-liners, where it does not matter. `--file` wins
+when both are given.
+
+`edit` falls back to the stored value for every field left out, so
+`edit --id 3 --language python` changes only the language — including the labels,
+where a save otherwise replaces them wholesale. `--category ""` is how you clear
+them.
+
+`--category` and `--tag` are comma-separated and combine with **AND**:
+`--category Query --tag postgres` lists snippets carrying both, never either.
+`list` marks a pinned snippet with a leading `*`.
+
+`delete` moves a snippet to the bin and has **no `--forever`**. The only
+irreversible commands are `purge` and `empty-bin`, and `purge` names a **bin
+row** (`--recycled`) rather than a snippet — so a mistyped id there cannot
+destroy something still in the library. `recycled` lists the bin with each
+entry's own id in the first column and the snippet's old id in brackets; restore
+and purge both take the former.
+
+Sealing is **not** reachable from the CLI. Encrypting a snippet means typing a
+password on a command line, where it lands in shell history — and this library is
+shared, so a forgotten or mistyped password loses that snippet for everyone with
+no recovery. That belongs behind a form field.

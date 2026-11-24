@@ -267,9 +267,15 @@ export function FloatingLayerProvider({
   // just-dropped position with the stale server one on any unrelated re-render —
   // which is exactly the snap-back this effect exists to avoid causing.
   const initialPositionsKey = JSON.stringify(initialPositions);
-  useEffect(() => {
+  // Adjusted during render rather than in an effect. `positions` is already
+  // seeded from `initialPositions` by its own initializer, so the effect's
+  // mount run was a no-op and this changes nothing about the first paint — it
+  // only removes the extra render on a genuine change.
+  const [syncedPositionsKey, setSyncedPositionsKey] = useState(initialPositionsKey);
+  if (syncedPositionsKey !== initialPositionsKey) {
+    setSyncedPositionsKey(initialPositionsKey);
     setPositions(JSON.parse(initialPositionsKey) as Partial<Record<FloatingId, PuckPosition>>);
-  }, [initialPositionsKey]);
+  }
 
   const puckSlots = useMemo(
     () => resolvePuckSlots(states, corners, musicPuckUp, positions),

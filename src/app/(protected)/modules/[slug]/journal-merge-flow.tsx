@@ -177,7 +177,7 @@ export function useJournalMerge({
       applyRows(
         result.entries,
         `Merged entry saved, and moved ${count} original ${plural(count)} to the recycle bin — ` +
-          "restore them from Data Management → CSV Import → Correct if you need them back.",
+          "restore them from Data Management → Recycle Bin if you need them back.",
       );
     } finally {
       setBusy(false);

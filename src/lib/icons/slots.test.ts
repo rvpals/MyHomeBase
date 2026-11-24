@@ -17,7 +17,7 @@ import {
 //
 // `TREE_ICONS` lives in a .tsx that imports React, and nothing under src/lib may import
 // react — so this test cannot read it directly without breaking the library boundary.
-// (`src/lib/music/browse-icons.fixture.ts` mirrors the same table for the same reason;
+// (`src/lib/music/browse.test.ts` asserts the same thing for the Music tab strip;
 // kept separate because that one is scoped to the concepts Music's browse views use.)
 //
 // Previously this test kept its own hand-copied list of tree concepts, with a comment
@@ -173,6 +173,11 @@ describe("sectionSlotId", () => {
       // `new` and `edit` are deliberately absent: they are routes the editor opens
       // at, not nav destinations, so no slot is derived for them.
       documents: ["main", "metadata", "configuration"],
+      // Note the underscore: the namespace is `code_library`, not the `code-library`
+      // slug, because `sectionSlotId` does not replace hyphens in the namespace.
+      // `CODE_LIBRARY_ICON_NAMESPACE` is what the shell passes, and this asserts the
+      // two agree.
+      code_library: ["main", "metadata", "recycled"],
       admin: [
         "configuration", "configuration-modules", "configuration-application",
         // Under the Display Settings group, but the ids stayed `configuration-*` so

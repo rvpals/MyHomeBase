@@ -320,7 +320,9 @@ describe("buildMetadataBundle", () => {
     ]);
     expect(bundle.tags).toEqual([{ name: "family", description: "", icon: null }]);
     expect(bundle.templates).toEqual([
-      { name: "Morning", description: "Daily", isEnabled: false, fields: [] },
+      // `icon` joined the template shape after this was written, alongside the
+      // one categories and tags already carry above.
+      { name: "Morning", description: "Daily", isEnabled: false, fields: [], icon: null },
     ]);
     expect(bundle.filters).toEqual([
       { name: "Pinned only", category: "", description: "", filter: { join: "AND", groups: [] } },

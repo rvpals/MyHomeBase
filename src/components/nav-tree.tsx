@@ -544,11 +544,19 @@ export function NavTree({
   // Navigating to another module expands it, without disturbing anything the
   // reader has collapsed. Keyed on the slug rather than the path so moving
   // between two sections of one module doesn't re-run it.
+  // Adjusted during render rather than in an effect, so the module is already
+  // expanded in the first paint of the new route instead of snapping open a
+  // frame later.
+  //
+  // `syncedSlug` starts `undefined` rather than at `activeSlug` on purpose:
+  // the effect this replaces also ran on mount, so the module you land on
+  // directly has to expand too, not only one you navigate to.
   const activeSlug = activeModule?.slug;
-  useEffect(() => {
-    if (!activeSlug) return;
+  const [syncedSlug, setSyncedSlug] = useState<string | undefined>(undefined);
+  if (activeSlug !== undefined && syncedSlug !== activeSlug) {
+    setSyncedSlug(activeSlug);
     setExpanded((current) => (current.has(activeSlug) ? current : new Set(current).add(activeSlug)));
-  }, [activeSlug]);
+  }
 
   // Administration is appended rather than living in `tree.modules`: it has no
   // `sys_modules` row, so it isn't a module the tree can be built from, but it is

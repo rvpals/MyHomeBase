@@ -36,6 +36,7 @@ import {
   SqliteScratchpadRepository,
 } from "@/lib/scratchpad";
 import { SqliteClipsRepository } from "./clips/repository";
+import { SqliteCodeLibraryRepository } from "./code-library/repository";
 import { SharpClipImageProcessor } from "./clips/image-processor";
 import { SqliteDocumentsRepository } from "./documents/repository";
 import { NodeDocumentFileStore } from "./documents/file-store";
@@ -348,6 +349,10 @@ export const deps = {
   // The Clips module (migrations/0155): rich-text notes, their taxonomy, their
   // pasted images and their links into other modules.
   clipsRepo: new SqliteClipsRepository(db),
+  // The Code Library (migrations/0178): code snippets, stored as verbatim plain
+  // text rather than the sanitized HTML a clip carries — see that migration's log
+  // for why the two could not share a table.
+  codeLibraryRepo: new SqliteCodeLibraryRepository(db),
   // Resizes a pasted image before it is stored. Behind a port and lazily loading
   // `sharp`, for the reason the carousel and icon processors both record: this file
   // loads on every page, so a top-level native import would run on every render.

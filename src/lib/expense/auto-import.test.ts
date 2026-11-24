@@ -29,6 +29,9 @@ describe("resolveExpenseSettings", () => {
       autoImportEnabled: true,
       autoImportPath: "",
       autoImportIntervalMinutes: 0,
+      // Added to the settings object after this test was written; the resolver
+      // defaults it to "exclude nothing".
+      statsExcludedCategories: [],
     });
     // The switch defaults on, but with no folder or interval nothing runs.
     expect(isAutoImportEnabled(settings)).toBe(false);
@@ -43,6 +46,7 @@ describe("resolveExpenseSettings", () => {
       autoImportEnabled: true,
       autoImportPath: "/volume1/statements",
       autoImportIntervalMinutes: 30,
+      statsExcludedCategories: [],
     });
     expect(isAutoImportEnabled(settings)).toBe(true);
   });

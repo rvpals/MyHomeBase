@@ -243,7 +243,7 @@ export function JournalReviewView({
       setNotice(
         `Merged entry saved, and moved ${result.movedCount} original ` +
           `${plural(result.movedCount ?? 0)} to the recycle bin — restore them from ` +
-          "Data Management → CSV Import → Correct if you need them back.",
+          "Data Management → Recycle Bin if you need them back.",
       );
       router.refresh();
     } finally {
@@ -300,7 +300,7 @@ export function JournalReviewView({
    * slower than ticking the box and using Delete. What makes that safe is the
    * destination — the same `recycleJournalSameDateEntriesAction` the bulk
    * Delete calls, so the entry moves to the recycle bin and is restorable from
-   * Data Management → CSV Import → Correct. The notice says so every time,
+   * Data Management → Recycle Bin. The notice says so every time,
    * because an unconfirmed delete has to tell the reader where the thing went.
    *
    * This is the one path on this screen that does **not** take the server's
@@ -350,7 +350,7 @@ export function JournalReviewView({
       );
       setNotice(
         `Moved that entry (${row.date}) to the recycle bin — restore it from ` +
-          "Data Management → CSV Import → Correct if you need it back.",
+          "Data Management → Recycle Bin if you need it back.",
       );
     } finally {
       setIsBusy(false);
@@ -361,7 +361,7 @@ export function JournalReviewView({
     setIsBusy(true);
     setScanLabel({
       message: `Moving ${pending.ids.length} ${plural(pending.ids.length)} to the recycle bin…`,
-      detail: "Restorable afterwards from Data Management → CSV Import → Correct.",
+      detail: "Restorable afterwards from Data Management → Recycle Bin.",
     });
     setIsScanning(true);
     setError(undefined);
@@ -627,7 +627,7 @@ export function JournalReviewView({
             Click a row to read the whole entry, <strong>Edit</strong>
             it there if it needs fixing, and close it to come back here. Tick several, then{" "}
             <strong>Delete</strong> moves them to the recycle bin
-            (recoverable under CSV Import → Correct), <strong>Merge</strong> drafts one new
+            (recoverable under Recycle Bin), <strong>Merge</strong> drafts one new
             entry from them for you to edit and save — then asks whether to delete the
             originals — or <strong>Lock &amp; exclude from review</strong> marks them settled
             and takes them off this list for good. Locked entries never appear here, so a
@@ -847,7 +847,7 @@ export function JournalReviewView({
           description={
             `Are you sure you want to delete the checked ${pendingDelete.ids.length} ` +
             `${plural(pendingDelete.ids.length)}? They move to the recycle bin under ` +
-            "Data Management → CSV Import → Correct, so this can be undone."
+            "Data Management → Recycle Bin, so this can be undone."
           }
           onClose={() => setPendingDelete(undefined)}
           isBusy={isBusy}

@@ -265,12 +265,23 @@ export function GamePictionaryView({
   const round = state ? roundNumber(state) : 0;
   useEffect(() => {
     if (phase !== "handoff") return;
+    // The canvas is a genuine external system, which is what an effect is for.
     clearCanvas();
-    // Show the next drawer their word when they begin. Without this reset the prompt
-    // would still be hidden from whoever draws next, and they would have to peek at a
-    // word they have not been shown once.
-    setWordHidden(false);
   }, [clearCanvas, phase, round]);
+
+  // Show the next drawer their word when they begin. Without this reset the prompt
+  // would still be hidden from whoever draws next, and they would have to peek at a
+  // word they have not been shown once.
+  //
+  // Split out of the effect above and adjusted during render: it is state, not an
+  // external system, and doing it here means the word is already visible in the
+  // handoff's first paint rather than appearing a frame later.
+  const [syncedTurn, setSyncedTurn] = useState("");
+  const turnKey = `${phase}:${round}`;
+  if (phase === "handoff" && syncedTurn !== turnKey) {
+    setSyncedTurn(turnKey);
+    setWordHidden(false);
+  }
 
   // The word only stays up for a moment, then hides itself — the drawer no longer has to
   // remember to tap "Start guessing" before the guessers look. Restarts when the word

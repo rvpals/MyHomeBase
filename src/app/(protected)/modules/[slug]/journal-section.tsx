@@ -347,17 +347,23 @@ function SectionBody({
       // Used to be an "Import from CSV" card at the bottom of the home screen.
       // It is its own section now: importing is an occasional, deliberate act,
       // and the mapping table it renders wants the whole page width.
-      // The Correct tab is a server panel handed over as a slot: it reads the
-      // whole journal to group duplicates, which the client importer can't do.
+      //
+      // One screen, no tabs: the Correct tab that used to sit beside the importer
+      // is the Duplicate entries section below.
       return (
         <JournalImportView
           namedMappings={listNamedMappings(deps.csvImportMappingRepo, "Journal")}
-          correctSlot={<JournalCorrectPanel />}
         />
       );
 
+    case "duplicate-entries":
+      // A server panel: finding entries that share a date and a title is a
+      // whole-journal read, which the client view can't do. Was the Correct tab
+      // under CSV Import, where nobody would think to look for it.
+      return <JournalCorrectPanel show="duplicates" />;
+
     case "recycle-bin":
-      // The same view the Correct tab renders, with the Duplicates card off.
+      // The same view, with the Duplicates card off instead of the bin.
       // Deleting an entry has always moved it here; until this section existed
       // the only way back was CSV Import → Correct, which no reader would guess.
       return <JournalCorrectPanel show="recycled" />;

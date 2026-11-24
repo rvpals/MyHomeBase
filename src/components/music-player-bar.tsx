@@ -43,7 +43,14 @@ export function MusicPlayerBar() {
   // the next one showing a note glyph over perfectly good artwork.
   const puckCoverAlbumId = player?.current?.albumId;
   const [puckCoverFailed, setPuckCoverFailed] = useState(false);
-  useEffect(() => setPuckCoverFailed(false), [puckCoverAlbumId]);
+  // Adjusted during render, not in an effect: React documents this shape for
+  // "reset some state when a value changes", and an effect would paint one
+  // frame of the previous album's failure state over the new album's art.
+  const [coverAlbumId, setCoverAlbumId] = useState(puckCoverAlbumId);
+  if (coverAlbumId !== puckCoverAlbumId) {
+    setCoverAlbumId(puckCoverAlbumId);
+    setPuckCoverFailed(false);
+  }
 
   // Which shape is on screen, or null for nothing playing. Computed before the
   // early return below because the effect that publishes it is a hook, and hooks

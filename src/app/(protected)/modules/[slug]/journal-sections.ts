@@ -21,6 +21,11 @@ export const JOURNAL_SECTIONS = [
   "report",
   "import",
   "calendar-import",
+  // Was the Correct tab under CSV Import. A tab inside an importer is not where a
+  // reader looks for duplicate entries, and the tab strip existed only to hold it,
+  // so both moved out: this is a section of its own and CSV Import is a single
+  // screen again.
+  "duplicate-entries",
   "review-data",
   "recycle-bin",
   "configuration",
@@ -79,11 +84,19 @@ export const JOURNAL_SECTION_INFO: Record<JournalSection, { label: string; descr
     // now that it is one child of the Data Management group rather than the whole
     // of it; the group heading above it carries the wider name.
     label: "CSV Import",
-    description: "Import a CSV file, reset the journal, and bulk-correct entries.",
+    description: "Import entries into the journal from a CSV file.",
   },
   "calendar-import": {
     label: "Calendar Import",
     description: "Import events from a Google Calendar .ics export.",
+  },
+  "duplicate-entries": {
+    // The Duplicates card keeps its own `journal_card_duplicates` slot; the nav row
+    // this slug derives (`journal_section_duplicate_entries`) is a different place
+    // and so a different slot. Same split as Recycle Bin's.
+    label: "Duplicate entries",
+    description:
+      "Entries sharing a date and a title — read them, and delete the copies you don't want.",
   },
   "review-data": {
     label: "Review Data",
@@ -147,8 +160,10 @@ export const JOURNAL_CONFIGURATION_SECTIONS: readonly JournalSection[] = [
 export const JOURNAL_DATA_MANAGEMENT_SECTIONS: readonly JournalSection[] = [
   "import",
   "calendar-import",
-  // Last in the group because it reads what the two importers above write: the
-  // several-entries-on-one-date pile is mostly what an import leaves behind.
+  // The two review screens sit together, under the two importers that mostly
+  // produce what they find. Duplicate entries asks the narrower question
+  // (date + title), Review Data the wider one (date alone), so it reads first.
+  "duplicate-entries",
   "review-data",
   // Last: it holds what every other screen's deletes produce, so it reads as the
   // end of the pipeline rather than a step in it.
@@ -178,6 +193,10 @@ export const JOURNAL_SECTION_ICONS: Record<JournalSection, string> = {
   // A wall calendar, for the section that reads one. Hand-drawn in
   // tree-icons.tsx: no Iconify set in TREE_ICON_GLYPHS covers this concept.
   "calendar-import": "calendar",
+  // `duplicate` — two offset sheets, which is what the screen lists. Free as a
+  // *nav* glyph: it is drawn on the entry screen's Clone button, which is an action
+  // and not a destination, so no two nav rows end up wearing the same mark.
+  "duplicate-entries": "duplicate",
   // `clipboard` — going down a list and checking things off, which is what this
   // section is for. Free as a Journal glyph: deliberately not `list` (Entries'),
   // not `calendar` (Calendar Import's, the row directly above it in the same

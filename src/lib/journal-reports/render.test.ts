@@ -344,7 +344,26 @@ describe("renderReport", () => {
       const rendered = renderReport({
         report: report(),
         details: details([{ part: "header", html: "{{table.topPlaces}}" }]),
-        entries: [entry({ placeName: "<b>Oslo</b>" })],
+        // A **pin**, not the free-text `placeName`: `table.topPlaces` counts
+        // pinned locations only, as the "ignores the free-text place name"
+        // test below asserts. Passing `placeName` here left the table empty, so
+        // this test had stopped exercising escaping at all.
+        // Written out rather than using the `pin` helper, which is scoped to
+        // the "places from pinned locations" block further down.
+        entries: [
+          entry({
+            locations: [
+              {
+                id: 1,
+                entryId: 1,
+                latitude: 40.1,
+                longitude: -74.2,
+                locationName: "<b>Oslo</b>",
+                sortOrder: 0,
+              },
+            ],
+          }),
+        ],
         generatedAt: AT,
       });
 

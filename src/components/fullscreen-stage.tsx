@@ -48,7 +48,14 @@ export function FullscreenStage({
   // and rebuild it on every parent render -- which, for a fullscreen request, means
   // the browser dropping out of fullscreen.
   const onExitRef = useRef(onExit);
-  onExitRef.current = onExit;
+  // Updated in an effect with no dependency array, so it runs after *every*
+  // render and the ref is always one render behind nothing. Assigning during
+  // render instead is the shape `react-hooks/refs` refuses: under concurrent
+  // rendering a render can be thrown away, and the ref would keep a callback
+  // from a render that never committed.
+  useEffect(() => {
+    onExitRef.current = onExit;
+  });
 
   useEffect(() => {
     const host = hostRef.current;

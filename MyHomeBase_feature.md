@@ -226,7 +226,7 @@ for existing entries.
 
 ### Data management
 
-**Recycle bin** with a Correct tab, **metadata backup and restore**, templates,
+**Duplicate entries** and a **recycle bin**, **metadata backup and restore**, templates,
 preferences, and a **Home screen layout** section choosing the module's own cards.
 
 - **Meta Data** curates the categories and tags themselves, their icons, and -- on a

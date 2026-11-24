@@ -411,18 +411,28 @@ function Toolbar({
     [onMove, toolbar.id],
   );
 
-  const drag = useToolbarDrag({ enabled: isFloating, position, onCommit });
+  // Destructured rather than used as `drag.x`. The hook returns a ref among its
+  // fields, and the compiler treats every property read on that object as a ref
+  // read during render — `react-hooks/refs`. Pulling the fields out once gives
+  // it plain values plus one ref that is only ever *passed* to `ref=`, which is
+  // exactly what refs are for. No behaviour changes.
+  const {
+    barRef: dragBarRef,
+    position: dragPosition,
+    isDragging,
+    handlers: dragHandlers,
+  } = useToolbarDrag({ enabled: isFloating, position, onCommit });
 
   return (
     <nav
-      ref={drag.barRef}
+      ref={dragBarRef}
       aria-label={toolbar.name}
       data-edge={toolbar.edge}
       // Suppresses the bar's own transition while a drag is in flight, so it
       // tracks the pointer exactly instead of easing along behind it.
-      data-dragging={drag.isDragging ? "" : undefined}
+      data-dragging={isDragging ? "" : undefined}
       className="personal-toolbar"
-      {...drag.handlers}
+      {...dragHandlers}
       // `data-textured` gates the `::before` layer, so a bar with no picture
       // emits no pseudo-element at all rather than one at opacity 0 — an
       // always-on layer costs a paint for nothing. Same reasoning
@@ -435,8 +445,8 @@ function Toolbar({
           // keeps the pixel geometry in CSS beside every other placement's. Undefined
           // on a docked bar, so the declarations drop out entirely and that bar's own
           // edge rule is untouched.
-          "--toolbar-x": isFloating ? `${drag.position.x}px` : undefined,
-          "--toolbar-y": isFloating ? `${drag.position.y}px` : undefined,
+          "--toolbar-x": isFloating ? `${dragPosition.x}px` : undefined,
+          "--toolbar-y": isFloating ? `${dragPosition.y}px` : undefined,
           "--toolbar-surface": toolbar.backgroundColor,
           // The texture goes to custom properties read by
           // `.personal-toolbar::before`, NOT to `background-image` on the bar

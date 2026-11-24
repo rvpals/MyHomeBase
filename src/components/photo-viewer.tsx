@@ -1087,9 +1087,11 @@ export function PhotoViewer({
   // no metadata, and then REAPPEARS on the next one that has some -- a dialog opening
   // itself, from the reader's point of view. Closing it is the honest behaviour: they
   // asked to see this photograph's EXIF, and this photograph has none.
-  useEffect(() => {
-    if (isExifOpen && hasNoExif) setIsExifOpen(false);
-  }, [isExifOpen, hasNoExif]);
+  // During render, not in an effect: React re-renders immediately on a setState
+  // from a component's own render body and never commits the intermediate
+  // result, so the dialog is simply never painted open over a photograph with
+  // no EXIF. The effect version painted it, then closed it.
+  if (isExifOpen && hasNoExif) setIsExifOpen(false);
 
   // Mounted into document.body via a portal, NOT inline where it is used: `fixed
   // inset-0 z-50` is only as good as its stacking context, and rendered inside a card

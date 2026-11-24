@@ -6,6 +6,9 @@
 // read, the icon lookups) happen here and the view stays props-in / events-out.
 // The view refreshes itself from the server actions after every mutation, so
 // this initial read only has to be right on first render.
+//
+// Two call sites, one per card: the Duplicate entries section (`show="duplicates"`)
+// and the Recycle Bin section (`show="recycled"`). Each skips the other's read.
 
 import { findDuplicateGroups, listCategories, listEntries, listRecycledEntries, listTags } from "@/lib/journal";
 import { deps } from "@/lib/wiring";
@@ -22,8 +25,11 @@ export function JournalCorrectPanel({ show = "both" }: { show?: JournalCorrectVi
   // Duplicates card, so reading and grouping every entry in the journal would be
   // pure cost. The recycle bin alone is a cheap, bounded query.
   const duplicateGroups =
-    show === "both" ? findDuplicateGroups(listEntries(deps.journalRepo)) : [];
-  const recycledEntries = listRecycledEntries(deps.journalRepo);
+    show === "recycled" ? [] : findDuplicateGroups(listEntries(deps.journalRepo));
+  // And the mirror of that: the Duplicate entries section never renders the bin.
+  // Its five actions still return a bin list, which the view adopts — a delete
+  // made here really does move an entry into it — but the first render needs none.
+  const recycledEntries = show === "duplicates" ? [] : listRecycledEntries(deps.journalRepo);
 
   const categories = listCategories(deps.journalRepo);
   const tags = listTags(deps.journalRepo);

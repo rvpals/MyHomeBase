@@ -215,6 +215,12 @@ describe("resetModulesToDefaults", () => {
       // Clips, seeded by migration 0156 and carried in DEFAULT_MODULES so an admin
       // "Reset to Default" does not drop it. This list has to track that constant.
       "clips",
+      // Document Library (migration 0160) and Code Library (0179), for the same
+      // reason. A module missing from DEFAULT_MODULES vanishes the first time
+      // anyone resets, which is exactly what this test is here to catch — it was
+      // itself stale on `documents` until the Code Library work ran it again.
+      "documents",
+      "code-library",
     ]);
   });
 

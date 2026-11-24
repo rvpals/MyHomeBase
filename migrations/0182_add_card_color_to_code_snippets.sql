@@ -1,0 +1,19 @@
+-- A card tint for a Code Library snippet.
+--
+-- A **key**, never a hex: the column stores `'rose'` and the tint is mixed from
+-- the running theme's own tokens at render. A stored hex would be the same pink
+-- card on all eight built-in themes — two of which are light — and on every theme
+-- an admin creates at runtime. The same decision `clp_clips.card_color` records
+-- (migration 0157), and the same one `deriveCodeTokens` makes for the syntax
+-- colours.
+--
+-- THE KEYS ARE PERMANENT, like an icon slot id. They are written into every
+-- coloured snippet's row, so renaming one blanks those cards back to the default
+-- surface. The set lives in `src/lib/shared/tint.ts` as TINT_COLORS and is shared
+-- with Clips rather than redeclared here — six tints is a palette, not a module
+-- feature, and two modules drifting to different colour names would be a nuisance
+-- with no upside.
+--
+-- Blank, never NULL, so no reader has to handle two kinds of "no tint" — the
+-- mapping `clp_clips.card_color` and `tol_todo_items.notes` both use.
+ALTER TABLE cod_snippets ADD COLUMN card_color TEXT NOT NULL DEFAULT '';

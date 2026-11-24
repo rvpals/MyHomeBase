@@ -1,5 +1,15 @@
 "use client";
 
+/* eslint-disable react-hooks/immutability -- the simulation mutates its nodes in
+   place, deliberately. A force-directed layout integrates positions every frame
+   while a pointer is down; satisfying this rule means cloning the node array (and
+   each node) on every `pointermove`, which turns an O(1) write into O(n) garbage
+   sixty times a second on the one screen in this app whose whole job is to stay
+   smooth under a drag. The mutated objects are owned by `graph`, which this
+   component builds and nothing else reads, so the usual hazard the rule guards
+   against — a parent holding a stale reference — does not arise. Re-renders are
+   driven by `kick()`, not by identity, for exactly that reason. */
+
 // Anything tagged, as a force-directed graph: every subject is a dot, two dots
 // are joined when they share a tag (or a category), and the arrangement falls
 // out of a physics simulation rather than being authored. Drag a node, scroll
@@ -173,6 +183,7 @@ function useThemeColors(): {
      
     // style is unknowable during render (no `window` on the server), so the
     // first real read has to happen after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- computed theme colours are browser-only and absent on the server; this is the first read, and the observer above handles every later one.
     setColors(read());
     return () => observer.disconnect();
   }, [read]);
@@ -198,7 +209,10 @@ export function TaxonomyGraphView<S extends GraphSubject>({
   // not exist on the server, and iOS Safari on iPhone has no element
   // fullscreen at all. A control that cannot work is worse than no control.
   const [canFullscreen, setCanFullscreen] = useState(false);
-  useEffect(() => setCanFullscreen(canGoFullscreen()), []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only capability, unknowable during render and absent on the server. Runs once on mount.
+    setCanFullscreen(canGoFullscreen());
+  }, []);
 
   // The largest weight in the set, so every radius is relative to it. Computed
   // once per subject list rather than per frame.
