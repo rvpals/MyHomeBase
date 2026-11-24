@@ -20,12 +20,17 @@ import { displayTitle } from "@/lib/shared/encryption";
 import type { JournalBodyScope } from "./body-length";
 import { buildEntriesSql, describeEntriesSql } from "./entries-sql";
 import { LOG_CATEGORY_NAME } from "./journal";
-import { parseStoredJournalFilter, parseStoredPrefillFields } from "./schema";
+import {
+  parseStoredComboNames,
+  parseStoredJournalFilter,
+  parseStoredPrefillFields,
+} from "./schema";
 import type {
   BulkEntryEditData,
   EntryWriteData,
   JournalFilterWriteData,
   PrefillTemplateWriteData,
+  TaxonomyComboWriteData,
   UpsertCategoryInput,
   UpsertTagInput,
 } from "./schema";
@@ -39,6 +44,7 @@ import type {
   JournalPrefillField,
   JournalPrefillTemplate,
   JournalTag,
+  JournalTaxonomyCombo,
   JournalTaxonomyCount,
   JournalTaxonomyIcon,
   JournalYearCount,
@@ -128,9 +134,13 @@ interface CategoryRow extends TaxonomyRow {
 }
 
 // Spelled out rather than SELECT *, so adding a column later can't silently
-// widen every read of this table.
+// widen every read of this table. Migration 0176 is exactly the case this guards
+// against: `icon_image_mime_type` is here because callers need to know whether an
+// icon exists, and `icon_image` is deliberately NOT — those bytes have one reader,
+// the serving route, and listing them here would ship them into every Templates
+// render and into the New Entry form's props.
 const PREFILL_TEMPLATE_COLUMNS =
-  "SELECT id, name, description, is_enabled, fields_json, created_at, updated_at";
+  "SELECT id, name, description, is_enabled, fields_json, icon_image_mime_type, created_at, updated_at";
 
 interface PrefillTemplateRow {
   id: number;
@@ -138,6 +148,7 @@ interface PrefillTemplateRow {
   description: string;
   is_enabled: number;
   fields_json: string;
+  icon_image_mime_type: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -152,6 +163,39 @@ function prefillTemplateToDomain(row: PrefillTemplateRow): JournalPrefillTemplat
     description: row.description,
     isEnabled: row.is_enabled === 1,
     fields: parseStoredPrefillFields(row.fields_json),
+    // Presence, not bytes (migration 0176). `?? undefined` rather than the raw
+    // null, because the domain type says "absent", and `null` would make every
+    // caller choose between two falsy spellings of the same thing.
+    iconMimeType: row.icon_image_mime_type ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** Same reasoning as PREFILL_TEMPLATE_COLUMNS: spelled out, no SELECT *. */
+const TAXONOMY_COMBO_COLUMNS =
+  "SELECT id, name, description, categories_json, tags_json, created_at, updated_at";
+
+interface TaxonomyComboRow {
+  id: number;
+  name: string;
+  description: string;
+  categories_json: string;
+  tags_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// parseStoredComboNames is deliberately forgiving (see its doc): a row whose JSON
+// can't be read comes back with an empty list rather than throwing, so one bad
+// combo doesn't take the Meta Data screen down with it.
+function taxonomyComboToDomain(row: TaxonomyComboRow): JournalTaxonomyCombo {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    categories: parseStoredComboNames(row.categories_json),
+    tags: parseStoredComboNames(row.tags_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1168,6 +1212,88 @@ export class SqliteJournalRepository implements JournalRepository {
     const updated = this.getPrefillTemplateById(id);
     if (!updated) throw new Error(`Prefill template ${id} no longer exists.`);
     return updated;
+  }
+
+  // The only read of `icon_image` anywhere (migration 0176) — see
+  // PREFILL_TEMPLATE_COLUMNS for why nothing else touches it.
+  getPrefillTemplateIcon(id: number): JournalTaxonomyIcon | undefined {
+    const row = this.db
+      .prepare("SELECT icon_image, icon_image_mime_type FROM jrn_prefill_templates WHERE id = ?")
+      .get(id) as { icon_image: Buffer | null; icon_image_mime_type: string | null } | undefined;
+    if (!row || !row.icon_image || !row.icon_image_mime_type) return undefined;
+    return { data: row.icon_image, mimeType: row.icon_image_mime_type };
+  }
+
+  setPrefillTemplateIcon(id: number, icon: DecodedImage | undefined): void {
+    this.db
+      .prepare(
+        "UPDATE jrn_prefill_templates SET icon_image = ?, icon_image_mime_type = ? WHERE id = ?",
+      )
+      .run(icon?.data ?? null, icon?.mimeType ?? null, id);
+  }
+
+  // --- taxonomy combos (migration 0177) --------------------------------------
+
+  listTaxonomyCombos(): JournalTaxonomyCombo[] {
+    const rows = this.db
+      .prepare(`${TAXONOMY_COMBO_COLUMNS} FROM jrn_taxonomy_combos ORDER BY name ASC`)
+      .all() as TaxonomyComboRow[];
+    return rows.map(taxonomyComboToDomain);
+  }
+
+  getTaxonomyComboById(id: number): JournalTaxonomyCombo | undefined {
+    const row = this.db
+      .prepare(`${TAXONOMY_COMBO_COLUMNS} FROM jrn_taxonomy_combos WHERE id = ?`)
+      .get(id) as TaxonomyComboRow | undefined;
+    return row ? taxonomyComboToDomain(row) : undefined;
+  }
+
+  getTaxonomyComboByName(name: string): JournalTaxonomyCombo | undefined {
+    // NOCASE matches idx_jrn_taxonomy_combos_name, so this finds "gym" for "Gym"
+    // — the same rule getPrefillTemplateByName follows.
+    const row = this.db
+      .prepare(`${TAXONOMY_COMBO_COLUMNS} FROM jrn_taxonomy_combos WHERE name = ? COLLATE NOCASE`)
+      .get(name) as TaxonomyComboRow | undefined;
+    return row ? taxonomyComboToDomain(row) : undefined;
+  }
+
+  saveTaxonomyCombo(input: TaxonomyComboWriteData): JournalTaxonomyCombo {
+    // The arrays are serialised here rather than by the use-case, because JSON is
+    // this table's storage detail — the port speaks in string[].
+    const row = {
+      name: input.name,
+      description: input.description,
+      categories_json: JSON.stringify(input.categories),
+      tags_json: JSON.stringify(input.tags),
+    };
+
+    if (input.id !== undefined) {
+      this.db
+        .prepare(
+          `UPDATE jrn_taxonomy_combos
+              SET name = @name, description = @description,
+                  categories_json = @categories_json, tags_json = @tags_json
+            WHERE id = @id`,
+        )
+        .run({ ...row, id: input.id });
+      const updated = this.getTaxonomyComboById(input.id);
+      if (!updated) throw new Error(`Taxonomy combo ${input.id} no longer exists.`);
+      return updated;
+    }
+
+    const result = this.db
+      .prepare(
+        `INSERT INTO jrn_taxonomy_combos (name, description, categories_json, tags_json)
+         VALUES (@name, @description, @categories_json, @tags_json)`,
+      )
+      .run(row);
+    const created = this.getTaxonomyComboById(Number(result.lastInsertRowid));
+    if (!created) throw new Error(`Failed to read back taxonomy combo "${input.name}".`);
+    return created;
+  }
+
+  deleteTaxonomyCombo(id: number): void {
+    this.db.prepare("DELETE FROM jrn_taxonomy_combos WHERE id = ?").run(id);
   }
 
   listDistinctFieldValues(field: JournalPrefillField, limit: number): string[] {

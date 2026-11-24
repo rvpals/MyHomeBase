@@ -3,6 +3,7 @@ import type {
   EntryWriteData,
   JournalFilterWriteData,
   PrefillTemplateWriteData,
+  TaxonomyComboWriteData,
   UpsertCategoryInput,
   UpsertTagInput,
 } from "./schema";
@@ -15,6 +16,7 @@ import type {
   JournalPrefillField,
   JournalPrefillTemplate,
   JournalTag,
+  JournalTaxonomyCombo,
   JournalTaxonomyCount,
   JournalTaxonomyIcon,
   JournalYearCount,
@@ -416,6 +418,23 @@ export interface JournalRepository {
   savePrefillTemplate(input: PrefillTemplateWriteData): JournalPrefillTemplate;
   deletePrefillTemplate(id: number): void;
   setPrefillTemplateEnabled(id: number, isEnabled: boolean): JournalPrefillTemplate;
+
+  /**
+   * A template's icon bytes (migration 0176). Used **only** by the serving route
+   * — everything rendering a list reads `iconMimeType` off the domain type
+   * instead, which is why `PREFILL_TEMPLATE_COLUMNS` omits the blob.
+   */
+  getPrefillTemplateIcon(id: number): JournalTaxonomyIcon | undefined;
+  /** `undefined` removes the icon, leaving the template itself untouched. */
+  setPrefillTemplateIcon(id: number, icon: DecodedImage | undefined): void;
+
+  // Taxonomy combos (migration 0177). Same create-or-update shape as the prefill
+  // templates above, and for the same reason: the editor is one form either way.
+  listTaxonomyCombos(): JournalTaxonomyCombo[];
+  getTaxonomyComboById(id: number): JournalTaxonomyCombo | undefined;
+  getTaxonomyComboByName(name: string): JournalTaxonomyCombo | undefined;
+  saveTaxonomyCombo(input: TaxonomyComboWriteData): JournalTaxonomyCombo;
+  deleteTaxonomyCombo(id: number): void;
 
   /**
    * The distinct values already used for one prefill-able field, most-used first,

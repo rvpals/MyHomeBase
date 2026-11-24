@@ -2968,6 +2968,7 @@ export const CHESS_STATUSES = [
   "insufficient-material",
   "resigned",
   "draw-agreed",
+  "timeout",
 ] as const;
 
 export type ChessStatus = (typeof CHESS_STATUSES)[number];
@@ -2981,7 +2982,89 @@ export const CHESS_FINISHED_STATUSES: readonly ChessStatus[] = [
   "insufficient-material",
   "resigned",
   "draw-agreed",
+  "timeout",
 ];
+
+/* ---------------------------------------------------------------------------------
+   The clock.
+--------------------------------------------------------------------------------- */
+
+/**
+ * The time controls on offer, as `minutes+increment` in the usual notation.
+ *
+ * **`untimed` is the default and is a real member of this list**, not the absence of a
+ * control. That is what lets the setup screen offer it as one choice among six, and it
+ * keeps "which control is this game playing?" a single question with an answer, rather
+ * than a nullable field every caller has to test.
+ *
+ * The ids are stored inside a saved game, so treat them as permanent.
+ */
+export const CHESS_TIME_CONTROLS = ["untimed", "1+0", "3+2", "5+0", "10+0", "15+10"] as const;
+
+export type ChessTimeControl = (typeof CHESS_TIME_CONTROLS)[number];
+
+/**
+ * What each control gives you. `initialMs` of 0 means untimed, and is the one value
+ * that makes `createChessClock` return nothing at all.
+ *
+ * The increment is added **after** a move is made and only if the mover had time left,
+ * which is the Fischer rule every online board uses.
+ */
+export const CHESS_TIME_CONTROL_SETUP: Record<
+  ChessTimeControl,
+  { label: string; hint: string; initialMs: number; incrementMs: number }
+> = {
+  untimed: { label: "Untimed", hint: "No clock. Take as long as you like.", initialMs: 0, incrementMs: 0 },
+  "1+0": { label: "1 min", hint: "Bullet. One minute each, no increment.", initialMs: 60_000, incrementMs: 0 },
+  "3+2": {
+    label: "3 + 2",
+    hint: "Blitz. Three minutes each, plus two seconds a move.",
+    initialMs: 180_000,
+    incrementMs: 2_000,
+  },
+  "5+0": { label: "5 min", hint: "Blitz. Five minutes each, no increment.", initialMs: 300_000, incrementMs: 0 },
+  "10+0": { label: "10 min", hint: "Rapid. Ten minutes each, no increment.", initialMs: 600_000, incrementMs: 0 },
+  "15+10": {
+    label: "15 + 10",
+    hint: "Rapid. Fifteen minutes each, plus ten seconds a move.",
+    initialMs: 900_000,
+    incrementMs: 10_000,
+  },
+};
+
+/**
+ * A game's clock: which control it is playing, and what each side has left.
+ *
+ * **It holds no notion of "now".** The time a side is currently spending is measured by
+ * whoever is watching the clock — the view — and handed in as an elapsed count when a
+ * move is played. A stored `startedAt` would make this module depend on a clock it
+ * cannot test, and would be wrong the moment a save sat on disk overnight.
+ */
+export interface ChessClock {
+  control: ChessTimeControl;
+  /** Milliseconds left on each side's clock. Never negative. */
+  remainingMs: Record<ChessColor, number>;
+}
+
+/**
+ * Below this, the display switches from `3:02` to tenths of a second and turns red.
+ * Ten seconds is where a player starts reading the clock rather than glancing at it.
+ */
+export const CHESS_CLOCK_URGENT_MS = 10_000;
+
+/**
+ * How the computer rations its remaining time: roughly a thirtieth of the clock, plus
+ * half the increment, capped by its level's own budget.
+ *
+ * A fixed budget is what a clock cannot live with — Advanced would spend 2.5 seconds a
+ * move and flag itself inside a one-minute game. Thirty is a deliberately plain
+ * guess at "moves still to play"; the point is that the budget shrinks as the clock
+ * does, not that the number is optimal.
+ */
+export const CHESS_MOVES_REMAINING_GUESS = 30;
+
+/** The computer never searches for less than this, however little time is left. */
+export const CHESS_MIN_SEARCH_MS = 60;
 
 /**
  * A game in progress or finished — the whole thing the view holds and the save stores.
@@ -3006,6 +3089,19 @@ export interface ChessGame {
   winner?: ChessColor;
   humanColor: ChessColor;
   level: ChessLevel;
+  /**
+   * How much help the player took. Both reduce a winning score — see
+   * `CHESS_ASSIST_PENALTY_FRACTION` — and both are stored with a saved game, so
+   * closing and reloading cannot wash them off.
+   */
+  hintsUsed: number;
+  takebacksUsed: number;
+  /**
+   * The clock, or undefined in an untimed game — which is the default and stays the
+   * common case, so every clock-aware function treats its absence as "no clock" rather
+   * than as an error.
+   */
+  clock?: ChessClock;
 }
 
 /**
@@ -3018,6 +3114,170 @@ export const CHESS_SCORE_BASE = 100;
 
 /** The fraction of a level's base below which a win cannot score, however long it took. */
 export const CHESS_SCORE_FLOOR_FRACTION = 0.4;
+
+/**
+ * What one hint or one takeback costs a winning score, as a fraction of the level's
+ * base.
+ *
+ * Both were free until now, which made the scoreboard meaningless: Hint searches at
+ * **Advanced strength whatever level you are playing**, and Undo is unlimited, so a
+ * 300-point Advanced win could be played entirely by the engine with every mistake
+ * taken back. A quarter each means four uses cancel the win outright, while one
+ * glance at a hint still leaves most of the score.
+ *
+ * They are counted rather than forbidden on purpose. Hint and Undo are how somebody
+ * learns, and a game played with help is still worth finishing — it just is not worth
+ * the same as one played without.
+ */
+export const CHESS_ASSIST_PENALTY_FRACTION = 0.25;
+
+/* ---------------------------------------------------------------------------------
+   Chess results (gam_chess_results, migration 0175).
+--------------------------------------------------------------------------------- */
+
+/** How a finished game went, from the player's point of view. */
+export const CHESS_RESULTS = ["win", "loss", "draw"] as const;
+
+export type ChessResult = (typeof CHESS_RESULTS)[number];
+
+/** One player's record against one level. */
+export interface ChessRecord {
+  level: ChessLevel;
+  wins: number;
+  losses: number;
+  draws: number;
+}
+
+/** What the repository is handed to record a finished game. */
+export interface ChessResultWriteData {
+  userId: number;
+  level: ChessLevel;
+  result: ChessResult;
+  moves: number;
+  score: number;
+  playedAt: string;
+}
+
+/** A position set up to practise from, rather than a game to play out. */
+export interface ChessPuzzle {
+  /** Not stored anywhere, so unlike a game key this is free to change. */
+  id: string;
+  name: string;
+  /** What the player is being asked to do, in a sentence. */
+  goal: string;
+  fen: string;
+}
+
+/* ---------------------------------------------------------------------------------
+   Post-game analysis.
+--------------------------------------------------------------------------------- */
+
+/**
+ * How hard the analysis thinks about each position, chosen per run.
+ *
+ * A fixed setting was rejected because the honest trade is the reader's to make: a
+ * 40-move game is about 80 positions, so the three speeds are roughly 8, 20 and 50
+ * seconds of waiting for steadily better judgement. `depth` is only a ceiling — the
+ * time budget is what actually binds, through iterative deepening.
+ *
+ * **The thresholds below are calibrated to this, not to perfect play.** A deeper engine
+ * would call some of these moves differently, which is why the screen says what speed
+ * produced a verdict rather than presenting it as fact.
+ */
+export const CHESS_ANALYSIS_SPEEDS = ["fast", "normal", "careful"] as const;
+
+export type ChessAnalysisSpeed = (typeof CHESS_ANALYSIS_SPEEDS)[number];
+
+export const CHESS_ANALYSIS_SPEED_SETUP: Record<
+  ChessAnalysisSpeed,
+  { label: string; hint: string; depth: number; timeMs: number }
+> = {
+  fast: {
+    label: "Fast",
+    hint: "About 8 seconds for a 40-move game. Catches obvious blunders.",
+    depth: 4,
+    timeMs: 100,
+  },
+  normal: {
+    label: "Normal",
+    hint: "About 20 seconds for a 40-move game. Catches hung pieces and real mistakes.",
+    depth: 6,
+    timeMs: 250,
+  },
+  careful: {
+    label: "Careful",
+    hint: "About 50 seconds for a 40-move game. Better judgement on quiet positions.",
+    depth: 8,
+    timeMs: 600,
+  },
+};
+
+/** How a move is labelled, best first. */
+export const CHESS_MOVE_QUALITIES = ["best", "good", "inaccuracy", "mistake", "blunder"] as const;
+
+export type ChessMoveQuality = (typeof CHESS_MOVE_QUALITIES)[number];
+
+/**
+ * Centipawns lost — against what the engine would have played — at which a move earns
+ * each label. Below the first it is simply "good".
+ *
+ * Half a pawn, a pawn and a half, and three pawns. These are the thresholds every
+ * analysis board uses, and they are judged on **what the move threw away**, not on
+ * whether the position is winning: giving up two pawns from a winning position is still
+ * a mistake.
+ */
+export const CHESS_QUALITY_THRESHOLDS: Record<"inaccuracy" | "mistake" | "blunder", number> = {
+  inaccuracy: 50,
+  mistake: 150,
+  blunder: 300,
+};
+
+/**
+ * Evaluations are clamped to this before anything is compared or drawn.
+ *
+ * A forced mate scores about a million, and without a clamp one of them would make
+ * every other point on the graph a flat line, and would report a loss of two million
+ * centipawns for the move that allowed it. Twenty pawns is "completely winning" by any
+ * reading, which is all the graph needs to say.
+ */
+export const CHESS_EVAL_CLAMP = 2_000;
+
+/** One move of the game, as the analysis judged it. */
+export interface ChessAnalysedPly {
+  /** Index into `game.moves`. */
+  index: number;
+  /** Who played it. */
+  color: ChessColor;
+  /** The move played, in algebraic and coordinate form. */
+  san: string;
+  uci: string;
+  /** The position **before** the move, so the board can show where the player was. */
+  fen: string;
+  /** Evaluation before and after, in centipawns and always from White's point of view. */
+  evalBefore: number;
+  evalAfter: number;
+  /** What the move gave away, from the mover's point of view. Never negative. */
+  lossCentipawns: number;
+  quality: ChessMoveQuality;
+  /** What the engine would have played instead. Absent when the move was its choice. */
+  bestSan?: string;
+  bestUci?: string;
+}
+
+/** The counts under the graph. */
+export interface ChessAnalysisSummary {
+  counts: Record<ChessColor, Record<ChessMoveQuality, number>>;
+  /** Mean centipawns thrown away per move — the single number that ranks two games. */
+  averageLoss: Record<ChessColor, number>;
+}
+
+export interface ChessAnalysis {
+  speed: ChessAnalysisSpeed;
+  plies: ChessAnalysedPly[];
+  summary: ChessAnalysisSummary;
+  /** True when the run was stopped early, so the screen does not present it as complete. */
+  partial: boolean;
+}
 
 /* ---------------------------------------------------------------------------------
    Chess saves (gam_chess_saves, migration 0173) and the autosave.
@@ -3041,6 +3301,21 @@ export interface ChessSave {
   level: ChessLevel;
   /** Coordinate moves in order, e.g. `["e2e4", "e7e5", "g1f3"]`. */
   moves: readonly string[];
+  /**
+   * Help taken so far. **Optional, so saves written before this existed still load** —
+   * they restore as 0, which is what an unassisted game of that era was anyway.
+   */
+  hintsUsed?: number;
+  takebacksUsed?: number;
+  /**
+   * The clock, when the game has one. **Optional, and that is what keeps every save
+   * written before clocks existed loadable** — an absent field restores as an untimed
+   * game, which is exactly what those games were.
+   *
+   * Stored outright rather than replayed, because time spent is the one thing about a
+   * game that the moves cannot rebuild.
+   */
+  clock?: ChessClock;
 }
 
 /** One named save as the list screen shows it, without replaying the moves. */

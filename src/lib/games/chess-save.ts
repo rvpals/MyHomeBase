@@ -44,6 +44,13 @@ export function buildChessSave(game: ChessGame): ChessSave {
     humanColor: game.humanColor,
     level: game.level,
     moves: game.moves.map((move) => move.uci),
+    // Written only when there is something to record, so an unassisted game's save
+    // stays identical to one from before assists were counted.
+    ...(game.hintsUsed > 0 ? { hintsUsed: game.hintsUsed } : {}),
+    ...(game.takebacksUsed > 0 ? { takebacksUsed: game.takebacksUsed } : {}),
+    // Omitted entirely for an untimed game, so its save is byte-identical to one
+    // written before clocks existed.
+    ...(game.clock ? { clock: game.clock } : {}),
   };
 }
 
@@ -79,6 +86,9 @@ export function restoreChessGame(raw: unknown): ChessRestoreResult {
     humanColor: save.humanColor,
     level: save.level,
     moves: save.moves,
+    clock: save.clock,
+    hintsUsed: save.hintsUsed,
+    takebacksUsed: save.takebacksUsed,
   });
 }
 
@@ -97,7 +107,7 @@ export function saveChessGame(
   repo: ChessSaveRepository,
   input: unknown,
 ): { id: number; savedAt: string } {
-  const { userId, id, name, save } = saveChessGameSchema.parse(input);
+  const { userId, name, save } = saveChessGameSchema.parse(input);
 
   const restored = restoreChessGame(save);
   if (!restored.ok) throw new Error(restored.reason);
@@ -112,8 +122,7 @@ export function saveChessGame(
   // count: overwriting a save adds no row, so a player at the limit must still be able
   // to save over a game they are in the middle of.
   const existing = repo.findChessSaveByName(userId, name);
-  const target = id ?? existing?.id;
-  if (target === undefined && repo.countChessSaves(userId) >= MAX_CHESS_SAVES_PER_PLAYER) {
+  if (!existing && repo.countChessSaves(userId) >= MAX_CHESS_SAVES_PER_PLAYER) {
     throw new Error(
       `You already have ${MAX_CHESS_SAVES_PER_PLAYER} saved games. Delete one, or save over it.`,
     );

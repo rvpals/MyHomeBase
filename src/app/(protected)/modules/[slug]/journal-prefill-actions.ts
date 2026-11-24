@@ -7,12 +7,15 @@
 
 import { revalidatePath } from "next/cache";
 import {
+  clearPrefillTemplateIcon,
   deletePrefillTemplate,
   savePrefillTemplate,
   setPrefillTemplateEnabled,
+  setPrefillTemplateIcon,
   type JournalPrefillTemplate,
   type SavePrefillTemplateInput,
 } from "@/lib/journal";
+import type { ImageUploadInput } from "@/lib/shared/image-upload";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
@@ -78,4 +81,40 @@ export async function setPrefillTemplateEnabledAction(
   }
   revalidate();
   return { ok: true, template };
+}
+
+/**
+ * Stores a template's icon (migration 0176).
+ *
+ * Base64 as a plain argument rather than a `FormData`, matching the category and
+ * tag icon actions this screen sits beside. That is the pattern coding-guide.md
+ * warns about for *large* images — and it is safe here for the same reason it is
+ * safe there: `MAX_JOURNAL_ICON_BYTES` caps these at 128 KB, which the client
+ * checks before uploading, so the inflated string stays an order of magnitude
+ * under Next's body limit.
+ */
+export async function savePrefillTemplateIconAction(
+  id: number,
+  mimeType: string,
+  base64Data: string,
+): Promise<PrefillTemplateResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    setPrefillTemplateIcon(deps.journalRepo, id, { mimeType, base64Data } as ImageUploadInput);
+  } catch (error) {
+    return toErrorResult(error, "Failed to save the template icon.");
+  }
+  revalidate();
+  return { ok: true };
+}
+
+export async function clearPrefillTemplateIconAction(id: number): Promise<PrefillTemplateResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    clearPrefillTemplateIcon(deps.journalRepo, id);
+  } catch (error) {
+    return toErrorResult(error, "Failed to remove the template icon.");
+  }
+  revalidate();
+  return { ok: true };
 }

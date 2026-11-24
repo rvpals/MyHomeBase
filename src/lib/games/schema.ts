@@ -6,6 +6,8 @@ import {
   BOARD_SIZE,
   CHESS_COLORS,
   CHESS_LEVELS,
+  CHESS_RESULTS,
+  CHESS_TIME_CONTROLS,
   DIRECTIONS,
   PICTIONARY_TIERS,
 } from "./types";
@@ -202,19 +204,46 @@ export const chessSaveSchema = z.object({
   moves: z
     .array(z.string().trim().regex(/^[a-hA-H][1-8][a-hA-H][1-8][qrbnQRBN]?$/, "Not a move."))
     .max(MAX_CHESS_MOVES, "That game is too long to save."),
+  /**
+   * The clock, when the game has one.
+   *
+   * **Optional, which is what makes every save written before clocks existed still
+   * parse.** An absent clock restores as an untimed game, which is what those games
+   * were. The remaining times are capped at a day so a hand-edited row cannot claim a
+   * clock that never runs down.
+   */
+  /**
+   * Help taken. Optional, so a save written before assists were counted still parses,
+   * and capped so a hand-edited row cannot claim a negative or absurd count.
+   */
+  hintsUsed: z.number().int().min(0).max(10_000).optional(),
+  takebacksUsed: z.number().int().min(0).max(10_000).optional(),
+  clock: z
+    .object({
+      control: z.enum(CHESS_TIME_CONTROLS),
+      remainingMs: z.object({
+        w: z.number().int().min(0).max(86_400_000),
+        b: z.number().int().min(0).max(86_400_000),
+      }),
+    })
+    .optional(),
 });
 
 /**
  * Storing a named game.
  *
- * `id` is optional and means "replace this save of mine". Without it the name decides:
- * saving under a name already used replaces that game, which is what makes Save a
- * repeatable action on a game in progress rather than something that fills the list
- * with twenty copies.
+ * **The name is the key, and it is the only key.** Saving under a name already used
+ * replaces that game, which is what makes Save a repeatable action on a game in
+ * progress rather than something that fills the list with twenty copies.
+ *
+ * There was an `id` here that meant "replace this save of mine", and it was a trap: the
+ * repository upserts on the name, so an id naming a *different* row than the name did
+ * would quietly write to the name's row anyway — while still skipping the cap check it
+ * was consulted for. One key, no ambiguity. Renaming a save, if it is ever wanted, is a
+ * separate operation rather than a second meaning for Save.
  */
 export const saveChessGameSchema = z.object({
   userId: z.number().int().positive(),
-  id: z.number().int().positive().optional(),
   name: z
     .string()
     .trim()
@@ -235,6 +264,23 @@ export const chessSaveIdSchema = z.object({
 export const chessPlayerSchema = z.object({
   userId: z.number().int().positive(),
 });
+
+/**
+ * A finished game's result.
+ *
+ * The score is taken rather than recomputed here: it has already been worked out by
+ * `scoreChessGame`, and a second calculation is a second thing that can disagree with
+ * what the scoreboard was told.
+ */
+export const recordChessResultSchema = z.object({
+  userId: z.number().int().positive(),
+  level: z.enum(CHESS_LEVELS),
+  result: z.enum(CHESS_RESULTS),
+  moves: z.number().int().min(0).max(MAX_CHESS_MOVES),
+  score: z.number().int().min(0),
+});
+
+export type RecordChessResultInput = z.infer<typeof recordChessResultSchema>;
 
 /** The autosave: one per player, in `gam_saved_runs` under the `chess` game key. */
 export const autosaveChessSchema = z.object({

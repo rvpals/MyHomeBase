@@ -284,6 +284,29 @@ function fakeRepo(): JournalRepository {
     setPrefillTemplateEnabled: () => {
       throw new Error("not used");
     },
+    getPrefillTemplateIcon: () => {
+      throw new Error("not used");
+    },
+    setPrefillTemplateIcon: () => {
+      throw new Error("not used");
+    },
+    // Taxonomy combos (0177) have their own tests; the importer never touches
+    // them, so these only satisfy the port.
+    listTaxonomyCombos: () => {
+      throw new Error("not used");
+    },
+    getTaxonomyComboById: () => {
+      throw new Error("not used");
+    },
+    getTaxonomyComboByName: () => {
+      throw new Error("not used");
+    },
+    saveTaxonomyCombo: () => {
+      throw new Error("not used");
+    },
+    deleteTaxonomyCombo: () => {
+      throw new Error("not used");
+    },
     listDistinctFieldValues: () => {
       throw new Error("not used");
     },

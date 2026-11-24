@@ -1,5 +1,8 @@
 import type { SavedRunWriteData, ScoreWriteData } from "./schema";
 import type {
+  ChessLevel,
+  ChessResult,
+  ChessResultWriteData,
   ChessSaveWriteData,
   PictionaryTier,
   PictionaryWord,
@@ -76,6 +79,27 @@ export interface SavedRunRepository {
   deleteSavedRun(userId: number, gameKey: string): boolean;
   /** Most recently saved first, for everyone or for one player. */
   listSavedRuns(userId: number | undefined): StoredSavedRun[];
+}
+
+/**
+ * Finished chess games, in `gam_chess_results` (migration 0175).
+ *
+ * A third chess port rather than methods on the save repository: a result is a public
+ * fact about a game that is over, where a save is a private game still in progress, and
+ * nothing that reads one has any business writing the other.
+ *
+ * Scoped by `userId` like the saves, because a record is personal — the shared thing
+ * is the scoreboard.
+ */
+export interface ChessResultRepository {
+  recordChessResult(input: ChessResultWriteData): void;
+  /**
+   * How many of each result the player has against each level.
+   *
+   * Counted in SQL rather than by listing the rows: a record is three numbers per
+   * level, and reading every game ever played to add them up would grow without bound.
+   */
+  countChessResults(userId: number): Partial<Record<ChessLevel, Record<ChessResult, number>>>;
 }
 
 /**

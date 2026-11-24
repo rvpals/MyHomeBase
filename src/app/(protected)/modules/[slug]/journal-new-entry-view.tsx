@@ -19,6 +19,7 @@ import type {
   JournalEntryCloneSeed,
   JournalPreferences,
   JournalPrefillTemplate,
+  JournalTaxonomyCombo,
 } from "@/lib/journal";
 import { JournalEntryEditor } from "./journal-entry-editor";
 
@@ -36,6 +37,7 @@ export function JournalNewEntryView({
   preferences,
   contentTextures = [],
   prefillTemplates = [],
+  taxonomyCombos = [],
   locationCategoryOptions = [],
   locationTagOptions = [],
   cloneSeed,
@@ -48,6 +50,8 @@ export function JournalNewEntryView({
   contentTextures?: DashboardTextureItem[];
   /** Enabled prefill templates, for the form's picker. */
   prefillTemplates?: JournalPrefillTemplate[];
+  /** Saved taxonomy combos, for the Categories & Tags group's combo button. */
+  taxonomyCombos?: JournalTaxonomyCombo[];
   /** The location library's taxonomy, for the picker's library tab. */
   locationCategoryOptions?: string[];
   locationTagOptions?: string[];
@@ -137,6 +141,7 @@ export function JournalNewEntryView({
         preferences={preferences}
         contentTextures={contentTextures}
         prefillTemplates={prefillTemplates}
+        taxonomyCombos={taxonomyCombos}
         locationCategoryOptions={locationCategoryOptions}
         locationTagOptions={locationTagOptions}
       />

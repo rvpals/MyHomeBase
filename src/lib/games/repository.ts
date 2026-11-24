@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type {
+  ChessResultRepository,
   ChessSaveRepository,
   PictionaryWordRepository,
   SavedRunRepository,
@@ -8,6 +9,9 @@ import type {
 import type { SavedRunWriteData, ScoreWriteData } from "./schema";
 import {
   PICTIONARY_TIERS,
+  type ChessLevel,
+  type ChessResult,
+  type ChessResultWriteData,
   type ChessSaveWriteData,
   type PictionaryTier,
   type PictionaryWord,
@@ -355,7 +359,7 @@ export class SqliteChessSaveRepository implements ChessSaveRepository {
     // `created_at` is left alone on an update, so a save still shows when that game was
     // first kept rather than when it was last written — the same call `upsertSavedRun`
     // makes above.
-    const result = this.db
+    this.db
       .prepare(
         `INSERT INTO gam_chess_saves (user_id, name, format_version, state_json, saved_at, created_at)
          VALUES (?, ?, ?, ?, ?, datetime('now'))
@@ -386,6 +390,56 @@ export class SqliteChessSaveRepository implements ChessSaveRepository {
       .prepare("SELECT COUNT(*) AS total FROM gam_chess_saves WHERE user_id = ?")
       .get(userId) as { total: number } | undefined;
     return row?.total ?? 0;
+  }
+}
+
+/**
+ * Finished chess games (migration 0175).
+ *
+ * Its own class for the reason the word bank and the saves have theirs: a separate
+ * port. Nothing here reads a saved game and nothing in the save repository writes a
+ * result.
+ */
+export class SqliteChessResultRepository implements ChessResultRepository {
+  constructor(private readonly db: Database.Database) {}
+
+  recordChessResult(input: ChessResultWriteData): void {
+    this.db
+      .prepare(
+        `INSERT INTO gam_chess_results (user_id, level, result, moves, score, played_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`,
+      )
+      .run(input.userId, input.level, input.result, input.moves, input.score, input.playedAt);
+  }
+
+  countChessResults(
+    userId: number,
+  ): Partial<Record<ChessLevel, Record<ChessResult, number>>> {
+    // Grouped in SQL: a record is three numbers per level, and reading every game ever
+    // played in order to add them up would grow without bound.
+    const rows = this.db
+      .prepare(
+        `SELECT level, result, COUNT(*) AS total
+           FROM gam_chess_results
+          WHERE user_id = ?
+          GROUP BY level, result`,
+      )
+      .all(userId) as { level: string; result: string; total: number }[];
+
+    const counted: Partial<Record<ChessLevel, Record<ChessResult, number>>> = {};
+    for (const row of rows) {
+      const level = row.level as ChessLevel;
+      const result = row.result as ChessResult;
+      // A row whose level or result this build does not know is skipped rather than
+      // crashing the screen — the columns are validated on the way in, so it can only
+      // come from a future build or a hand-edited row.
+      if (!["beginner", "intermediate", "advanced"].includes(level)) continue;
+      if (!["win", "loss", "draw"].includes(result)) continue;
+
+      const forLevel = (counted[level] ??= { win: 0, loss: 0, draw: 0 });
+      forLevel[result] = row.total;
+    }
+    return counted;
   }
 }
 

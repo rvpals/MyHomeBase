@@ -21,6 +21,7 @@ import type {
   JournalEntry,
   JournalPreferences,
   JournalPrefillTemplate,
+  JournalTaxonomyCombo,
   SameDateGroup,
   SameDateRow,
 } from "@/lib/journal";
@@ -48,6 +49,8 @@ export interface JournalReviewViewProps {
   /** Everything below is for the merge dialog's entry form. */
   categoryOptions: string[];
   tagOptions: string[];
+  /** Saved combos, for the Categories & Tags group's combo button. */
+  taxonomyCombos?: JournalTaxonomyCombo[];
   preferences: JournalPreferences;
   /** The app texture library, so the Content field's chosen picture resolves. */
   contentTextures?: DashboardTextureItem[];
@@ -79,6 +82,7 @@ export function JournalReviewView({
   tagIcons,
   categoryOptions,
   tagOptions,
+  taxonomyCombos = [],
   preferences,
   contentTextures = [],
   prefillTemplates,
@@ -738,6 +742,7 @@ export function JournalReviewView({
               entry={openEntry}
               categoryOptions={categoryOptions}
               tagOptions={tagOptions}
+              taxonomyCombos={taxonomyCombos}
               preferences={preferences}
               contentTextures={contentTextures}
               locationCategoryOptions={locationCategoryOptions}

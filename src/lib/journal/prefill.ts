@@ -7,14 +7,16 @@
 // browser (the New Entry form), in the CLI, and in a test.
 
 import type { JournalRepository } from "./ports";
-import { savePrefillTemplateSchema } from "./schema";
+import { MAX_JOURNAL_ICON_BYTES, savePrefillTemplateSchema } from "./schema";
 import type { SavePrefillTemplateInput } from "./schema";
 import type {
   JournalPrefillField,
   JournalPrefillFieldValue,
   JournalPrefillFormValues,
   JournalPrefillTemplate,
+  JournalTaxonomyIcon,
 } from "./types";
+import { decodeImageUpload, type ImageUploadInput } from "@/lib/shared/image-upload";
 
 /** How many suggestions the template editor's value box offers per field. */
 export const PREFILL_SUGGESTION_LIMIT = 25;
@@ -204,6 +206,43 @@ export function setPrefillTemplateEnabled(
     throw new Error(`Prefill template ${id} no longer exists.`);
   }
   return repo.setPrefillTemplateEnabled(id, isEnabled);
+}
+
+// --- The icon (migration 0176) -----------------------------------------------
+//
+// Same three-function shape as a category's icon (`setCategoryIcon` and friends
+// in journal.ts), including the rule that the row must already exist: creating a
+// template as a side effect of an upload would let a stale id mint one nobody
+// asked for. Keyed by id rather than by name, because a template's name is
+// editable and a name-keyed icon URL would 404 after a rename.
+
+/** Stores the icon shown beside a template on the Templates screen and in the
+ *  New Entry picker. The template must already exist. */
+export function setPrefillTemplateIcon(
+  repo: JournalRepository,
+  id: number,
+  input: ImageUploadInput,
+): void {
+  if (!repo.getPrefillTemplateById(id)) {
+    throw new Error(`Prefill template ${id} no longer exists.`);
+  }
+  repo.setPrefillTemplateIcon(id, decodeImageUpload(input, MAX_JOURNAL_ICON_BYTES));
+}
+
+/** Removes a template's icon, leaving the template itself untouched. */
+export function clearPrefillTemplateIcon(repo: JournalRepository, id: number): void {
+  if (!repo.getPrefillTemplateById(id)) {
+    throw new Error(`Prefill template ${id} no longer exists.`);
+  }
+  repo.setPrefillTemplateIcon(id, undefined);
+}
+
+/** Used only by the icon-serving route — never by anything rendering a list. */
+export function getPrefillTemplateIcon(
+  repo: JournalRepository,
+  id: number,
+): JournalTaxonomyIcon | undefined {
+  return repo.getPrefillTemplateIcon(id);
 }
 
 /**

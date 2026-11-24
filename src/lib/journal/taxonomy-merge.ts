@@ -17,16 +17,20 @@
 //   * the managed list rows themselves
 //   * saved entry filters that name a source
 //   * prefill templates that name a source
+//   * taxonomy combos that name a source  (migration 0177)
 //
-// The last two are stored as JSON blobs rather than as foreign keys, so nothing
+// The last three are stored as JSON blobs rather than as foreign keys, so nothing
 // in the database follows a rename for us. Skipping them would leave a saved
 // filter reading "category is Trips" silently matching no entries, which is a
-// worse failure than an error — it looks like an empty journal.
+// worse failure than an error — it looks like an empty journal. A combo fails the
+// same way and more visibly: applying one would re-add the merged-away name as a
+// fresh chip, quietly resurrecting the spelling the merge existed to remove.
 
 import {
   mergeTaxonomySchema,
   type MergeTaxonomyInput,
   type PrefillTemplateWriteData,
+  type TaxonomyComboWriteData,
 } from "./schema";
 import type { JournalRepository } from "./ports";
 import type {
@@ -34,6 +38,7 @@ import type {
   JournalFilterCondition,
   JournalPrefillFieldValue,
   JournalPrefillTemplate,
+  JournalTaxonomyCombo,
   SavedJournalFilter,
 } from "./types";
 import { normalizeTaxonomyName, type TaxonomyUsageKind } from "./taxonomy-usage";
@@ -67,6 +72,8 @@ export interface TaxonomyMergePlan {
   affectedFilters: string[];
   /** Names of the prefill templates this merge would rewrite. */
   affectedTemplates: string[];
+  /** Names of the taxonomy combos this merge would rewrite (migration 0177). */
+  affectedCombos: string[];
   /**
    * The icon the merged name will end up with, when that is inherited rather
    * than kept. Undefined when the target already exists (it keeps its own) or
@@ -82,6 +89,7 @@ export interface TaxonomyMergeResult {
   entryCount: number;
   rewrittenFilters: number;
   rewrittenTemplates: number;
+  rewrittenCombos: number;
 }
 
 /** Case- and whitespace-insensitive equality, the same rule Clean up uses. */
@@ -237,6 +245,60 @@ function rewritePrefillFields(
 }
 
 /**
+ * Rewrites one of a combo's two name lists (migration 0177).
+ *
+ * Simpler than the prefill equivalent above because a combo already stores an
+ * **array** rather than one comma-separated string, so there is nothing to split
+ * — but the de-duplication matters just as much: a combo naming both "Trips" and
+ * "Vacation" must end up with the target once, not twice, or the picker would
+ * write a duplicate chip the writer then has to remove by hand.
+ *
+ * Returns undefined when nothing changed.
+ */
+function rewriteComboNames(
+  names: string[],
+  sources: string[],
+  target: string,
+): string[] | undefined {
+  let changed = false;
+
+  const mapped = names.map((name) => {
+    if (sources.some((source) => sameName(source, name))) {
+      changed = true;
+      return target;
+    }
+    return name;
+  });
+
+  const deduped: string[] = [];
+  for (const name of mapped) {
+    if (!deduped.some((kept) => sameName(kept, name))) deduped.push(name);
+  }
+  if (deduped.length !== names.length) changed = true;
+
+  return changed ? deduped : undefined;
+}
+
+/**
+ * The list a merge of this kind touches on a combo, and the rewritten combo.
+ *
+ * Returns undefined when this combo names no source. Kept as one function so the
+ * plan (which only needs "would this change?") and the write (which needs the new
+ * value) cannot disagree about the answer.
+ */
+function rewriteCombo(
+  combo: JournalTaxonomyCombo,
+  kind: TaxonomyUsageKind,
+  sources: string[],
+  target: string,
+): JournalTaxonomyCombo | undefined {
+  const names = kind === "category" ? combo.categories : combo.tags;
+  const next = rewriteComboNames(names, sources, target);
+  if (!next) return undefined;
+  return kind === "category" ? { ...combo, categories: next } : { ...combo, tags: next };
+}
+
+/**
  * What merging `sources` into `target` would do — the numbers and warnings the
  * dialog shows before the reader commits.
  *
@@ -274,6 +336,11 @@ export function planTaxonomyMerge(
     )
     .map((template) => template.name);
 
+  const affectedCombos = repo
+    .listTaxonomyCombos()
+    .filter((combo) => rewriteCombo(combo, kind, sources, resolvedTarget) !== undefined)
+    .map((combo) => combo.name);
+
   // Only meaningful for a brand-new target; an existing one keeps its own icon.
   const iconSources = targetExists
     ? []
@@ -288,6 +355,7 @@ export function planTaxonomyMerge(
     entryCount,
     affectedFilters,
     affectedTemplates,
+    affectedCombos,
     // Exactly one candidate, or none: picking between two different icons would
     // be arbitrary, and the reader can set one afterwards in two clicks.
     inheritedIconFrom: iconSources.length === 1 ? iconSources[0].name : undefined,
@@ -375,6 +443,7 @@ export function mergeTaxonomy(
 
   const rewrittenFilters = rewriteSavedFilters(repo, kind, sources, resolvedTarget);
   const rewrittenTemplates = rewriteTemplates(repo, kind, sources, resolvedTarget);
+  const rewrittenCombos = rewriteCombos(repo, kind, sources, resolvedTarget);
 
   return {
     target: resolvedTarget,
@@ -382,6 +451,7 @@ export function mergeTaxonomy(
     entryCount,
     rewrittenFilters,
     rewrittenTemplates,
+    rewrittenCombos,
   };
 }
 
@@ -444,6 +514,35 @@ function rewriteTemplates(
       fields,
     };
     repo.savePrefillTemplate(write);
+    rewritten += 1;
+  }
+  return rewritten;
+}
+
+/** Rewrites every taxonomy combo naming a source. Returns how many changed. */
+function rewriteCombos(
+  repo: JournalRepository,
+  kind: TaxonomyUsageKind,
+  sources: string[],
+  target: string,
+): number {
+  if (sources.length === 0) return 0;
+  let rewritten = 0;
+
+  for (const combo of repo.listTaxonomyCombos() as JournalTaxonomyCombo[]) {
+    const next = rewriteCombo(combo, kind, sources, target);
+    if (!next) continue;
+    // Carries the id so this updates rather than creating a second combo under
+    // the same name — and carries the *other* list unchanged, since a category
+    // merge must not disturb the combo's tags.
+    const write: TaxonomyComboWriteData = {
+      id: combo.id,
+      name: combo.name,
+      description: combo.description,
+      categories: next.categories,
+      tags: next.tags,
+    };
+    repo.saveTaxonomyCombo(write);
     rewritten += 1;
   }
   return rewritten;

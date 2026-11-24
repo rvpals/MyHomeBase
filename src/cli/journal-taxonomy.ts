@@ -214,6 +214,9 @@ function mergeSelection(
   if (plan.affectedTemplates.length > 0) {
     console.log(`  Templates to update: ${plan.affectedTemplates.join(", ")}`);
   }
+  if (plan.affectedCombos.length > 0) {
+    console.log(`  Combos to update: ${plan.affectedCombos.join(", ")}`);
+  }
 
   if (!apply) {
     console.log("");
@@ -228,9 +231,10 @@ function mergeSelection(
       `Merged ${result.mergedCount} ${result.mergedCount === 1 ? noun : plural} into "${result.target}". ` +
         `${result.entryCount} ${result.entryCount === 1 ? "entry" : "entries"} now carry it.`,
     );
-    if (result.rewrittenFilters > 0 || result.rewrittenTemplates > 0) {
+    if (result.rewrittenFilters > 0 || result.rewrittenTemplates > 0 || result.rewrittenCombos > 0) {
       console.log(
-        `Updated ${result.rewrittenFilters} saved filter(s) and ${result.rewrittenTemplates} template(s).`,
+        `Updated ${result.rewrittenFilters} saved filter(s), ${result.rewrittenTemplates} template(s) ` +
+          `and ${result.rewrittenCombos} combo(s).`,
       );
     }
   } catch (error) {

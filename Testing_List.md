@@ -146,6 +146,168 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-23 — Journal: template icons, Date/Time and Categories & Tags group boxes, tag/category combos
+
+**Migrations 0176 (`jrn_prefill_templates.icon_image`) and 0177
+(`jrn_taxonomy_combos`); republish needed.** **Not seen on screen at all** — nothing
+below has been opened in a browser, and no gate was run. Treat every item as unverified.
+
+- [ ] **1.** Journal → Configuration → Prefill Templates: edit a template, drop a PNG on the icon dropzone, Save — the icon appears on the row and beside the name in the New Entry picker
+- [ ] **2.** Add a *new* template with an icon in one go: the template saves first and the icon follows, and the row shows both
+- [ ] **3.** "Remove icon" clears it; the row falls back to the dashed placeholder and the picker indents the label
+- [ ] **4.** An oversized image (>128 KB) is refused instantly, by name, with no server round trip
+- [ ] **5.** Rename a template that has an icon — the icon still loads (the route is keyed by id, which is what this checks)
+- [ ] **6.** New Entry's template picker is now a combobox: typing filters, arrows and Enter pick, and a typed name that matches nothing is *not* offered as a new template
+- [ ] **7.** Journal → New Entry: Date and Time sit in a **Date/Time** group box with an icon; collapse it, save an entry, and the date is still written
+- [ ] **8.** Categories and Tags sit in a **Categories & Tags** group box with an icon, in both New Entry and an existing entry's editor
+- [ ] **9.** Journal → Configuration → Meta Data → **Prefill Tags & Category Combo**: add a combo from the "Add New Combo" card, including a category and a tag that do not exist yet
+- [ ] **10.** Edit and delete a combo; a duplicate name is refused with a sentence, not a constraint error
+- [ ] **11.** Save a combo naming nothing — the card warns it will clear both fields, and it saves
+- [ ] **12.** New Entry → **Prefill Category/Tags Combo**: the dialog searches by combo name, description, *and* member names; picking one fills both fields
+- [ ] **13.** The same button in an **existing** entry's editor replaces that entry's categories and tags; it confirms first, and only when the entry already has some
+- [ ] **14.** Merge two categories on the Meta Data screen: the dialog names the combos it will rewrite, and afterwards those combos carry the merged name once, not twice
+- [ ] **15.** Back up the metadata, then restore it: the combos and the template icons come back
+- [ ] **16.** Phone width (390px): both group boxes stack to one column and the combo dialog's Cancel stays reachable with a long combo list
+- [ ] **17.** CLI: `journal-combos list|show|apply|set|delete` and `journal-templates set-icon|clear-icon` all behave as the screens do
+
+---
+
+## 2026-11-24 — Chess: record per level, setting up a position, faster engine
+
+**Migration 0175 (`gam_chess_results`); republish needed.** Not seen on screen. Both
+migrations were applied to a throwaway in-memory database and work, but **not** against
+a copy of the real one. Item 1 needs the migration applied on the NAS.
+
+- [ ] **1.** Finish a game: the setup screen's level list shows "Your record: 1–0–0" against the level you played, and it updates as you play more
+- [ ] **2.** A loss, a draw and a resignation each land in the right column — all three score 0, so this is the only place they can be told apart
+- [ ] **3.** Before any games, each level reads "no games yet" and a note says the record starts from now
+- [ ] **4.** **Set up a position** on the setup screen: paste a FEN and the board comes up in that position, playing the side to move
+- [ ] **5.** Paste a PGN (export one from a finished game first) and the whole game is replayed onto the board
+- [ ] **6.** A PGN with comments, variations and a result token still imports; one with an illegal move is refused and the move is named
+- [ ] **7.** Nonsense text is refused with a readable message, not a crash
+- [ ] **8.** The four practice positions each load and are playable; "Back-rank mate" really is mate in one (Ra8)
+- [ ] **9.** Advanced visibly looks deeper than before — the machine log should reach depth 6 in the opening where it used to stop at 5
+- [ ] **10.** Play several games against each level and satisfy yourself the engine still plays legally — castling, en passant and promotion especially, since the legality test was rewritten
+
+## 2026-11-24 — Chess: board size, dragging, review and remembered settings
+
+**No migration; republish needed.** Not seen on screen. Items 4 and 5 are the ones most
+likely to be wrong — dragging and the slide animation are pure browser behaviour that no
+test covers. Items 10 and 11 are phone-width.
+
+- [ ] **1.** On a wide monitor the chess board is noticeably bigger than before, and the side panel still sits beside it
+- [ ] **2.** Make the window short and wide: the board shrinks to fit the height and the controls under it stay on screen
+- [ ] **3.** **Flip** turns the board round and the coordinates follow; starting a game as Black still turns it round by itself
+- [ ] **4.** Drag a piece onto a square: it moves, exactly as tapping twice would. Dragging a pawn to the last rank still asks which piece
+- [ ] **5.** A piece **slides** to its square when the computer moves; with reduce-motion on it simply appears
+- [ ] **6.** Dragging is refused when it is not your turn, for the computer's pieces, and while reviewing
+- [ ] **7.** The strip under the board steps through the game: &laquo; &lsaquo; &rsaquo; &raquo; and a "Move 4 of 12" readout
+- [ ] **8.** While reviewing, the board shows that position, cannot be moved on, and the selection, dots, check glow and learning aids are all off
+- [ ] **9.** Making a move from the live position returns from review; so does &raquo;
+- [ ] **10.** Phone width: the board still fills the width, and the review strip wraps without pushing anything off screen
+- [ ] **11.** Phone width: dragging still works, or tapping does if it does not
+- [ ] **12.** Keyboard: Tab reaches the board once, then the arrow keys walk the squares and Enter plays
+- [ ] **13.** With a screen reader, the computer's move is announced ("The computer played Nf3")
+- [ ] **14.** Set level, colour, clock, sound and the machine log, then reload: all six come back as you left them
+- [ ] **15.** The settings are per browser — another device still has the defaults
+
+## 2026-11-24 — Chess: a stronger engine
+
+**No migration; republish needed.** Not seen on screen. The library is covered by 1,277
+passing tests including the full perft suite, but **nothing here has been looked at in
+the browser**. Item 7 is the one worth timing by hand.
+
+- [ ] **1.** Play Advanced: it should no longer give away material to a simple two-move tactic, and should answer a threat rather than ignoring it
+- [ ] **2.** Reach a king-and-queen (or king-and-rook) versus bare king endgame against Advanced: it should **actually mate you**, driving your king to the edge, rather than shuffling to a fifty-move draw
+- [ ] **3.** Get a winning position and try to repeat moves: the computer should avoid repeating when it is better, and should head for a repetition when it is losing
+- [ ] **4.** Start two Advanced games and play 1.e4 in both: the computer's replies should sometimes differ over the first few moves, where before they were identical every time
+- [ ] **5.** With the machine log on, each depth line now shows the **line it expects** ("Nf3 Nc6 Bb5"), not just one move
+- [ ] **6.** A mate the engine finds is announced as "mate in N" and it then actually delivers it
+- [ ] **7.** Advanced still answers within about two and a half seconds on a phone, and the page stays responsive
+- [ ] **8.** Beginner is still beatable and still hangs pieces; Intermediate still sees most captures coming
+- [ ] **9.** Hint still suggests a sensible move, and Offer draw is still accepted in a level position and declined when the computer is well ahead
+- [ ] **10.** A game played through to mate still scores, saves, loads and analyses correctly
+
+## 2026-11-24 — Chess: eight correctness fixes
+
+**No migration; republish needed.** Not seen on screen. Typecheck, lint and the
+library-boundary check pass; the unit tests still cannot run (see the note below), so
+none of this has executed. Items 5 and 6 are the ones a person can actually see.
+
+- [ ] **1.** Score farming: win a game using Hint twice — the score posted to Games → Scores is visibly lower than the same win with no help, and four hints or takebacks leave it at 0
+- [ ] **2.** The hint and takeback counts survive Save → New game → Load, so reloading cannot wash the penalty off
+- [ ] **3.** Undo still works normally in an untimed game, and is still refused in a timed one
+- [ ] **4.** On a slow machine or a 1-minute clock, the computer never plays an instant nonsense move (it used to be able to score a half-searched move as a forced win)
+- [ ] **5.** Start a game, play a few moves, press **New game** without finishing: the setup screen still offers **Resume**, and resuming returns the game you left
+- [ ] **6.** Finish a game and press New game: there is now **no** Resume offer, because the autosave really is gone
+- [ ] **7.** Repeat a position three times in a game that included a double pawn step: the draw arrives on the third repetition, not a cycle late
+- [ ] **8.** Press **Hint** in an Advanced game: the page stays responsive while it thinks, and with the machine log on the depth lines appear one at a time rather than all at once
+- [ ] **9.** **Offer draw** behaves the same way — responsive, and its log lines arrive live
+- [ ] **10.** With a game in progress, open Load and pick a save: it asks before replacing, **Keep playing** leaves the game alone, **Load anyway** replaces it
+- [ ] **11.** Loading from a *finished* game loads straight away with no prompt
+- [ ] **12.** Saving still replaces a save of the same name and still refuses a 21st new name
+
+## 2026-11-23 — Chess: post-game analysis
+
+**No migration; republish needed.** Not seen on screen — nothing here has been run.
+Item 3 is the one most likely to be wrong: the analysis runs in its own Web Worker and
+no test covers that. Item 12 is phone-width.
+
+- [ ] **1.** Finish a game (resign is quickest): an **Analyse game** button appears beside Load; it is **not** there mid-game
+- [ ] **2.** It opens a screen with Fast / Normal / Careful, Normal selected, and a line saying how long each takes
+- [ ] **3.** Press Analyse game: a progress bar counts positions, the page **stays responsive** while it runs, and Stop ends it
+- [ ] **4.** Stopping shows a partial report with a line saying it only covers the first N moves
+- [ ] **5.** A finished run shows an evaluation graph, two summary cards (You / Computer) with counts and "pawns lost per move", a board, and a list of every move
+- [ ] **6.** The graph is above the middle when White is better and below when Black is; the line is straight between points, not smoothed
+- [ ] **7.** The move list tags each move Best / Good / Inaccuracy / Mistake / Blunder, with the pawns lost beside the bad ones and a "you" mark on yours
+- [ ] **8.** Clicking a move shows that position on the board, the played move marked amber and the engine's suggestion blue, with a line underneath naming what was better
+- [ ] **9.** The screen opens already pointing at your worst move
+- [ ] **10.** Deliberately hang your queen in a short game: that move is tagged **Blunder** and the graph drops sharply at it
+- [ ] **11.** A game that ended in checkmate does not tag the mating move as a blunder, and the graph ends at the extreme
+- [ ] **12.** Phone width: the graph, board and move list stack, the list scrolls rather than running off, and nothing scrolls sideways
+- [ ] **13.** "Analyse again" returns to the speed picker; "Back to the board" returns to the finished game with it unchanged
+- [ ] **14.** Try Fast and Careful on the same game: Careful takes noticeably longer and may judge some moves differently
+
+## 2026-11-23 — Chess: Board help (valid moves and sphere of influence)
+
+**No migration; republish needed.** Not seen on screen — nothing here has been run.
+Both aids are off by default, so item 1 is the regression check that matters most.
+Item 10 is phone-width.
+
+- [ ] **1.** Chess → a **Board help** card in the side panel, collapsed, with both switches off; with them off the board looks and behaves exactly as before
+- [ ] **2.** **Show valid moves** on: every piece of yours that can move is outlined, and every square you could move one to is faintly tinted — in the opening that is ten pieces and twenty squares
+- [ ] **3.** Picking a piece up still shows that piece's own moves as dots and capture rings, on top of the tint
+- [ ] **4.** The outlines and tints disappear while the computer is thinking, and come back when it is your turn
+- [ ] **5.** **Show sphere of influence** on: each square carries corner marks — green bottom-left where you attack or defend, red top-right where the computer does, both on a contested square
+- [ ] **6.** A square one of your own pieces stands on is marked green when another of your pieces defends it (e.g. a knight on g2 behind a pawn on f3) — this is the point of the aid, not a bug
+- [ ] **7.** A pawn marks the two squares it attacks diagonally, **not** the square straight ahead of it
+- [ ] **8.** Both aids on at once: the marks are still readable, and the selection, last-move, check and hint marks still show clearly on top of them
+- [ ] **9.** Playing as Black, green is still *your* side
+- [ ] **10.** Phone width: the corner marks and outlines are visible at a small square size without making the board noisy
+- [ ] **11.** The switches survive a reload and reopening the game; they are per browser, so another device still has them off
+- [ ] **12.** The aids read well on a light theme and a dark one
+
+## 2026-11-23 — Chess: game clock
+
+**No migration; republish needed.** Not seen on screen — nothing here has been run.
+Item 11 is phone-width. Untimed is still the default, so item 1 is the regression check
+that matters most.
+
+- [ ] **1.** Setup screen → a **Clock** row with Untimed, 1 min, 3 + 2, 5 min, 10 min and 15 + 10; Untimed is selected by default and a game started that way shows no clocks at all and behaves exactly as before
+- [ ] **2.** Start a 3 + 2 game: two clocks appear, yours below the board and the computer's above, each reading 3:00; the side to move is highlighted
+- [ ] **3.** Your clock counts down while you think and stops when you move; two seconds are added to it as the move lands
+- [ ] **4.** The computer's clock counts down while it thinks, and it moves noticeably faster in a 1 min game than in a 15 + 10 one
+- [ ] **5.** Under ten seconds the clock switches to tenths (9.4) and turns red
+- [ ] **6.** Let your clock run out: the game ends, "You ran out of time", it scores 0, and the board stops accepting moves
+- [ ] **7.** Win on time (easiest in a 1 min game against Advanced): "The computer ran out of time — you win" and it scores
+- [ ] **8.** **Undo is disabled** in a timed game and its tooltip says so; it still works in an untimed one
+- [ ] **9.** Open Save, Load or Export PGN and leave it open for a while: your clock does **not** lose that time when you close it
+- [ ] **10.** Save a timed game, start a new game, then Load it: the clocks come back with the times they had, and the clock does not start running until you move
+- [ ] **11.** Phone width: both clocks are readable, sit tight against the board, and do not push the controls off screen
+- [ ] **12.** Export PGN on a timed game shows `[TimeControl "180+2"]`, and a game lost on time also shows `[Termination "time forfeit"]`; an untimed game shows `[TimeControl "-"]`
+- [ ] **13.** A game saved before this release still loads, as an untimed game
+- [ ] **14.** CLI: `chess --new --time 3+2` is refused with a message, and `--move` on a timed save is refused too (but `--pgn` still works)
+
 ## 2026-11-23 — Chess: Messages panel and machine log
 
 **No migration; republish needed.** Not seen on screen — nothing here has been run.

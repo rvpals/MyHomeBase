@@ -241,7 +241,116 @@ export function isKingAttacked(position: ChessPosition, color: ChessColor): bool
  * subtly wrong.
  */
 export function generateLegalMoves(position: ChessPosition): ChessMove[] {
-  return generatePseudoLegalMoves(position).filter((move) => !leavesKingInCheck(position, move));
+  /*
+    Most moves cannot possibly expose their own king, and checking them anyway was the
+    single most expensive thing the search did: every pseudo-legal move copied the
+    whole 64-square board so the king could be tested afterwards.
+
+    A piece can only expose its king by stepping off a line between the two, so the
+    lines are worked out **once** per position instead. After that:
+
+    - a move by an unpinned piece is legal with no test at all;
+    - a pinned piece may still move, but only along the line it is pinned on;
+    - king moves, en-passant captures and anything played while in check still take the
+      full test, because each of those can expose the king in a way no pin table
+      describes. A king walks into attacks rather than off a line; en passant removes
+      *two* pieces from one rank at once, which is the case every generator gets wrong;
+      and getting out of check is about the checking piece, not about pins.
+
+    Perft is what makes this safe to do at all — it is exactly the kind of change that
+    looks right and quietly produces illegal moves, and the counts say otherwise
+    immediately.
+  */
+  const king = kingSquare(position, position.turn);
+  const moves = generatePseudoLegalMoves(position);
+
+  // No king on the board (a hand-written position, or a test): nothing can be exposed,
+  // so every pseudo-legal move stands.
+  if (king < 0) return moves;
+
+  const inCheck = isSquareAttacked(position.board, king, oppositeColor(position.turn));
+  const pins = findPins(position, king);
+
+  return moves.filter((move) => {
+    if (inCheck || move.isEnPassant || move.piece === "k") {
+      return !leavesKingInCheck(position, move);
+    }
+
+    const ray = pins.get(move.from);
+    if (ray === undefined) return true;
+
+    // Pinned, so the only legal destinations are the ones still on the pinning line —
+    // which includes capturing the pinner itself.
+    return isOnRayFrom(king, ray, move.to);
+  });
+}
+
+/**
+ * Which of the side's pieces are pinned against their own king, and on which line.
+ *
+ * Walks the eight rays out from the king. On each, the **first** piece met is a
+ * candidate: if the next piece beyond it is an enemy slider that moves along that kind
+ * of line, the candidate is pinned. Anything further out is irrelevant, and anything
+ * behind a second friendly piece is not pinned at all.
+ *
+ * The value is the ray's step, as a square delta — which is all `isOnRayFrom` needs to
+ * say whether a destination is still on the line.
+ */
+function findPins(position: ChessPosition, king: ChessSquare): Map<ChessSquare, Step> {
+  const pins = new Map<ChessSquare, Step>();
+  const kingRow = rowOf(king);
+  const kingFile = fileOf(king);
+
+  for (const step of QUEEN_STEPS) {
+    const [rowStep, fileStep] = step;
+    const straight = rowStep === 0 || fileStep === 0;
+
+    let candidate = -1;
+    for (let distance = 1; distance < CHESS_BOARD_SIZE; distance += 1) {
+      const square = squareAt(kingRow + rowStep * distance, kingFile + fileStep * distance);
+      if (square < 0) break;
+
+      const piece = position.board[square];
+      if (!piece) continue;
+
+      if (piece.color === position.turn) {
+        // A second friendly piece on the ray blocks the pin for both of them.
+        if (candidate >= 0) break;
+        candidate = square;
+        continue;
+      }
+
+      // An enemy piece. It pins only if it is a slider for this ray *and* exactly one
+      // friendly piece stood between it and the king.
+      const pins_ = piece.type === "q" || (straight ? piece.type === "r" : piece.type === "b");
+      if (pins_ && candidate >= 0) pins.set(candidate, step);
+      break;
+    }
+  }
+  return pins;
+}
+
+/**
+ * Whether `square` lies on the ray that leaves `from` in direction `step`.
+ *
+ * Used to ask whether a pinned piece's destination keeps it on the pinning line. The
+ * line runs in **both** directions from the king: a pinned rook may move toward the
+ * pinner or back toward its own king, and both stay on the pin.
+ */
+function isOnRayFrom(from: ChessSquare, step: Step, square: ChessSquare): boolean {
+  const [rowStep, fileStep] = step;
+  const row = rowOf(square) - rowOf(from);
+  const file = fileOf(square) - fileOf(from);
+
+  // On a diagonal ray both deltas must match in size; on a straight one the other axis
+  // must be zero. Either way the signs have to agree with the step's.
+  if (rowStep === 0 && row !== 0) return false;
+  if (fileStep === 0 && file !== 0) return false;
+  if (rowStep !== 0 && fileStep !== 0 && Math.abs(row) !== Math.abs(file)) return false;
+
+  const alongRow = rowStep === 0 || Math.sign(row) === rowStep;
+  const alongFile = fileStep === 0 || Math.sign(file) === fileStep;
+  return alongRow && alongFile;
 }
 
 /**

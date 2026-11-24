@@ -1,0 +1,32 @@
+-- My Journal: an optional icon image for each prefill template.
+--
+-- The want: the New Entry screen picks a template from a dropdown of names, and a
+-- journal that has accumulated a dozen templates ("Gym", "Gym (travel)", "Golf")
+-- reads as a wall of text. An icon makes the one you reach for every day findable
+-- without reading. Optional throughout -- a template with no icon still lists, it
+-- simply indents to keep the labels aligned.
+--
+-- Shape follows the per-row image convention in coding-guide.md: a BLOB plus its
+-- own `_mime_type` column, served by one dedicated route
+-- (/api/journal/prefill-templates/<id>/icon) and never inlined as a base64 data
+-- URL. The same pair `jrn_categories`/`jrn_tags` carry from migration 0042, and
+-- the same 128 KB cap (MAX_JOURNAL_ICON_BYTES) applies -- these render at 16-20px.
+--
+-- Two ALTERs rather than one CREATE, because the table has existed since 0062.
+-- `exp_categories` had to do the same two-step (0029 -> 0034); a table created
+-- fresh would carry both columns in its CREATE, as `exp_vendors` (0068) does.
+--
+-- NULL, not '', is the "no icon" value here. That is deliberately different from
+-- this schema's usual blank-means-unset rule for TEXT settings: these two columns
+-- are a pair that is either both set or both absent, and the serving route already
+-- treats NULL in either as 404. Matching 0042 mattered more than matching 0212's
+-- rule, since every icon read in this module is written against that shape.
+--
+-- THE OBLIGATION THIS CARRIES. Every normal read of this table must keep omitting
+-- `icon_image`, or the bytes ride along in the Templates list and in the New Entry
+-- form's dropdown data. `PREFILL_TEMPLATE_COLUMNS` in
+-- src/lib/journal/repository.ts is already an explicit column list for exactly
+-- this reason: it gains `icon_image_mime_type` and NOT `icon_image`. Presence is
+-- what callers need ("is there an icon?"), and the mime column answers that.
+ALTER TABLE jrn_prefill_templates ADD COLUMN icon_image BLOB;
+ALTER TABLE jrn_prefill_templates ADD COLUMN icon_image_mime_type TEXT;

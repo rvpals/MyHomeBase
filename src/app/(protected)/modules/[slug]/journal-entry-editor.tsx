@@ -29,15 +29,21 @@ import {
   EntryEncryptionExplainer,
 } from "@/components/entry-encryption-explainer";
 import { FullscreenStage, canGoFullscreen } from "@/components/fullscreen-stage";
+import { IconSelect, type IconSelectOption } from "@/components/icon-select";
 import { Modal } from "@/components/modal";
+import { SlotIcon } from "@/components/slot-icon";
 import { Tabs } from "@/components/tabs";
 import { TokenPicker } from "@/components/token-picker";
 import { TreeIcon } from "@/components/tree-icons";
 import { useCurrentPosition } from "@/components/use-current-position";
 import type { ClipSummary } from "@/lib/clips";
 import type { DashboardTextureItem } from "@/lib/dashboard-texture";
+import { getIconSlot } from "@/lib/icons";
 import {
   applyPrefillTemplate,
+  applyTaxonomyCombo,
+  describeTaxonomyCombo,
+  searchTaxonomyCombos,
   contentFontFamily,
   contentSizeClass,
   handwritingSizeClass,
@@ -48,6 +54,7 @@ import {
   type JournalPreferences,
   type JournalPrefillFormValues,
   type JournalPrefillTemplate,
+  type JournalTaxonomyCombo,
 } from "@/lib/journal";
 import {
   createEncryptedJournalEntryAction,
@@ -61,6 +68,7 @@ import {
 } from "./journal-actions";
 import { JournalEntryClipsField } from "./journal-entry-clips-field";
 import { JournalLocationPicker } from "./journal-location-picker";
+import { journalPrefillTemplateIconUrl } from "./journal-shared";
 
 // ---------------------------------------------------------------------------
 // Glyphs for the New-mode header toggles. Inline stroked SVGs so they follow the
@@ -222,6 +230,90 @@ function locationsFromEntry(entry: JournalEntry): JournalLocationInput[] {
   }));
 }
 
+// The two field groups' icons. Module scope because the registry is static —
+// `getIconSlot` is a lookup in a constant array, not I/O. One slot each covers
+// both editors, since New and Edit are this same component.
+const DATE_TIME_SLOT = getIconSlot("journal_group_date_time")!;
+const CATEGORIES_TAGS_SLOT = getIconSlot("journal_group_categories_tags")!;
+
+/**
+ * The combo picker: a searchable list of saved combos, opened by the Categories
+ * & Tags group's button.
+ *
+ * A `Modal` rather than a dropdown because a combo needs two lines to describe
+ * (its name and what it holds) and the list wants a search box — which is why the
+ * filtering rule is `searchTaxonomyCombos` in lib and not a `.includes` here: it
+ * matches member names too, and the CLI applies the same rule.
+ */
+function ComboPicker({
+  combos,
+  onPick,
+  onClose,
+}: {
+  combos: JournalTaxonomyCombo[];
+  onPick: (combo: JournalTaxonomyCombo) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const matches = searchTaxonomyCombos(combos, query);
+
+  return (
+    <Modal
+      title="Prefill Category/Tags Combo"
+      description="Picking one replaces this entry's categories and tags with the combo's selection."
+      onClose={onClose}
+      size="sm"
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          Cancel
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <label className="block text-sm">
+          <span className="sr-only">Search the combos</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by name, description, category or tag…"
+            className={INPUT_CLASS}
+            autoFocus
+          />
+        </label>
+
+        {matches.length === 0 ? (
+          <p className="text-sm text-muted">
+            {combos.length === 0 ? "No combos saved yet." : "No combo matches that."}
+          </p>
+        ) : (
+          // Capped height so a long list scrolls inside the dialog rather than
+          // pushing Cancel off a phone screen.
+          <ul className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto">
+            {matches.map((combo) => (
+              <li key={combo.id}>
+                <button
+                  type="button"
+                  onClick={() => onPick(combo)}
+                  className="w-full rounded-lg border border-line p-3 text-left transition-colors hover:bg-brass-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+                >
+                  <span className="block font-medium text-ink">{combo.name}</span>
+                  {combo.description !== "" && (
+                    <span className="mt-0.5 block text-sm text-muted">{combo.description}</span>
+                  )}
+                  <span className="mt-1 block text-xs text-muted">
+                    {describeTaxonomyCombo(combo)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 /** How the Misc tab names an entry's `source`. */
 function sourceLabel(source: string): string {
   if (source === "") return "Written by hand";
@@ -235,6 +327,18 @@ function sourceLabel(source: string): string {
 interface CommonProps {
   categoryOptions: string[];
   tagOptions: string[];
+  /**
+   * Saved taxonomy combos, for the Categories & Tags group's **Prefill
+   * Category/Tags Combo** button (migration 0177).
+   *
+   * On `CommonProps` rather than on the New-mode props, unlike
+   * `prefillTemplates`: a combo's whole reason to exist is that it also works on
+   * an entry written months ago, where there is no template to start from.
+   * Optional and defaulting to `[]`, so the button simply doesn't render for a
+   * caller that hasn't got the list (the merge draft, which is a dialog over a
+   * screen that never read it).
+   */
+  taxonomyCombos?: JournalTaxonomyCombo[];
   preferences: JournalPreferences;
   /** The app texture library, so the Content field's chosen picture resolves. */
   contentTextures?: DashboardTextureItem[];
@@ -292,6 +396,7 @@ export function JournalEntryEditor(props: JournalEntryEditorProps) {
   const {
     categoryOptions,
     tagOptions,
+    taxonomyCombos = [],
     preferences,
     contentTextures = [],
     locationCategoryOptions = [],
@@ -335,6 +440,7 @@ export function JournalEntryEditor(props: JournalEntryEditorProps) {
   const [isBusy, setIsBusy] = useState(false);
   const [isFetchingWeather, setIsFetchingWeather] = useState(false);
   const [isLocatingAndFetching, setIsLocatingAndFetching] = useState(false);
+  const [isComboPickerOpen, setIsComboPickerOpen] = useState(false);
   const [isEncryptPromptOpen, setIsEncryptPromptOpen] = useState(false);
   const [isConfirmingClose, setIsConfirmingClose] = useState(false);
   // Transient view state for this sitting, not stored preferences.
@@ -451,6 +557,45 @@ export function JournalEntryEditor(props: JournalEntryEditorProps) {
         tags: splitNames(filled.tags, /\s+/),
       };
     });
+  }
+
+  /**
+   * The template picker's options, with each template's uploaded icon
+   * (migration 0176). Built here rather than on the server because the URL is a
+   * pure function of two fields the template already carries.
+   */
+  const templateOptions: IconSelectOption[] = prefillTemplates.map((template) => ({
+    value: String(template.id),
+    label: template.name,
+    iconUrl: journalPrefillTemplateIconUrl(template),
+  }));
+
+  /**
+   * Replaces both taxonomy fields with a combo's selection (migration 0177).
+   *
+   * The replace itself is lib's `applyTaxonomyCombo`; the **confirmation** is
+   * here, because it is presentation. It is asked only when there is something to
+   * lose — applying a combo to an untagged entry throws nothing away, and a
+   * confirm on every pick would train the reader to dismiss the one that matters.
+   */
+  function handlePickCombo(combo: JournalTaxonomyCombo) {
+    const hasExisting = form.categories.length > 0 || form.tags.length > 0;
+    if (
+      hasExisting &&
+      !window.confirm(
+        `Replace this entry's categories and tags with the combo "${combo.name}"?\n\n` +
+          `${describeTaxonomyCombo(combo)}\n\nWhat is there now will be discarded.`,
+      )
+    ) {
+      return;
+    }
+    const selection = applyTaxonomyCombo(combo);
+    setForm((current) => ({
+      ...current,
+      categories: selection.categories,
+      tags: selection.tags,
+    }));
+    setIsComboPickerOpen(false);
   }
 
   // --- weather -------------------------------------------------------------------
@@ -684,70 +829,109 @@ export function JournalEntryEditor(props: JournalEntryEditorProps) {
           from a template is the exception and shouldn't push Date down. */}
       {!isEdit && prefillTemplates.length > 0 && (
         <CollapsibleCard title="Prefill Template">
-          <label className="block text-sm">
+          <div className="text-sm">
             <span className="mb-1 block font-medium text-ink">Select prefill template</span>
-            <select
+            {/* IconSelect, not a native <select>: a template can carry an icon
+                (migration 0176) and neither <select> nor <datalist> can render an
+                image in an option. Strict (`allowFreeText={false}`) so it stays a
+                picker — a typed template name means nothing here. */}
+            <IconSelect
+              options={templateOptions}
               value={templateId}
-              onChange={(event) => handleApplyTemplate(event.target.value)}
-              className={INPUT_CLASS}
-            >
-              <option value="">Start from a template…</option>
-              {prefillTemplates.map((template) => (
-                <option key={template.id} value={String(template.id)}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
+              onChange={handleApplyTemplate}
+              allowFreeText={false}
+              clearLabel="Start from a template…"
+              placeholder="Start from a template…"
+              ariaLabel="Select prefill template"
+            />
             <span className="mt-1 block text-xs text-muted">
               Fills the fields you have left blank. Anything you have already typed is kept.
             </span>
-          </label>
+          </div>
         </CollapsibleCard>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Date</span>
-          <input type="date" value={form.date} onChange={(event) => update("date", event.target.value)} className={INPUT_CLASS} />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-ink">Time</span>
-          <input
-            type="time"
-            step={1}
-            value={form.time}
-            onChange={(event) => update("time", event.target.value)}
-            onDoubleClick={() => update("time", nowIso())}
-            title="Double-click to set the current time"
-            className={INPUT_CLASS}
-          />
-          <span className="mt-1 block text-xs text-muted">
-            Optional. Double-click to set the current time.
-          </span>
-        </label>
+      {/* The when. Grouped so the pair reads as one fact about the entry rather
+          than as two of six loose fields. Collapsing it is safe: the form state
+          lives above these cards, so a collapsed group still saves the date the
+          mount effect stamped. */}
+      <CollapsibleCard
+        title="Date/Time"
+        titleIcon={<SlotIcon slot={DATE_TIME_SLOT} className="h-4 w-4" />}
+        defaultOpen
+      >
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Date</span>
+            <input type="date" value={form.date} onChange={(event) => update("date", event.target.value)} className={INPUT_CLASS} />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-ink">Time</span>
+            <input
+              type="time"
+              step={1}
+              value={form.time}
+              onChange={(event) => update("time", event.target.value)}
+              onDoubleClick={() => update("time", nowIso())}
+              title="Double-click to set the current time"
+              className={INPUT_CLASS}
+            />
+            <span className="mt-1 block text-xs text-muted">
+              Optional. Double-click to set the current time.
+            </span>
+          </label>
+        </div>
+      </CollapsibleCard>
 
-        <label className="block text-sm sm:col-span-2">
-          <span className="mb-1 block font-medium text-ink">Title</span>
-          <input type="text" value={form.title} onChange={(event) => update("title", event.target.value)} placeholder="A short headline for the entry" className={INPUT_CLASS} />
-        </label>
+      {/* Title sits between the two groups, ungrouped: it belongs to neither, and
+          a one-field group box would be a frame around nothing. */}
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium text-ink">Title</span>
+        <input type="text" value={form.title} onChange={(event) => update("title", event.target.value)} placeholder="A short headline for the entry" className={INPUT_CLASS} />
+      </label>
 
-        <TokenPicker
-          label="Categories"
-          value={form.categories}
-          onChange={(names) => setTaxonomy("categories", names)}
-          options={categoryOptions}
-          allowCreate
-          createPlaceholder="Filter or add a category…"
-        />
-        <TokenPicker
-          label="Tags"
-          value={form.tags}
-          onChange={(names) => setTaxonomy("tags", names)}
-          options={tagOptions}
-          allowCreate
-          createPlaceholder="Filter or add a tag…"
-        />
-      </div>
+      <CollapsibleCard
+        title="Categories & Tags"
+        titleIcon={<SlotIcon slot={CATEGORIES_TAGS_SLOT} className="h-4 w-4" />}
+        defaultOpen
+      >
+        <div className="flex flex-col gap-4">
+          {/* First in the group, because picking a combo rewrites everything
+              below it — a control that acts on the fields reads wrongly placed
+              underneath them. Hidden when there are no combos: a button whose
+              dialog is always empty is worse than no button. */}
+          {taxonomyCombos.length > 0 && (
+            <div>
+              <Button size="sm" variant="secondary" onClick={() => setIsComboPickerOpen(true)}>
+                Prefill Category/Tags Combo
+              </Button>
+              <span className="mt-1 block text-xs text-muted">
+                Replaces both fields with a saved combo. Unlike a prefill template, this
+                overwrites what is already there.
+              </span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <TokenPicker
+              label="Categories"
+              value={form.categories}
+              onChange={(names) => setTaxonomy("categories", names)}
+              options={categoryOptions}
+              allowCreate
+              createPlaceholder="Filter or add a category…"
+            />
+            <TokenPicker
+              label="Tags"
+              value={form.tags}
+              onChange={(names) => setTaxonomy("tags", names)}
+              options={tagOptions}
+              allowCreate
+              createPlaceholder="Filter or add a tag…"
+            />
+          </div>
+        </div>
+      </CollapsibleCard>
 
       <div>
         <div className="mb-1 flex items-center justify-between gap-2">
@@ -1039,6 +1223,14 @@ export function JournalEntryEditor(props: JournalEntryEditorProps) {
         )}
         {isDirty && <span className="ml-auto text-xs text-muted max-sm:hidden">Unsaved changes</span>}
       </div>
+
+      {isComboPickerOpen && (
+        <ComboPicker
+          combos={taxonomyCombos}
+          onPick={handlePickCombo}
+          onClose={() => setIsComboPickerOpen(false)}
+        />
+      )}
 
       {isConfirmingClose && (
         <Modal

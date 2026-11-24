@@ -10,14 +10,17 @@
 // No logic here: which fields exist, whether a field may be dynamic, and what
 // counts as a valid template all come from `@/lib/journal`.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { FileDropzone } from "@/components/file-dropzone";
 import { Modal } from "@/components/modal";
 import { TreeIcon } from "@/components/tree-icons";
 import {
+  JOURNAL_IMAGE_MIME_TYPES,
   JOURNAL_PREFILL_FIELDS,
+  MAX_JOURNAL_ICON_BYTES,
   prefillFieldAllowsNow,
   prefillFieldLabel,
   type JournalPrefillField,
@@ -25,10 +28,13 @@ import {
   type JournalPrefillTemplate,
 } from "@/lib/journal";
 import {
+  clearPrefillTemplateIconAction,
   deletePrefillTemplateAction,
   savePrefillTemplateAction,
+  savePrefillTemplateIconAction,
   setPrefillTemplateEnabledAction,
 } from "./journal-prefill-actions";
+import { journalPrefillTemplateIconUrl, readImageFileAsBase64 } from "./journal-shared";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -39,6 +45,42 @@ const SELECT_CLASS =
 /** Datalist id for one field's suggestions. One list per field, rendered once. */
 function suggestionListId(field: JournalPrefillField): string {
   return `journal-prefill-suggestions-${field}`;
+}
+
+/**
+ * A template's icon at list size, or a dashed placeholder when it has none
+ * (migration 0176).
+ *
+ * `pendingUrl` is an object URL for a file chosen but not yet uploaded, so the
+ * naming dialog can show what was picked before the save that gives the template
+ * an id to attach it to. Deliberately NOT the registered `TaxonomyIcon`: that one
+ * is sized for an inline chip beside a name, where this is a 40px tile in a form.
+ */
+function TemplateIconTile({
+  url,
+  size = "h-10 w-10",
+}: {
+  url: string | undefined;
+  size?: string;
+}) {
+  if (!url) {
+    return (
+      <div
+        className={`flex ${size} shrink-0 items-center justify-center rounded-lg border border-dashed border-line text-[10px] text-muted`}
+        aria-hidden
+      >
+        None
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- icon bytes are served from our own DB-backed route, not a static asset next/image can optimize.
+    <img
+      src={url}
+      alt=""
+      className={`${size} shrink-0 rounded-lg border border-line object-cover`}
+    />
+  );
 }
 
 /** A one-line summary of what a template fills, for the list row. */
@@ -114,6 +156,61 @@ function PrefillTemplateEditor({
   const [name, setName] = useState(template?.name ?? "");
   const [description, setDescription] = useState(template?.description ?? "");
 
+  // The icon (migration 0176). Held as a chosen-but-not-yet-uploaded File,
+  // because the icon is keyed by the template's id and a brand-new template has
+  // no id until Save returns one — see `handleSave`. `iconPreviewUrl` is an
+  // object URL so the dialog shows what was picked before any round trip.
+  const [iconFile, setIconFile] = useState<File | undefined>(undefined);
+  const [iconPreviewUrl, setIconPreviewUrl] = useState<string | undefined>(undefined);
+  // Set when a *saved* template's icon has just been removed, so the dialog stops
+  // showing the stored artwork without waiting for the page to refresh.
+  const [iconCleared, setIconCleared] = useState(false);
+
+  // Object URLs are a document-lifetime resource; without this one leaks per
+  // file chosen. Keyed on the url itself, so replacing a pick revokes the old one.
+  useEffect(() => {
+    if (!iconPreviewUrl) return;
+    return () => URL.revokeObjectURL(iconPreviewUrl);
+  }, [iconPreviewUrl]);
+
+  const storedIconUrl = template ? journalPrefillTemplateIconUrl(template) : undefined;
+  const shownIconUrl = iconPreviewUrl ?? (iconCleared ? undefined : storedIconUrl);
+
+  function handleIconFile(file: File) {
+    setError(undefined);
+    // Checked client-side so an oversized file is refused instantly with our own
+    // wording, rather than as a 500 from the action. coding-guide.md.
+    if (file.size > MAX_JOURNAL_ICON_BYTES) {
+      setError(
+        `"${file.name}" is too large — keep it under ${Math.round(MAX_JOURNAL_ICON_BYTES / 1024)} KB.`,
+      );
+      return;
+    }
+    setIconFile(file);
+    setIconPreviewUrl(URL.createObjectURL(file));
+    setIconCleared(false);
+  }
+
+  /** Only offered for a template that is already saved and already has an icon. */
+  async function handleRemoveIcon() {
+    if (!template) return;
+    setError(undefined);
+    setIsBusy(true);
+    try {
+      const result = await clearPrefillTemplateIconAction(template.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setIconFile(undefined);
+      setIconPreviewUrl(undefined);
+      setIconCleared(true);
+      router.refresh();
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   // Fields already used, so the dropdown can grey them out rather than let a
   // writer build something the schema will reject.
   const usedFields = new Set(rows.map((row) => row.field));
@@ -156,6 +253,28 @@ function PrefillTemplateEditor({
         setError(result.error);
         return;
       }
+
+      // The icon goes up second, because it is keyed by the template's id and a
+      // new template only has one once the save above has returned it. If this
+      // half fails the template is already saved — so the dialog stays open and
+      // says so rather than claiming the whole thing worked or pretending the
+      // template wasn't written.
+      if (iconFile && result.template) {
+        const base64Data = await readImageFileAsBase64(iconFile);
+        const iconResult = await savePrefillTemplateIconAction(
+          result.template.id,
+          iconFile.type,
+          base64Data,
+        );
+        if (!iconResult.ok) {
+          setError(
+            `The template was saved, but its icon was not: ${iconResult.error ?? "unknown error"}`,
+          );
+          router.refresh();
+          return;
+        }
+      }
+
       setIsNaming(false);
       onDone();
       router.refresh();
@@ -307,7 +426,7 @@ function PrefillTemplateEditor({
       {isNaming && (
         <Modal
           title={template ? "Rename this template" : "Name this template"}
-          description="A name to pick it by on the New Entry screen, and an optional note about when to use it."
+          description="A name to pick it by on the New Entry screen, an optional note about when to use it, and an optional icon."
           onClose={() => setIsNaming(false)}
           isBusy={isBusy}
           size="sm"
@@ -345,6 +464,48 @@ function PrefillTemplateEditor({
                 className={`${INPUT_CLASS} resize-y`}
               />
             </label>
+
+            {/* The icon (migration 0176). Optional — a template without one still
+                lists and still picks; the picker just indents its label. Stacks
+                on a phone: a 40px tile beside a dropzone needs more than 390px. */}
+            <div className="text-sm">
+              <span className="mb-1 block font-medium text-ink">Icon (optional)</span>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <TemplateIconTile url={shownIconUrl} />
+                <div className="min-w-0 flex-1">
+                  <FileDropzone
+                    accept={JOURNAL_IMAGE_MIME_TYPES.join(",")}
+                    disabled={isBusy}
+                    label={
+                      shownIconUrl
+                        ? "Drop a new icon here, or click to browse"
+                        : "Drop an icon here, or click to browse"
+                    }
+                    onFile={handleIconFile}
+                  />
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <span className="text-xs text-muted">
+                  {iconFile
+                    ? "Uploaded when you press Save."
+                    : "Shown beside this template on the New Entry screen."}
+                </span>
+                {/* Only for a saved template that actually has one — there is no
+                    id to clear an icon on before the first save, and a brand-new
+                    pick is undone by choosing another file. */}
+                {template && storedIconUrl && !iconCleared && (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={handleRemoveIcon}
+                    className="text-xs text-muted hover:text-red-400"
+                  >
+                    Remove icon
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </Modal>
       )}
@@ -403,7 +564,7 @@ export function JournalTemplatesView({
         <p className="text-sm text-muted">
           A template is a named set of field values a new entry can start from. Pick one on the
           New Entry screen and it fills the fields you left blank — it never overwrites something
-          you have already typed.
+          you have already typed. Give one an icon and it shows beside the name in that picker.
         </p>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
@@ -441,6 +602,10 @@ export function JournalTemplatesView({
                     <TreeIcon name="trash" className="h-4 w-4" />
                   </button>
                 </span>
+
+                {/* The uploaded icon, or a placeholder so the names stay aligned
+                    down a mixed list. */}
+                <TemplateIconTile url={journalPrefillTemplateIconUrl(template)} size="h-8 w-8" />
 
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-ink">

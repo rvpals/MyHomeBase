@@ -6,6 +6,7 @@ import type {
   JournalPrefillFieldValue,
   JournalPrefillTemplate,
   JournalTag,
+  JournalTaxonomyCombo,
   JournalTaxonomyCount,
   SavedJournalFilter,
 } from "./types";
@@ -26,6 +27,8 @@ type MergeRepo = Pick<
   | "saveFilter"
   | "listPrefillTemplates"
   | "savePrefillTemplate"
+  | "listTaxonomyCombos"
+  | "saveTaxonomyCombo"
   | "upsertCategory"
   | "upsertTag"
   | "getCategoryIcon"
@@ -42,6 +45,8 @@ interface FakeState {
   icons: Map<string, { data: Buffer; mimeType: string }>;
   filters: SavedJournalFilter[];
   templates: JournalPrefillTemplate[];
+  /** Taxonomy combos (migration 0177) — the third place a merge has to follow. */
+  combos: JournalTaxonomyCombo[];
 }
 
 function taxonomyRow(
@@ -75,6 +80,7 @@ function fakeRepo(initial: Partial<FakeState> = {}): {
     icons: initial.icons ?? new Map(),
     filters: initial.filters ?? [],
     templates: initial.templates ?? [],
+    combos: initial.combos ?? [],
   };
 
   const normalize = (name: string) => name.trim().toLowerCase();
@@ -157,6 +163,15 @@ function fakeRepo(initial: Partial<FakeState> = {}): {
       if (existing) existing.fields = input.fields as JournalPrefillFieldValue[];
       return existing ?? state.templates[0];
     },
+    listTaxonomyCombos: () => state.combos.map((combo) => ({ ...combo })),
+    saveTaxonomyCombo: (input) => {
+      const existing = state.combos.find((combo) => combo.id === input.id);
+      if (existing) {
+        existing.categories = input.categories;
+        existing.tags = input.tags;
+      }
+      return existing ?? state.combos[0];
+    },
     upsertCategory: (input) => {
       state.managed.set(input.name, { description: input.description });
       return taxonomyRow(input.name, input.description);
@@ -208,6 +223,15 @@ function template(id: number, name: string, value: string): JournalPrefillTempla
     createdAt: "",
     updatedAt: "",
   };
+}
+
+function combo(
+  id: number,
+  name: string,
+  categories: string[],
+  tags: string[],
+): JournalTaxonomyCombo {
+  return { id, name, description: "", categories, tags, createdAt: "", updatedAt: "" };
 }
 
 describe("mergeTaxonomy — entries", () => {
@@ -542,6 +566,67 @@ describe("mergeTaxonomy — prefill templates", () => {
   });
 });
 
+describe("mergeTaxonomy — taxonomy combos (migration 0177)", () => {
+  it("rewrites a combo's category list", () => {
+    const { repo, state } = fakeRepo({
+      managed: new Map([["Trips", { description: "" }]]),
+      pairs: new Map([["Trips", new Set([1])]]),
+      combos: [combo(1, "Holiday", ["Trips", "Food"], ["flight"])],
+    });
+
+    const result = mergeTaxonomy(repo, "category", { sources: ["Trips"], target: "Travel" });
+
+    expect(result.rewrittenCombos).toBe(1);
+    expect(state.combos[0].categories).toEqual(["Travel", "Food"]);
+    // A category merge must not disturb the combo's tags.
+    expect(state.combos[0].tags).toEqual(["flight"]);
+  });
+
+  it("rewrites a combo's tag list on a tag merge", () => {
+    const { repo, state } = fakeRepo({
+      managed: new Map([["flight", { description: "" }]]),
+      pairs: new Map([["flight", new Set([1])]]),
+      combos: [combo(1, "Holiday", ["Travel"], ["flight", "hotel"])],
+    });
+
+    const result = mergeTaxonomy(repo, "tag", { sources: ["flight"], target: "plane" });
+
+    expect(result.rewrittenCombos).toBe(1);
+    expect(state.combos[0].tags).toEqual(["plane", "hotel"]);
+    expect(state.combos[0].categories).toEqual(["Travel"]);
+  });
+
+  it("collapses a duplicate the merge creates in a combo", () => {
+    // Without this, applying the combo would write the target twice and the
+    // writer would have to remove a chip by hand.
+    const { repo, state } = fakeRepo({
+      managed: new Map([
+        ["Trips", { description: "" }],
+        ["Vacation", { description: "" }],
+      ]),
+      pairs: new Map([["Trips", new Set([1])]]),
+      combos: [combo(1, "Holiday", ["Trips", "Vacation", "Food"], [])],
+    });
+
+    mergeTaxonomy(repo, "category", { sources: ["Trips", "Vacation"], target: "Travel" });
+
+    expect(state.combos[0].categories).toEqual(["Travel", "Food"]);
+  });
+
+  it("leaves an unrelated combo alone", () => {
+    const { repo, state } = fakeRepo({
+      managed: new Map([["Trips", { description: "" }]]),
+      pairs: new Map([["Trips", new Set([1])]]),
+      combos: [combo(1, "Meals", ["Food"], ["dinner"])],
+    });
+
+    const result = mergeTaxonomy(repo, "category", { sources: ["Trips"], target: "Travel" });
+
+    expect(result.rewrittenCombos).toBe(0);
+    expect(state.combos[0].categories).toEqual(["Food"]);
+  });
+});
+
 describe("planTaxonomyMerge", () => {
   it("reports the collision, the entry count and what else would change", () => {
     const { repo } = fakeRepo({
@@ -555,6 +640,7 @@ describe("planTaxonomyMerge", () => {
       ]),
       filters: [filterOn("Holidays", ["Trips"])],
       templates: [template(1, "Holiday", "Trips")],
+      combos: [combo(1, "Holiday combo", ["Trips"], [])],
     });
 
     const plan = planTaxonomyMerge(repo, "category", {
@@ -567,6 +653,7 @@ describe("planTaxonomyMerge", () => {
     expect(plan.entryCount).toBe(3);
     expect(plan.affectedFilters).toEqual(["Holidays"]);
     expect(plan.affectedTemplates).toEqual(["Holiday"]);
+    expect(plan.affectedCombos).toEqual(["Holiday combo"]);
   });
 
   it("counts an entry carrying two sources once, not twice", () => {

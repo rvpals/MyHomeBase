@@ -5439,3 +5439,102 @@ html[data-color-theme="glass"] {
   outline-offset: -2px;
   z-index: 1;
 }
+
+/* ---------------------------------------------------------------------------
+   The chessboard's two learning aids.
+
+   Both are opt-in switches in the game's Board help card, both off by default,
+   and both draw underneath every mark the board already uses — selection
+   green, last-move amber, the check glow and the blue hint. That ordering is
+   the whole design constraint: the board had four full-square washes before
+   these, and a fifth and sixth would have made all six unreadable.
+
+   So "reachable" is the only new wash, kept very faint, and control is drawn
+   as a corner wedge instead. A wedge also solves a problem a wash cannot: a
+   square both sides control shows two wedges in opposite corners, where two
+   washes would blend into one colour that means neither.
+--------------------------------------------------------------------------- */
+
+:root {
+  /* Yours and theirs. Semantic green and red, which design.md keeps literal
+     for exactly this kind of meaning, dropped to an opacity that reads over
+     both the boxwood and the walnut square. */
+  --chess-influence-mine: rgba(46, 204, 113, 0.75);
+  --chess-influence-theirs: rgba(214, 48, 49, 0.78);
+  --chess-reachable: rgba(46, 204, 113, 0.17);
+  --chess-movable: rgba(46, 204, 113, 0.5);
+}
+
+/* A square the player can move something to. Faint on purpose: with twenty
+   legal moves in the opening this covers a third of the board, so anything
+   stronger would read as the board having changed colour. */
+.chess-reachable {
+  position: absolute;
+  inset: 0;
+  background-color: var(--chess-reachable);
+  pointer-events: none;
+}
+
+/* A piece that has somewhere to go. An inset outline rather than a wash, so it
+   reads as "this one is pickable" and not as "this square is a destination" —
+   the two aids sit on the same board and must not say the same thing. */
+.chess-movable {
+  position: absolute;
+  inset: 5%;
+  border: 2px solid var(--chess-movable);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+/* Who controls the square. Opposite corners, so a contested square shows both
+   and neither hides the other. */
+.chess-influence {
+  position: absolute;
+  width: 28%;
+  height: 28%;
+  pointer-events: none;
+}
+
+.chess-influence-mine {
+  bottom: 0;
+  left: 0;
+  background-color: var(--chess-influence-mine);
+  clip-path: polygon(0 0, 0 100%, 100% 100%);
+}
+
+.chess-influence-theirs {
+  top: 0;
+  right: 0;
+  background-color: var(--chess-influence-theirs);
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
+
+/* A piece arriving on its square. The distance comes from the call site as two
+   percentages of a square, because the squares are a uniform grid — which is why
+   this needs no overlay of floating pieces and no measurement. */
+@keyframes chess-slide {
+  from {
+    transform: translate(var(--chess-slide-x, 0), var(--chess-slide-y, 0));
+  }
+  to {
+    transform: translate(0, 0);
+  }
+}
+
+.chess-piece-arriving {
+  animation: chess-slide 180ms ease-out;
+}
+
+/* The square a piece is being dragged off: the piece fades so the board underneath
+   reads while the cursor carries it. */
+.chess-square-dragging .chess-piece {
+  opacity: 0.35;
+}
+
+/* Motion here is decoration — the move is already shown by the two marked squares and
+   by the move list, so under reduced motion the piece simply appears. */
+@media (prefers-reduced-motion: reduce) {
+  .chess-piece-arriving {
+    animation: none;
+  }
+}

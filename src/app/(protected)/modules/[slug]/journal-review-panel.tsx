@@ -13,6 +13,7 @@ import {
   listEnabledPrefillTemplates,
   listEntries,
   listTags,
+  listTaxonomyCombos,
   resolveJournalPreferences,
 } from "@/lib/journal";
 import { listDashboardTextures } from "@/lib/dashboard-texture";
@@ -50,6 +51,11 @@ export function JournalReviewPanel() {
       tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
       categoryOptions={categories.map((category) => category.name)}
       tagOptions={tags.map((tag) => tag.name)}
+      // For the edit-this-entry modal on this screen, which is the same editor
+      // /entries/[id] mounts — an existing entry's tags are exactly what a combo
+      // is for. The merge *draft* below it gets none: that form is building a new
+      // entry inside a dialog, and it already carries the prefill templates.
+      taxonomyCombos={listTaxonomyCombos(deps.journalRepo)}
       preferences={preferences}
       contentTextures={listDashboardTextures(deps.dashboardTextureRepo)}
       prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}

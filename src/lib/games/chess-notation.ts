@@ -1,4 +1,5 @@
 import { CHESS_START_FEN, fileOf, rowOf, squareFromName, squareName } from "./chess-board";
+import { chessTimeControlTag } from "./chess-clock";
 import { applyChessMove, generateLegalMoves, isInCheck } from "./chess-moves";
 import {
   CHESS_PROMOTION_TYPES,
@@ -134,7 +135,15 @@ export function gameToPgn(
     `[White "${pgnValue(white)}"]`,
     `[Black "${pgnValue(black)}"]`,
     `[Result "${pgnResult(game)}"]`,
+    // PGN writes a control as seconds+increment, and "-" for an untimed game. Always
+    // emitted, because its absence and "-" mean different things to a reader: one is
+    // "nobody said", the other is "there was no clock".
+    `[TimeControl "${chessTimeControlTag(game.clock)}"]`,
   ];
+
+  // Only when the game ended in a way the moves alone do not explain. A reader shown
+  // "time forfeit" knows why a won position was lost.
+  if (game.status === "timeout") headers.push('[Termination "time forfeit"]');
 
   // A game that did not start from the standard position needs both tags, and readers
   // that see SetUp without FEN fall back to the opening position and replay nonsense.

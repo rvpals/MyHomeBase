@@ -108,6 +108,23 @@ describe("FEN", () => {
     expect(parseFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq z9")).toBeUndefined();
   });
 
+  it("ignores an en-passant square no pawn can actually take", () => {
+    /*
+      FEN records the square after any double step. Two positions that differ only by
+      an ep square nobody can use are the same position for repetition, and treating
+      them as different is what made a threefold draw arrive a cycle late.
+    */
+    const withEp = positionFrom("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1");
+    const without = positionFrom("4k3/8/8/3pP3/8/8/8/4K3 w - - 0 1");
+    // The e5 pawn *can* take on d6, so here the square is real and must be kept.
+    expect(repetitionKey(withEp)).not.toBe(repetitionKey(without));
+
+    const noTaker = positionFrom("4k3/8/8/3p4/8/8/8/4K3 w - d6 0 1");
+    const noTakerPlain = positionFrom("4k3/8/8/3p4/8/8/8/4K3 w - - 0 1");
+    // No white pawn beside it, so the square changes nothing and is dropped.
+    expect(repetitionKey(noTaker)).toBe(repetitionKey(noTakerPlain));
+  });
+
   it("drops the two counters from a repetition key", () => {
     // Two positions identical but for the clocks must share a key, or no game could
     // ever repeat a position three times.

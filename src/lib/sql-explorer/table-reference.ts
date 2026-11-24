@@ -91,6 +91,7 @@ const GROUPS: TableReferenceGroup[] = [
       ["jrn_entry_locations", "GPS coordinates attached to an entry, with an optional readable place name."],
       ["jrn_saved_filters", "Named, reusable filters for the entry browser. The condition tree is JSON, compiled to a WHERE clause in code. `category_name` is a free-text label the Entries screen groups the filter list by ('' = uncategorised); there is no catalog table behind it."],
       ["jrn_prefill_templates", "Named sets of starting values for a new entry, each field either a literal or \"now\"."],
+      ["jrn_taxonomy_combos", "Named pairings of categories and tags that an entry's two taxonomy fields can be replaced with in one click."],
       ["jrn_recycled_entries", "Recycle bin for deleted journal entries (0079). entry_id remembers the id it had, so a restore can go back where it was."],
       ["jrn_recycled_entry_categories", "Categories of a recycled entry, keyed on the bin row so a restore is lossless."],
       ["jrn_recycled_entry_tags", "Tags of a recycled entry, keyed on the bin row."],
@@ -154,6 +155,7 @@ const GROUPS: TableReferenceGroup[] = [
       ["gam_scores", "The shared high-score board, one row per completed game. The list of games is code, not data."],
       ["gam_saved_runs", "Runs in progress a player can resume, one row per player per game key. Private to each player. Arrow Clearing and the chess autosave."],
       ["gam_chess_saves", "Chess games saved under a name, many per player. Private to each player. The moves, not a board snapshot, so loading replays them through the rules."],
+      ["gam_chess_results", "Every finished chess game's result and level, per player. Separate from gam_scores because a loss, a draw and an assisted win all score 0."],
     ],
   },
   {

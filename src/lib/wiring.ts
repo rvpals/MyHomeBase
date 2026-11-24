@@ -40,6 +40,7 @@ import { SharpClipImageProcessor } from "./clips/image-processor";
 import { SqliteDocumentsRepository } from "./documents/repository";
 import { NodeDocumentFileStore } from "./documents/file-store";
 import {
+  SqliteChessResultRepository,
   SqliteChessSaveRepository,
   SqliteGamesRepository,
   SqlitePictionaryWordRepository,
@@ -341,6 +342,9 @@ export const deps = {
   // opposed to the one-per-player autosave above. A third port rather than methods on
   // either of the two above: see `src/lib/games/ports.ts`.
   chessSavesRepo: new SqliteChessSaveRepository(db),
+  // Finished chess games (migrations/0175) — the win/loss/draw record per level, which
+  // the scoreboard cannot answer because a loss, a draw and an assisted win all score 0.
+  chessResultsRepo: new SqliteChessResultRepository(db),
   // The Clips module (migrations/0155): rich-text notes, their taxonomy, their
   // pasted images and their links into other modules.
   clipsRepo: new SqliteClipsRepository(db),

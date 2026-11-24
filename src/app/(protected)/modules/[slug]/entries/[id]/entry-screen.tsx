@@ -12,6 +12,7 @@ import type {
   JournalEntry,
   JournalEntryNeighbors,
   JournalPreferences,
+  JournalTaxonomyCombo,
 } from "@/lib/journal";
 import {
   decryptJournalEntryAction,
@@ -91,6 +92,7 @@ export function JournalEntryScreen({
   tagIcons,
   categoryOptions,
   tagOptions,
+  taxonomyCombos = [],
   locationCategoryOptions = [],
   locationTagOptions = [],
   canSeeExpense = false,
@@ -109,6 +111,14 @@ export function JournalEntryScreen({
   categoryOptions: string[];
   /** Every known tag name — the edit form's picker offers these. */
   tagOptions: string[];
+  /**
+   * Saved taxonomy combos, for the edit form's "Prefill Category/Tags Combo"
+   * button (migration 0177). Combos are offered here where prefill templates are
+   * not, and the asymmetry is the point: this entry already exists, so there is
+   * nothing for a template to seed — but its tags may well be wrong, which is
+   * exactly what a combo fixes.
+   */
+  taxonomyCombos?: JournalTaxonomyCombo[];
   /** The saved-location library's taxonomy, for the edit form's location picker. */
   locationCategoryOptions?: string[];
   locationTagOptions?: string[];
@@ -383,6 +393,7 @@ export function JournalEntryScreen({
           encryptionPassword={password}
           categoryOptions={categoryOptions}
           tagOptions={tagOptions}
+          taxonomyCombos={taxonomyCombos}
           preferences={preferences}
           contentTextures={contentTextures}
           locationCategoryOptions={locationCategoryOptions}

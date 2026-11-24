@@ -2861,6 +2861,11 @@ notes).
 | `lastMove?` | `{ from, to }` | The move just played, marked amber on both squares. |
 | `checkSquare?` | `number` | A king in check, drawn with a red radial glow. |
 | `hint?` | `{ from, to }` | A suggested move, marked blue. |
+| `reachable?` | `readonly number[]` | **Show valid moves** — every square the player can move something to, washed faintly. |
+| `movable?` | `readonly number[]` | The player's pieces that can move, outlined. |
+| `influence?` | `ChessBoardInfluence` | **Sphere of influence** — `{ mine, theirs }`, two arrays of 64 booleans, drawn as corner wedges. |
+| `onDragMove?` | `(from: number, to: number) => void` | A piece dragged onto a square. The same intent as the two taps; treat it that way. |
+| `animate?` | `ChessBoardMove` | A move to **slide in**, played once when it changes. Not `lastMove`, which stays marked. |
 | `onSquare?` | `(square: number) => void` | Raised with the **board** index, whatever the orientation. |
 | `disabled?` | `boolean` | Stops every square being pressed. Does **not** dim the board — see the notes. |
 | `showCoordinates?` | `boolean` | File letters and rank digits in the edge squares. Default `true`. |
@@ -2908,6 +2913,25 @@ board — the captured row, and the promotion picker.
 - **The squares are plain `<button>`s, not `Button`.** 64 hard offset shadows in one
   grid is what `design.md` → *A dense grid of keys is not a row of buttons* rules out;
   this follows `.sudoku-cell` and `.calc-key`.
+- **It is one tab stop, and the arrows walk it.** Sixty-four buttons would be
+  sixty-four tab stops, which makes reaching anything past the board an exercise in
+  patience. The focused square takes `tabIndex={0}` and the rest `-1`, which is how a
+  grid of controls is meant to behave.
+- **Dragging and tapping raise different events on purpose.** `onSquare` is one square;
+  `onDragMove` is both at once. The chess view funnels them into one function, so a
+  drag can never become a second, subtly different way to make a move — but the board
+  does not assume that, because a caller might want to refuse drags and keep taps.
+- **The slide animation needs no overlay and no measurement.** The squares are a uniform
+  grid, so the distance is the difference in rows and files as a percentage of a square,
+  handed to one CSS keyframe as two custom properties. It goes under reduced motion:
+  the move is already shown by the two marked squares and by the move list, so the
+  travel is decoration.
+- **The two learning aids draw *under* every other mark, and only one is a wash.** The
+  board already had four full-square washes — selection, last move, check, hint — and a
+  fifth and sixth would have made all six unreadable. So `reachable` is a deliberately
+  faint wash and `influence` is a **corner wedge per side** instead. The wedge also
+  solves what a wash cannot: a contested square shows green and red in opposite corners,
+  where two blended washes would make a third colour meaning neither.
 
 ## MahjongTile
 
@@ -3485,6 +3509,11 @@ and the post-import rule editor
 [expense-rules-view.tsx](src/app/(protected)/modules/[slug]/expense-rules-view.tsx).
 Options are built by `categoryIconSelectOptions` in
 [expense-shared.tsx](src/app/(protected)/modules/[slug]/expense-shared.tsx).
+Also MyJournal's **prefill template picker** on the New Entry screen
+([journal-entry-editor.tsx](src/app/(protected)/modules/[slug]/journal-entry-editor.tsx)),
+which was a native `<select>` until templates gained icons (migration 0176) — the
+exact reason given at the top of this entry. It passes `allowFreeText={false}`:
+a typed template name means nothing there, so the field only filters.
 
 **Notes:** keyboard-driven — ArrowUp/ArrowDown move the highlight, Enter picks it
 (without submitting the form), Escape/Tab close. A click outside closes it; the
@@ -3638,7 +3667,11 @@ value lives in the chips.
 ```
 
 **Used by:** the journal's Categories and Tags fields, in the one entry form for creating and editing,
-[journal-entry-editor.tsx](src/app/(protected)/modules/[slug]/journal-entry-editor.tsx);
+[journal-entry-editor.tsx](src/app/(protected)/modules/[slug]/journal-entry-editor.tsx)
+(both now inside a *Categories & Tags* group box) and in the combo editor those
+two fields' saved pairings are built in,
+[journal-taxonomy-combos-view.tsx](src/app/(protected)/modules/[slug]/journal-taxonomy-combos-view.tsx)
+— deliberately the same control in both, so building a combo feels like tagging an entry;
 and the Documents library's New / Edit document screen
 [documents-editor-view.tsx](src/app/(protected)/modules/[slug]/documents-editor-view.tsx),
 which had grown its own local `TaxonomyPicker` — a create `<input>` next to a

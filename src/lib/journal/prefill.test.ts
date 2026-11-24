@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   applyPrefillTemplate,
+  clearPrefillTemplateIcon,
   deletePrefillTemplate,
   emptyPrefillValues,
   getPrefillTemplate,
   getPrefillTemplateByName,
+  getPrefillTemplateIcon,
   listEnabledPrefillTemplates,
   listPrefillSuggestions,
   listPrefillTemplates,
@@ -13,8 +15,13 @@ import {
   resolvePrefillValue,
   savePrefillTemplate,
   setPrefillTemplateEnabled,
+  setPrefillTemplateIcon,
 } from "./prefill";
-import { parseStoredPrefillFields, savePrefillTemplateSchema } from "./schema";
+import {
+  MAX_JOURNAL_ICON_BYTES,
+  parseStoredPrefillFields,
+  savePrefillTemplateSchema,
+} from "./schema";
 import type { JournalRepository } from "./ports";
 import type { PrefillTemplateWriteData } from "./schema";
 import type {
@@ -31,6 +38,7 @@ import type {
 // quietly reaches for an entry query fails loudly instead of passing on a stub.
 function fakeRepo(options?: { categories?: string[]; tags?: string[]; distinct?: string[] }) {
   let templates: JournalPrefillTemplate[] = [];
+  const icons = new Map<number, { data: Buffer; mimeType: string }>();
   let nextId = 1;
   const now = "2026-01-01T00:00:00.000Z";
 
@@ -82,6 +90,22 @@ function fakeRepo(options?: { categories?: string[]; tags?: string[]; distinct?:
       if (index === -1) throw new Error(`Prefill template ${id} no longer exists.`);
       templates[index] = { ...templates[index], isEnabled, updatedAt: now };
       return templates[index];
+    },
+    // Migration 0176. The fake keeps the bytes beside the row rather than on it,
+    // mirroring the real split: the domain type carries presence only.
+    getPrefillTemplateIcon(id: number) {
+      return icons.get(id);
+    },
+    setPrefillTemplateIcon(id: number, icon: { data: Buffer; mimeType: string } | undefined) {
+      const index = templates.findIndex((template) => template.id === id);
+      if (index === -1) return;
+      if (icon) icons.set(id, icon);
+      else icons.delete(id);
+      templates[index] = {
+        ...templates[index],
+        iconMimeType: icon?.mimeType,
+        updatedAt: now,
+      };
     },
     listCategories(): JournalCategory[] {
       return (options?.categories ?? []).map((name) => ({
@@ -450,5 +474,73 @@ describe("savePrefillTemplateSchema", () => {
   it("defaults description, isEnabled and fields", () => {
     const parsed = savePrefillTemplateSchema.parse({ name: "Gym" });
     expect(parsed).toMatchObject({ description: "", isEnabled: true, fields: [] });
+  });
+});
+
+describe("the template icon (migration 0176)", () => {
+  // A 1x1 transparent PNG — small, real bytes, so the decode path runs rather
+  // than being stubbed out.
+  const PNG_BASE64 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+  function withTemplate() {
+    const repo = fakeRepo();
+    const template = savePrefillTemplate(repo, { name: "Gym", fields: [] });
+    return { repo, template };
+  }
+
+  it("stores the icon and exposes its presence, not its bytes", () => {
+    const { repo, template } = withTemplate();
+    setPrefillTemplateIcon(repo, template.id, {
+      mimeType: "image/png",
+      base64Data: PNG_BASE64,
+    });
+
+    // What a list sees: the mime type only.
+    expect(getPrefillTemplate(repo, template.id)?.iconMimeType).toBe("image/png");
+    // What the serving route sees: the bytes.
+    const icon = getPrefillTemplateIcon(repo, template.id);
+    expect(icon?.mimeType).toBe("image/png");
+    expect(icon?.data.length).toBeGreaterThan(0);
+  });
+
+  it("clears the icon without touching the template", () => {
+    const { repo, template } = withTemplate();
+    setPrefillTemplateIcon(repo, template.id, { mimeType: "image/png", base64Data: PNG_BASE64 });
+    clearPrefillTemplateIcon(repo, template.id);
+
+    expect(getPrefillTemplateIcon(repo, template.id)).toBeUndefined();
+    expect(getPrefillTemplate(repo, template.id)?.iconMimeType).toBeUndefined();
+    expect(getPrefillTemplate(repo, template.id)?.name).toBe("Gym");
+  });
+
+  it("refuses an upload for a template that does not exist", () => {
+    // Rather than creating one as a side effect — a stale id must not mint a
+    // template nobody asked for. Same rule as setCategoryIcon.
+    const repo = fakeRepo();
+    expect(() =>
+      setPrefillTemplateIcon(repo, 99, { mimeType: "image/png", base64Data: PNG_BASE64 }),
+    ).toThrow(/no longer exists/);
+    expect(() => clearPrefillTemplateIcon(repo, 99)).toThrow(/no longer exists/);
+  });
+
+  it("refuses an image over the 128 KB cap", () => {
+    const { repo, template } = withTemplate();
+    const tooBig = Buffer.alloc(MAX_JOURNAL_ICON_BYTES + 1).toString("base64");
+    expect(() =>
+      setPrefillTemplateIcon(repo, template.id, { mimeType: "image/png", base64Data: tooBig }),
+    ).toThrow();
+  });
+
+  it("refuses a mime type outside the allowlist", () => {
+    // SVG is excluded on purpose — it can carry script, and these bytes are
+    // served from the app's own origin. See coding-guide.md.
+    const { repo, template } = withTemplate();
+    expect(() =>
+      setPrefillTemplateIcon(repo, template.id, {
+        mimeType: "image/svg+xml" as never,
+        base64Data: PNG_BASE64,
+      }),
+    ).toThrow();
   });
 });

@@ -1,7 +1,7 @@
 # MyHomeBase — Features
 
 A catalogue of what this application does, organised by module, compiled from the
-project's git history (229 commits, 2026-07-12 to 2026-11-13) and `CHANGE_HISTORY.md`.
+project's git history (258 commits, 2026-07-12 to 2026-11-23) and `CHANGE_HISTORY.md`.
 
 Sections below follow each module's live navigation. For the dated record of *when*
 something shipped, read **Admin → About → Change History**; this document answers
@@ -140,7 +140,19 @@ The largest module — fifteen sections.
 ### Writing
 
 - **Entry authoring** with GPS and weather captured at write time, a template
-  suggestion dated by the local calendar, and photographs attached to an entry.
+  suggestion dated by the local calendar, and photographs attached to an entry. The
+  fields are grouped in labelled boxes -- **Date/Time** and **Categories & Tags** -- each
+  with its own icon you can replace.
+- **Start from a template** on the New Entry screen: a picker of named prefill templates,
+  each of which can carry **its own icon**, so the one reached for daily is found without
+  reading a wall of similar names. Applying a template fills only the blanks and never
+  overwrites.
+- **Prefill Category/Tags Combo** inside the Categories & Tags box, on a new entry and on
+  an existing one alike: pick a saved combo and both lists are filled in one click. A
+  combo **replaces** both lists rather than merging into them, which is what makes it the
+  tool for fixing an entry that is already tagged wrongly -- and a combo with an empty
+  list deliberately clears that field. The editors confirm first when the entry already
+  carries categories or tags.
 - **Pin** an entry; **lock** it; **encrypt** it.
 - **Attach clips while writing** — a **+ Clip** control on the entry form writes a new clip
   or attaches an existing one, for a new entry and an existing one alike. The single-entry
@@ -217,6 +229,20 @@ for existing entries.
 **Recycle bin** with a Correct tab, **metadata backup and restore**, templates,
 preferences, and a **Home screen layout** section choosing the module's own cards.
 
+- **Meta Data** curates the categories and tags themselves, their icons, and -- on a
+  third tab, *Prefill Tags & Category Combo* -- the saved **combos** the two entry
+  editors fill from, each with a name, a description, and the two lists built with the
+  same chip picker the entry form uses.
+- **Prefill Templates** on Configuration manage the named field sets a new entry can
+  start from, including uploading or clearing each template's icon.
+- **The metadata backup carries all of it** -- categories, tags and their icons, the
+  prefill templates with their icons, the saved filters, the combos and the module
+  preferences -- so a restore puts the whole taxonomy back, not just the names.
+- **Renaming or merging a category or tag follows the names into the places that store
+  them as text**: saved filters, prefill templates and now combos are all rewritten, and
+  the merge plan names what it will touch before anything is written.
+- `journal-combos` and `journal-templates` drive the same use-cases from the terminal.
+
 ## Classroom
 
 Attendance and exams, as two section groups.
@@ -289,7 +315,8 @@ Stream ~20,000 songs off the NAS.
 An arcade with a scoreboard the whole house shares: **2048**, **Arrow Clearing** (a
 puzzle that cannot generate an unsolvable board, with difficulty tiers), **Tetris**,
 **Sudoku**, **Blackjack**, **Minesweeper**, **Mahjong Match**, **Mahjong** (four-player,
-against three bots), **Pac-Man**, **Bridge** and **Pictionary**.
+against three bots), **Pac-Man**, **Bridge**, **Pictionary**, **Word Wizard**,
+**Battleship** and **Chess**.
 
 - The arcade shows each game as a **square tile** — three across on a desktop, two on a phone.
 - **Arrow Clearing** boards can hold arrows up to 36 cells long: short pieces are laid first and
@@ -303,6 +330,55 @@ against three bots), **Pac-Man**, **Bridge** and **Pictionary**.
 - **Configuration** imports a household's own Pictionary words (pasted or from a text/CSV
   file, with an optional tier per row); a session can use the built-in bank, the custom list
   or both. A `pictionary-words` CLI lists, adds and clears them.
+- **Word Wizard** plays from the ENABLE word list against a bot or pass-and-play. Every
+  word in the move list is tappable and shows up to three English meanings, looked up
+  from Wiktionary -- the bot's obscure but legal words (QI, ZA, AALII) stop looking made
+  up.
+- **Battleship** against the computer, with a radar that only ever learns what sinking a
+  ship has already made public. A sunk hull takes a fireball down its length, drops out
+  of the bottom of its cells and sounds the blast, with a reduced-motion fallback that
+  keeps the flash and loses the movement.
+- **Chess** against the computer at Beginner, Intermediate or Advanced, playing White,
+  Black or a random side. Full rules -- castling, en passant, promotion you choose,
+  check, checkmate, stalemate, the fifty-move rule, threefold repetition and insufficient
+  material -- with a hand-written alpha-beta engine that thinks in a Web Worker and needs
+  no outside service. Pieces move by two taps or by dragging.
+  - **A clock, or none.** Six time controls (untimed, 1+0, 3+2, 5+0, 10+0, 15+10) with
+    the Fischer increment added after a move. The last ten seconds count in tenths and
+    turn red; a flag falls as a loss unless the other side could never have mated, which
+    is a draw. The computer rations its own remaining time rather than spending a fixed
+    budget, so it does not flag itself in a one-minute game. Takebacks are off in a timed
+    game.
+  - **Board help**, remembered per reader: **Show valid moves** washes every square you
+    can move something to and outlines the pieces that can move, and **Sphere of
+    influence** draws who controls each square as corner wedges -- contested squares show
+    both.
+  - **Walk the game back** with first / previous / next, then return to the live
+    position.
+  - **Analyse game** replays the finished game at one of three speeds and grades every
+    move Best, Good, Inaccuracy, Mistake or Blunder against what the engine would have
+    played, drawn as an evaluation graph you can click into. The screen names the speed
+    that produced the verdict rather than presenting it as fact.
+  - **Set up a position** from a pasted FEN or a pasted PGN game, or from one of four
+    built-in practice positions (back-rank mate, queen against a bare king, rook against
+    a bare king, a pawn race).
+  - **A record per level** -- wins, losses and draws against Beginner, Intermediate and
+    Advanced, shown before you pick one. It is kept apart from the scoreboard because a
+    loss, a draw and a heavily assisted win all score the same zero. Nothing played
+    before the record existed is counted, and the screen says so.
+  - **Hints and takebacks cost score.** Each charges a quarter of the level's base
+    against a win, so four uses cancel it outright -- they are counted rather than
+    forbidden, because a game played with help is still worth finishing.
+  - **Saving:** the game autosaves after every move and offers Resume; Save keeps up to
+    twenty named games. A save is the opening position plus the moves, replayed through
+    the rules on load, so a damaged one is refused rather than trusted.
+  - **Messages panel** with a *See machine log* switch, off by default, in which the
+    computer narrates its search live -- depth by depth, with the move it favoured, the
+    score, the positions searched and the time, plus plain-English notes at the easier
+    levels.
+  - A `chess` CLI plays the same saved games from the terminal, prints a game as PGN and
+    runs the move generator's own `--perft` proof. Timed games are board-only: a command
+    that exits between moves has nothing watching the clock.
 
 ## Picture Gallery
 

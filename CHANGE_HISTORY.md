@@ -1,5 +1,147 @@
 # Change History
 
+## 2026-11-23 — Chess: a clock, board help, post-game analysis and a record per level; Journal: tag/category combos and template icons
+
+**Three migrations: `0175_create_chess_results` (new table `gam_chess_results`),
+`0176_add_icon_to_journal_prefill_templates` (two columns on `jrn_prefill_templates`) and
+`0177_create_journal_taxonomy_combos` (new table `jrn_taxonomy_combos`); all three must be
+applied on the NAS before the record, the template icons and the combos work.** No new
+package, no paid or outside service.
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted,
+tested or opened in a browser as part of this release. Most of it was written in earlier
+sessions and carries no evidence it was ever looked at, so treat the whole entry as
+unverified and work through the Testing List section.
+
+### Chess
+
+- **A clock, or none.** Six time controls — `untimed`, 1+0, 3+2, 5+0, 10+0, 15+10 — picked
+  on the setup screen, with the Fischer increment added after a move when the mover had
+  time left. Under ten seconds the display switches to tenths and turns red. A flag ends
+  the game, but **not always as a win**: a flag against a side whose opponent could never
+  deliver mate is a draw, and the clock is charged *before* the move is applied, so a move
+  made after the flag falls cannot deliver mate. The computer rations its remaining time
+  (roughly a thirtieth of the clock plus half the increment, capped by its level's budget)
+  instead of spending a fixed amount, which is what stops Advanced flagging itself in a
+  one-minute game. Takebacks are off in a timed game. Files: chess-clock.ts (+test),
+  game-chess.ts, types.ts, game-chess-view.tsx.
+- **Board help**, two switches remembered per reader: **Show valid moves** washes every
+  square the player can move something to and outlines the pieces that can move;
+  **Sphere of influence** draws who controls each square as opposite-corner wedges, so a
+  contested square shows both. The influence map is built only while the switch is on.
+  Files: chess-board.tsx, globals.css, game-chess-view.tsx, components.md.
+- **Dragging**, as a second way to make the same move the two taps make, and a slide-in
+  animation for the arriving piece (dropped under `prefers-reduced-motion`, which keeps
+  the two marked squares). Files: chess-board.tsx, globals.css.
+- **Walk the game back** — first / previous / next through the move list, with a *Back to
+  the current position* button. Review is read-only; the influence overlay is suppressed
+  while reviewing.
+- **Analyse game** (`chess-analysis.ts`, `chess-analysis-view.tsx`): replays the finished
+  game at one of three speeds and grades every move **Best / Good / Inaccuracy / Mistake /
+  Blunder** against what the engine would have played, drawn as an evaluation graph that
+  can be clicked into, with the board and move list below. Each position is searched once,
+  not twice — a move's loss comes from the pair of scores either side of it — which halves
+  an 80-move game from 160 searches to 81. Terminal positions are decided rather than
+  searched, so a mating move is not scored as a blunder. The screen names the speed that
+  produced the verdict rather than presenting it as fact.
+- **Set up a position** (`chess-import.ts`): paste a FEN or a whole PGN game, or pick one
+  of four built-in practice positions (back-rank mate, queen against a bare king, rook
+  against a bare king, a pawn race). SAN is **resolved, not parsed** — each token is
+  matched against the SAN the engine itself would write for every legal move in that
+  position, so a token either names a legal move or is refused.
+- **A record per level** (migration 0175, `chess-results.ts`): wins, losses and draws
+  against each of the three levels, shown before a level is picked and refreshed when a
+  game ends. Kept apart from `gam_scores` because the scoreboard cannot recover it — a
+  loss, a draw and a sufficiently assisted win all post 0, and the level is not stored
+  there at all. Nothing is backfilled and the screen says so.
+- **Hints and takebacks now cost score.** Each charges a quarter of the level's base
+  against a winning score (`CHESS_ASSIST_PENALTY_FRACTION`), so four uses cancel the win
+  outright. Both were free, which made the board meaningless: Hint searches at Advanced
+  strength whatever level is being played, and Undo was unlimited. They are counted, not
+  forbidden.
+- **A faster search:** the evaluation moved out of `chess-bot.ts` into `chess-evaluate.ts`
+  (king safety, pawn structure, the bishop pair, rooks on open files, mobility, driving a
+  bare king to the edge), and a Zobrist transposition key (`chess-zobrist.ts`) replaced
+  what a FEN string would have cost per node. The key is 52 bits rather than 64, so the
+  table's move is **re-checked for legality** before it is trusted — a collision costs a
+  wasted entry, never an illegal move.
+- **Arcade:** the chess card alone opens in a `max-w-6xl` container rather than `max-w-3xl`,
+  because it draws a square board *and* a side panel. The other thirteen games are
+  untouched (games-arcade-view.tsx).
+- **Actions:** `listChessRecordsAction` and `recordChessResultAction` join the seven
+  existing chess actions in games-actions.ts, each gated by `requireModuleAccess("games")`.
+  New port `ChessResultRepository` + `SqliteChessResultRepository`, wired as
+  `deps.chessResultsRepo`.
+
+### Journal
+
+- **Taxonomy combos** (migration 0177, `taxonomy-combos.ts`): a named, reusable pairing of
+  categories **and** tags, created on Meta Data → *Prefill Tags & Category Combo* and
+  applied from a **Prefill Category/Tags Combo** button inside the Categories & Tags group
+  box of **both** entry editors — the new-entry form and an existing entry's. The thing
+  that makes it not a prefill template: applying a combo **replaces** both lists wholesale
+  where `applyPrefillTemplate` fills only blanks, which is exactly what makes it the tool
+  for fixing an entry that is already tagged wrongly. An empty list is a real value and
+  clears that field; the editors confirm first when the entry already carries either.
+  Files: taxonomy-combos.ts (+test), schema.ts, types.ts, ports.ts, repository.ts,
+  index.ts, journal-taxonomy-combos-view.tsx, journal-combo-actions.ts,
+  journal-entry-editor.tsx, journal-taxonomy-view.tsx, migrations/0177.
+- **An icon per prefill template** (migration 0176): uploaded on Configuration → Prefill
+  Templates and shown beside each row there and beside each option in the New Entry
+  picker. That forced the picker off a native `<select>` — neither it nor a `<datalist>`
+  can render an image in an option — and onto the shared `IconSelect` combobox in strict
+  mode. The bytes are a BLOB plus a mime column served by one route,
+  `/api/journal/prefill-templates/<id>/icon`, **keyed by id rather than name** because a
+  template's name is editable and a name-keyed URL would 404 after a rename.
+  `PREFILL_TEMPLATE_COLUMNS` gains only the mime column, so no list read ships the bytes.
+- **Icons on the entry form's two group boxes** — Date/Time and Categories & Tags — via two
+  new permanent icon slots, `journal_group_date_time` (`calendar`) and
+  `journal_group_categories_tags` (`shapes`, matching the Meta Data screen so the group and
+  the screen that curates it read as one subject). Both editors render the same component,
+  so one slot each covers both screens.
+- **The metadata backup carries the new things:** prefill templates with their icons, and
+  the combos. A restore reports the combo count, and the empty-bundle message now names
+  combos too (metadata-export.ts +test, journal-metadata-transfer-view.tsx).
+- **A category or tag rename/merge now follows into combos** as well as into saved filters
+  and prefill templates — none of the three is a foreign key, so all three store names as
+  text and all three must be rewritten. The merge plan names the affected combos before
+  anything is written (taxonomy-merge.ts +test, cli/journal-taxonomy.ts).
+
+### Elsewhere
+
+- **Home → Photo Albums card:** the slide is no longer enlarged. The thumbnail is 160px on
+  its short side, so the old full-width 4:3 frame blew it up about 2.5× and read as fuzzy.
+  The frame is now a fixed 176px band with the picture inside it at its own size
+  (`max-h`/`max-w` only), so it is downscaled at most, never upscaled, and the card's
+  height stays stable as portrait and landscape slides alternate (photo-albums-widget.tsx).
+
+### CLI
+
+- **`journal-combos`** — `list` (with `--search`), `show`, `apply`, `set`, `delete`. `set`
+  takes the whole combo at once, unlike `journal-templates set`; an omitted `--categories`
+  keeps the stored list while `--categories ""` clears it, because those are different
+  instructions.
+- **`journal-templates set-icon` / `clear-icon`** — the same use-case the web form drives,
+  with the bytes read off disk instead of out of the browser. The extension picks the mime
+  type and an unknown one is refused rather than guessed.
+- **`chess`** now refuses `--time`, and refuses to *play* a saved game that carries a clock
+  (printing it with `--pgn` is still allowed): a command that loads, moves and exits has
+  nothing watching the clock between runs.
+
+### Docs
+
+- Updated this release: **CLI_registry.md** (new `journal-combos` section, the two
+  `journal-templates` icon subcommands, the chess timed-game note) and
+  **MyHomeBase_feature.md** (a full Chess entry plus the Battleship and Word Wizard ones it
+  was still missing, the Journal writing and data-management additions, and a refreshed
+  commit count — 258 commits to 2026-11-23).
+- Updated earlier in the work and shipping here: **modules.md**, **components.md**
+  (`ChessBoard`'s `reachable` / `movable` / `influence` / `onDragMove` / `animate` props),
+  **coding-guide.md** (`gam_chess_results`, the eleventh per-row-image table, and the rule
+  that an icon route is keyed by `id` when the row's name is editable), **Testing_List.md**.
+- Checked, nothing stale: **design.md**, **ARCHITECTURE.md**, **CLAUDE.md**,
+  **START_HERE.md**, **menu_items.md**, **INSTRUCTION_SETUP_SYNOLOGY.md**.
+
 ## 2026-11-23 — Chess: Messages panel and machine log; Locations Visited reads pins; Code Tester suite; red vinyl
 
 **One migration: `0174_locations_visited_uses_pins` (data change to a built-in journal report, no schema change); must be applied on the NAS before the Locations Visited report shows pinned places.** No new package, no paid or outside service.

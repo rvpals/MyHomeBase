@@ -3,9 +3,45 @@
 // with it. Mirrors expense-shared.tsx.
 
 import { TaxonomyIcon } from "@/components/taxonomy-icon";
-import type { JournalCategory, JournalTag } from "@/lib/journal";
+import type { JournalCategory, JournalPrefillTemplate, JournalTag } from "@/lib/journal";
 
 type TaxonomyKind = "category" | "tag";
+
+/**
+ * Reads a File as bare base64 (no data-URL prefix), which the icon actions want.
+ *
+ * Lives here rather than in each view because two My Journal screens now upload
+ * an icon — Meta Data's category/tag editor and Configuration's template editor —
+ * and a second private copy inside this module would be a copy that can drift.
+ * (Seven other modules still carry their own; this is not an attempt to unify
+ * those, which would be a change nobody asked for.)
+ */
+export function readImageFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result ?? "");
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read the image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Where a prefill template's icon is served from, or undefined when it has none
+ * (migration 0176).
+ *
+ * Keyed by `id`, unlike the taxonomy helpers below, because a template's name is
+ * editable — see the route for why. `updatedAt` busts the cache when the icon is
+ * replaced, and the `updated_at` trigger fires on an icon write, so it does.
+ */
+export function journalPrefillTemplateIconUrl(
+  template: Pick<JournalPrefillTemplate, "id" | "iconMimeType" | "updatedAt">,
+): string | undefined {
+  if (!template.iconMimeType) return undefined;
+  return `/api/journal/prefill-templates/${template.id}/icon?v=${encodeURIComponent(template.updatedAt)}`;
+}
 
 /**
  * Where a category's or tag's icon is served from, or undefined when it has

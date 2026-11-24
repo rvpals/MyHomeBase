@@ -33,6 +33,8 @@ export type {
   JournalPrefillFieldValue,
   JournalPrefillFormValues,
   JournalPrefillTemplate,
+  JournalTaxonomyCombo,
+  JournalTaxonomySelection,
   RecycledJournalEntry,
   IcsEvent,
   IcsImportFilter,
@@ -99,6 +101,8 @@ export {
   journalPrefillFieldValueSchema,
   savePrefillTemplateSchema,
   parseStoredPrefillFields,
+  saveTaxonomyComboSchema,
+  parseStoredComboNames,
   JOURNAL_PREFILL_DYNAMIC_FIELDS,
   type JournalCalendarViewInput,
   type JournalCalendarView,
@@ -112,6 +116,8 @@ export {
   type SaveJournalFilterInput,
   type SavePrefillTemplateInput,
   type PrefillTemplateWriteData,
+  type SaveTaxonomyComboInput,
+  type TaxonomyComboWriteData,
   icsImportFilterSchema,
   icsImportPresetsSchema,
   icsSelectionSchema,
@@ -313,7 +319,24 @@ export {
   deletePrefillTemplate,
   setPrefillTemplateEnabled,
   listPrefillSuggestions,
+  setPrefillTemplateIcon,
+  clearPrefillTemplateIcon,
+  getPrefillTemplateIcon,
 } from "./prefill";
+// Taxonomy combos: the Meta Data screen's third tab, and the "Prefill
+// Category/Tags Combo" button in both entry editors. Next to the prefill
+// templates because the two are the module's two "start from something saved"
+// paths -- see migration 0177 on why they are deliberately not one feature.
+export {
+  applyTaxonomyCombo,
+  describeTaxonomyCombo,
+  searchTaxonomyCombos,
+  listTaxonomyCombos,
+  getTaxonomyCombo,
+  getTaxonomyComboByName,
+  saveTaxonomyCombo,
+  deleteTaxonomyCombo,
+} from "./taxonomy-combos";
 // Cloning: a clone is taken from one entry you are looking at, a prefill
 // template from a saved list. Neighbours here because they are the two ways a
 // new entry starts out non-blank — see clone.ts on why they stay separate.

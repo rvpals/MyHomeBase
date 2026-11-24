@@ -10,7 +10,7 @@ import {
   restoreChessGame,
   saveChessGame,
 } from "./chess-save";
-import { playChessMove, resignChessGame, startChessGame } from "./game-chess";
+import { playChessMove, startChessGame } from "./game-chess";
 import type { ChessSaveRepository, SavedRunRepository } from "./ports";
 import type { SavedRunWriteData } from "./schema";
 import {
@@ -175,6 +175,74 @@ describe("buildChessSave and restoreChessGame", () => {
     expect(restored.reason).toMatch(/2/);
   });
 
+  it("carries a clock through the round trip", () => {
+    const timed = play(
+      startChessGame({ humanColor: "w", level: "intermediate", timeControl: "5+0" }),
+      "e2e4",
+    );
+    const restored = restoreChessGame(buildChessSave(timed));
+
+    expect(restored.ok).toBe(true);
+    if (!restored.ok) return;
+    expect(restored.game.clock).toEqual(timed.clock);
+  });
+
+  it("leaves the clock out of an untimed save entirely", () => {
+    // So an untimed game's save is byte-identical to one written before clocks existed.
+    expect(buildChessSave(gameInProgress())).not.toHaveProperty("clock");
+  });
+
+  it("loads a save written before clocks existed as an untimed game", () => {
+    // The compatibility case: an older row has no `clock` field at all, and must still
+    // parse and restore rather than being reported as unreadable.
+    const older = { ...buildChessSave(gameInProgress()) };
+    delete (older as { clock?: unknown }).clock;
+
+    const restored = restoreChessGame(older);
+    expect(restored.ok).toBe(true);
+    if (!restored.ok) return;
+    expect(restored.game.clock).toBeUndefined();
+  });
+
+  it("refuses a clock claiming an impossible amount of time", () => {
+    const save = {
+      ...buildChessSave(gameInProgress()),
+      clock: { control: "3+2", remainingMs: { w: 999_999_999, b: 1_000 } },
+    };
+    expect(restoreChessGame(save).ok).toBe(false);
+  });
+
+  it("refuses a clock on a control it does not know", () => {
+    const save = {
+      ...buildChessSave(gameInProgress()),
+      clock: { control: "90+30", remainingMs: { w: 1_000, b: 1_000 } },
+    };
+    expect(restoreChessGame(save).ok).toBe(false);
+  });
+
+  it("carries assists through the round trip", () => {
+    const assisted = { ...gameInProgress(), hintsUsed: 2, takebacksUsed: 1 };
+    const restored = restoreChessGame(buildChessSave(assisted));
+
+    expect(restored.ok).toBe(true);
+    if (!restored.ok) return;
+    // Stored, so closing and reloading cannot wash the penalty off a score.
+    expect(restored.game.hintsUsed).toBe(2);
+    expect(restored.game.takebacksUsed).toBe(1);
+  });
+
+  it("leaves assists out of an unassisted save", () => {
+    const save = buildChessSave(gameInProgress());
+    expect(save).not.toHaveProperty("hintsUsed");
+    expect(save).not.toHaveProperty("takebacksUsed");
+  });
+
+  it("restores an older save with no assist fields as unassisted", () => {
+    const older = buildChessSave(gameInProgress());
+    const restored = restoreChessGame(older);
+    expect(restored.ok && restored.game.hintsUsed).toBe(0);
+  });
+
   it("refuses a save written by a different version", () => {
     const save = { ...buildChessSave(gameInProgress()), version: CHESS_SAVE_VERSION + 1 };
     expect(restoreChessGame(save).ok).toBe(false);
@@ -223,9 +291,21 @@ describe("saveChessGame", () => {
   it("refuses a game that has already finished", () => {
     // The point of a save is to come back to it; a stored checkmate is a game nobody
     // can continue.
+    //
+    // Checkmate rather than a resignation, and the difference is worth knowing: a save
+    // is the moves, so the replay rediscovers a mate but **cannot** rediscover a
+    // resignation — nothing about resigning appears in the move list. That is not a
+    // hole in practice, because the board disables Save once a game is over; this
+    // guard is the backstop for an ending the moves do carry.
     const repo = new FakeChessSaveRepository();
-    const over = resignChessGame(gameInProgress());
-    expect(() => saveChessGame(repo, input({ save: buildChessSave(over) }))).toThrow(/finished/i);
+    const mated = play(
+      startChessGame({ humanColor: "w", level: "beginner" }),
+      "f2f3",
+      "e7e5",
+      "g2g4",
+      "d8h4",
+    );
+    expect(() => saveChessGame(repo, input({ save: buildChessSave(mated) }))).toThrow(/finished/i);
     expect(repo.rows).toHaveLength(0);
   });
 

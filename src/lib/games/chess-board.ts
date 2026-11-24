@@ -221,5 +221,45 @@ export function toFen(position: ChessPosition): string {
  * rights and same en-passant possibility.
  */
 export function repetitionKey(position: ChessPosition): string {
-  return toFen(position).split(" ").slice(0, 4).join(" ");
+  const fields = toFen(position).split(" ").slice(0, 4);
+
+  /*
+    The en-passant square counts only when a pawn could actually take it.
+
+    FEN records the square after **any** double pawn step, whether or not a capture is
+    available. Keeping it in the key unconditionally means the position right after a
+    double step can never match the same position reached later, so a repetition that
+    passes through one is silently miscounted — the draw arrives a cycle late, or not at
+    all. FIDE's rule is about the moves available, not about what the notation happens
+    to record.
+
+    The test is whether an enemy pawn stands beside the pawn that just moved. It is
+    deliberately **pseudo-legal**: a capture that would expose its own king is not a
+    real option, but ruling that out needs the move generator, which this file must not
+    import — `chess-moves.ts` imports this one. The remaining gap is a position where
+    the only en-passant capture is pinned, which would be counted as distinct when it is
+    not. That is rare enough to accept and is logged here rather than hidden.
+  */
+  if (position.enPassant !== null && !canAnyPawnCaptureEnPassant(position)) fields[3] = "-";
+
+  return fields.join(" ");
+}
+
+/** Whether a pawn of the side to move stands ready to capture onto the ep square. */
+function canAnyPawnCaptureEnPassant(position: ChessPosition): boolean {
+  const target = position.enPassant;
+  if (target === null) return false;
+
+  // The capturing pawn sits on the same rank as the pawn it takes, which is one step
+  // *back* from the target square along the mover's direction of travel.
+  const forward = position.turn === "w" ? -1 : 1;
+  const row = rowOf(target) - forward;
+
+  for (const fileStep of [-1, 1]) {
+    const from = squareAt(row, fileOf(target) + fileStep);
+    if (from < 0) continue;
+    const piece = position.board[from];
+    if (piece && piece.type === "p" && piece.color === position.turn) return true;
+  }
+  return false;
 }

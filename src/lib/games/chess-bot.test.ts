@@ -49,6 +49,9 @@ const MATE_IN_ONE = "7k/5Q2/5K2/8/8/8/8/8 w - - 0 1";
  */
 const POISONED_PAWN = "4k3/8/2p5/3p4/8/8/8/3QK3 w - - 0 1";
 
+/** The standard castling-and-en-passant torture position, busy enough to be slow. */
+const KIWIPETE = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
+
 /** Black to move, not in check, and with no legal move — the king on h8 is boxed in. */
 const STALEMATE = "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1";
 
@@ -115,6 +118,39 @@ describe("searchChessMove", () => {
       quiescence: false,
     });
     expect(result.move && moveToUci(result.move)).toBe("d1d5");
+  });
+
+  it("reports a real evaluation rather than a mate score when the budget runs out", () => {
+    /*
+      `bestScore` starts at -MATE_SCORE, and a search that finished no depth used to
+      return it — which says "this position is lost" about an ordinary one. It matters
+      because `chooseChessMove` negates these to compare root moves: a cut-short search
+      came back as +MATE_SCORE and was played immediately.
+
+      Asserted as "never a mate score from a quiet position" rather than by pinning the
+      depth: how many depths fit before the clock is checked depends on the position and
+      the machine, and a test that pinned it would be testing the node counter.
+    */
+    let calls = 0;
+    const now = () => (calls++ === 0 ? 0 : 3_600_000);
+
+    const result = searchChessMove(positionFrom(KIWIPETE), {
+      depth: 20,
+      timeMs: 1,
+      quiescence: true,
+      now,
+    });
+
+    expect(isChessMateScore(result.score)).toBe(false);
+    expect(result.move).toBeDefined();
+  });
+
+  it("reports the static evaluation when asked for no depth at all", () => {
+    // The same guarantee by the other route into it: nothing was searched, so the
+    // position's own evaluation is the honest answer.
+    const result = searchChessMove(startPosition(), { depth: 0, timeMs: 5_000, quiescence: true });
+    expect(result.depth).toBe(0);
+    expect(result.score).toBe(evaluateChessPosition(startPosition()));
   });
 
   it("always returns a legal move", () => {

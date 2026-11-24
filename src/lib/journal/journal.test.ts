@@ -543,6 +543,26 @@ function fakeRepo(recycledCount = 0): JournalRepository {
     setPrefillTemplateEnabled() {
       throw new Error("not used in these tests");
     },
+    getPrefillTemplateIcon() {
+      return undefined;
+    },
+    setPrefillTemplateIcon() {
+      throw new Error("not used in these tests");
+    },
+    // Taxonomy combos (0177) have their own fake in their own test file.
+    listTaxonomyCombos() {
+      return [];
+    },
+    getTaxonomyComboById() {
+      return undefined;
+    },
+    getTaxonomyComboByName() {
+      return undefined;
+    },
+    saveTaxonomyCombo() {
+      throw new Error("not used in these tests");
+    },
+    deleteTaxonomyCombo() {},
     listDistinctFieldValues() {
       return [];
     },

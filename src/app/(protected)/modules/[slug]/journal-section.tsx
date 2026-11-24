@@ -23,6 +23,7 @@ import {
   listRecentEntries,
   listRecentlyEditedEntries,
   listTags,
+  listTaxonomyCombos,
   listTopCategories,
   listTopTags,
   getJournalHomeWidgets,
@@ -228,6 +229,7 @@ function SectionBody({
           preferences={preferences}
           contentTextures={listDashboardTextures(deps.dashboardTextureRepo)}
           prefillTemplates={listEnabledPrefillTemplates(deps.journalRepo)}
+          taxonomyCombos={listTaxonomyCombos(deps.journalRepo)}
           locationCategoryOptions={listLocationCategories(deps.sysLocationRepo).map(
             (row) => row.name,
           )}
@@ -417,6 +419,7 @@ function SectionBody({
             <JournalTaxonomyView
               categories={listCategories(deps.journalRepo)}
               tags={listTags(deps.journalRepo)}
+              combos={listTaxonomyCombos(deps.journalRepo)}
             />
           </CollapsibleCard>
           <JournalMetadataRestoreCard />

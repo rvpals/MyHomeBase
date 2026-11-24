@@ -14,9 +14,15 @@
 // cycling forever on a screen that may be left open all day. The timer also stops
 // while the tab is hidden, so a background tab pulls nothing.
 //
-// NARROW: one fixed 4:3 frame at the card's width with the picture contained in it,
-// so it behaves the same in the phone's single stack as in either desktop column.
-// The picker is a native <select>, which is the phone-friendly control anyway.
+// NEVER ENLARGED. The thumbnail is THUMBNAIL_SIZE (160px) on its short side, so a
+// full-width 4:3 frame blew it up ~2.5x and it read as fuzzy. The frame is now a fixed
+// 176px-tall band and the picture sits inside it at its own size (max-h/max-w only, no
+// h-full w-full) -- so it is downscaled at most, never upscaled. The band keeps the
+// card's height stable as portrait and landscape slides alternate.
+//
+// NARROW: that band is the same at every width, so the card behaves the same in the
+// phone's single stack as in either desktop column. The picker is a native <select>,
+// which is the phone-friendly control anyway.
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -168,7 +174,7 @@ export function PhotoAlbumsWidget({
         <Link
           href={ALBUMS_HREF}
           aria-label={`Open ${album?.name ?? "this album"} in Picture Gallery`}
-          className="relative block aspect-[4/3] w-full overflow-hidden rounded-lg bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+          className="relative flex h-44 w-full items-center justify-center overflow-hidden rounded-lg bg-paper focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
         >
           {/* A plain <img>, not next/image: the bytes come from an authenticated
               route that already serves a small rendition, so the optimiser has
@@ -178,7 +184,7 @@ export function PhotoAlbumsWidget({
             key={paths[current]}
             src={thumbUrl(paths[current])}
             alt=""
-            className="h-full w-full object-contain"
+            className="max-h-full max-w-full object-contain"
           />
           <span className="absolute bottom-2 right-2 rounded bg-black/55 px-1.5 py-0.5 text-xs tabular-nums text-white">
             {current + 1} / {count}

@@ -300,7 +300,14 @@ export function GamesArcadeView({
                 <GameRules gameKey={open.game.key} />
               </div>
             )}
-            <div className="w-full max-w-3xl">
+            {/*
+              Most boards are happiest in a readable column, but a couple want the
+              room: chess draws a square board *and* a side panel, so at 3xl the board
+              itself comes out around 450px on any monitor. Opting one game into a
+              wider container is a smaller change than giving every game a width prop,
+              and it leaves the other thirteen exactly as they were.
+            */}
+            <div className={open.game.key === "chess" ? "w-full max-w-6xl" : "w-full max-w-3xl"}>
               {/* One branch per playable game. A new game adds a case here and an
                   entry to GAME_CATALOGUE — no schema change, no nav change. */}
               {open.game.key === "2048" && <Game2048View bestScore={open.best?.score ?? 0} />}

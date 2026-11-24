@@ -1,15 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { CHESS_START_FEN, parseFen, squareFromName } from "./chess-board";
+import { CHESS_START_FEN, parseFen, squareFromName, toFen } from "./chess-board";
 import {
   agreeChessDraw,
+  canChessColorMate,
   canUndoChessMove,
+  recordChessHint,
   chessCapturedPieces,
   chessCheckedKingSquare,
   chessFullMoves,
+  chessInfluence,
   chessMoveTargets,
+  chessPlayerOptions,
+  chessPositionAtPly,
   describeChessResult,
+  flagChessGame,
   hasInsufficientMaterial,
   isChessGameOver,
+  isChessGameTimed,
   isHumanTurn,
   playChessMove,
   replayChessMoves,
@@ -18,7 +25,12 @@ import {
   startChessGame,
   undoChessMove,
 } from "./game-chess";
-import { CHESS_LEVEL_SETUP, CHESS_SCORE_BASE, type ChessGame } from "./types";
+import {
+  CHESS_ASSIST_PENALTY_FRACTION,
+  CHESS_LEVEL_SETUP,
+  CHESS_SCORE_BASE,
+  type ChessGame,
+} from "./types";
 
 /** Plays a list of coordinate moves, failing the test on the first illegal one. */
 function play(game: ChessGame, ...moves: string[]): ChessGame {
@@ -126,7 +138,10 @@ describe("status", () => {
   });
 
   it("reports check without ending the game", () => {
-    const game = play(newGame(), "e2e4", "e7e5", "f1b5");
+    // A rook swinging to the eighth rank. (2.Bb5 in the opening is *not* check — the
+    // d7 pawn blocks the diagonal, which is what an earlier version of this test got
+    // wrong.)
+    const game = play(newGame({ fen: "4k3/8/8/8/8/8/8/4K2R w K - 0 1" }), "h1h8");
     expect(game.status).toBe("check");
     expect(isChessGameOver(game)).toBe(false);
     expect(chessCheckedKingSquare(game)).toBe(squareFromName("e8"));
@@ -178,6 +193,31 @@ describe("status", () => {
     expect(game.winner).toBeUndefined();
   });
 
+  it("counts a repetition through a double pawn step", () => {
+    /*
+      The en-passant bug: FEN records the ep square after any double step, so the
+      position right after one never matched the same position reached later and the
+      draw arrived a cycle late — or never.
+
+      Here each cycle passes through 1.e4/1...e5-style double steps only at the start;
+      the knight shuffle after it must still reach threefold on the eighth ply.
+    */
+    const game = play(
+      newGame(),
+      "e2e4",
+      "e7e5",
+      "g1f3",
+      "g8f6",
+      "f3g1",
+      "f6g8",
+      "g1f3",
+      "g8f6",
+      "f3g1",
+      "f6g8",
+    );
+    expect(game.status).toBe("threefold");
+  });
+
   it("does not draw on the second repetition", () => {
     const game = play(newGame(), "g1f3", "g8f6", "f3g1", "f6g8");
     expect(game.status).toBe("playing");
@@ -216,8 +256,10 @@ describe("hasInsufficientMaterial", () => {
   });
 
   it("ends a game that reaches it", () => {
-    const game = newGame({ fen: "4k3/8/8/8/8/8/8/3BK2r b - - 10 40" });
-    const after = play(game, "h1d1");
+    // Black's bishop takes White's last piece, leaving king and bishop against a bare
+    // king — which neither side can mate with.
+    const game = newGame({ fen: "4k3/8/8/2b5/8/8/8/4K1N1 b - - 0 1" });
+    const after = play(game, "c5g1");
     expect(after.status).toBe("insufficient-material");
     expect(isChessGameOver(after)).toBe(true);
   });
@@ -269,11 +311,18 @@ describe("undoChessMove", () => {
   });
 
   it("rebuilds the status and the repetition keys, not just the board", () => {
-    const mated = play(newGame(), ...SCHOLARS_MATE);
-    const undone = undoChessMove(mated);
-    expect(undone.status).not.toBe("checkmate");
+    const checked = play(newGame({ humanColor: "w" }), "e2e4", "e7e5", "d1h5", "e8e7");
+    const undone = undoChessMove(checked);
+
+    expect(undone.moves).toHaveLength(2);
+    expect(undone.status).toBe("playing");
     expect(undone.winner).toBeUndefined();
     expect(undone.repetitionKeys).toHaveLength(undone.moves.length + 1);
+  });
+
+  it("is refused once the game is over, so a loss cannot be replayed away", () => {
+    const mated = play(newGame(), ...SCHOLARS_MATE);
+    expect(undoChessMove(mated).status).toBe("checkmate");
   });
 
   it("does nothing on a game with no moves", () => {
@@ -373,6 +422,328 @@ describe("scoreChessGame", () => {
   });
 });
 
+describe("the clock", () => {
+  const timed = (fen?: string) =>
+    startChessGame({ humanColor: "w", level: "intermediate", timeControl: "3+2", fen });
+
+  it("is absent by default, so an untimed game is the plain case", () => {
+    expect(newGame().clock).toBeUndefined();
+    expect(isChessGameTimed(newGame())).toBe(false);
+  });
+
+  it("starts both sides on the control's allowance", () => {
+    expect(timed().clock?.remainingMs).toEqual({ w: 180_000, b: 180_000 });
+    expect(isChessGameTimed(timed())).toBe(true);
+  });
+
+  it("charges the mover and adds the increment when a move is timed", () => {
+    const result = playChessMove(timed(), "e2e4", { elapsedMs: 4_000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.game.clock?.remainingMs).toEqual({ w: 178_000, b: 180_000 });
+  });
+
+  it("charges nothing when no elapsed time is given", () => {
+    // Replays, the CLI and most tests play moves without measuring time, and an
+    // unmeasured move must cost nothing — that is what keeps every older caller right.
+    const result = playChessMove(timed(), "e2e4");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.game.clock?.remainingMs.w).toBe(180_000);
+  });
+
+  it("ignores elapsed time in an untimed game", () => {
+    const result = playChessMove(newGame(), "e2e4", { elapsedMs: 4_000 });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.game.clock).toBeUndefined();
+    expect(result.game.status).toBe("playing");
+  });
+
+  it("ends the game when a move arrives too late, and does not play it", () => {
+    // A flag falls before the move completes, so the move never lands — otherwise a
+    // losing side could deliver mate with time already gone.
+    const nearly: ChessGame = { ...timed(), clock: { control: "3+2", remainingMs: { w: 1_000, b: 60_000 } } };
+    const result = playChessMove(nearly, "e2e4", { elapsedMs: 5_000 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.game.status).toBe("timeout");
+    expect(result.game.winner).toBe("b");
+    expect(result.game.moves).toHaveLength(0);
+    expect(isChessGameOver(result.game)).toBe(true);
+  });
+
+  it("gives the win to the other side when a flag falls", () => {
+    const game = flagChessGame(timed(), "w");
+    expect(game.status).toBe("timeout");
+    expect(game.winner).toBe("b");
+    expect(game.clock?.remainingMs.w).toBe(0);
+    expect(describeChessResult(game)).toMatch(/you ran out of time/i);
+    expect(scoreChessGame(game)).toBe(0);
+  });
+
+  it("scores a win when the computer is the one that flags", () => {
+    const game = flagChessGame(timed(), "b");
+    expect(game.winner).toBe("w");
+    expect(describeChessResult(game)).toMatch(/computer ran out of time/i);
+    expect(scoreChessGame(game)).toBeGreaterThan(0);
+  });
+
+  it("draws a flag when the other side could never have mated", () => {
+    // The official rule, and the one case where running out of time costs nothing:
+    // Black has a bare king, so it cannot win however long White takes.
+    const game = startChessGame({
+      humanColor: "w",
+      level: "intermediate",
+      timeControl: "3+2",
+      fen: "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1",
+    });
+    const flagged = flagChessGame(game, "w");
+
+    expect(flagged.status).toBe("timeout");
+    expect(flagged.winner).toBeUndefined();
+    expect(describeChessResult(flagged)).toMatch(/draw/i);
+  });
+
+  it("still awards a flag to a side holding a rook or a pawn", () => {
+    const game = timed("4k3/8/8/8/8/8/8/R3K3 b - - 0 1");
+    expect(flagChessGame(game, "b").winner).toBe("w");
+  });
+
+  it("does nothing to an untimed game or one already over", () => {
+    expect(flagChessGame(newGame(), "w").status).toBe("playing");
+    const mated = play(newGame(), ...SCHOLARS_MATE);
+    expect(flagChessGame(mated, "w").status).toBe("checkmate");
+  });
+
+  it("refuses Undo in a timed game", () => {
+    // A takeback cannot honestly restore time already spent, and allowing one would be
+    // a way to play a blitz game at leisure.
+    const played = play(timed(), "e2e4", "e7e5");
+    expect(canUndoChessMove(played)).toBe(false);
+    expect(undoChessMove(played).moves).toHaveLength(2);
+  });
+
+  it("still allows Undo without a clock", () => {
+    const played = play(newGame(), "e2e4", "e7e5");
+    expect(canUndoChessMove(played)).toBe(true);
+    expect(undoChessMove(played).moves).toHaveLength(0);
+  });
+
+  it("carries the clock through a replay rather than resetting it", () => {
+    const clock = { control: "3+2", remainingMs: { w: 42_000, b: 51_000 } } as const;
+    const replayed = replayChessMoves({
+      initialFen: CHESS_START_FEN,
+      humanColor: "w",
+      level: "intermediate",
+      moves: ["e2e4", "e7e5"],
+      clock,
+    });
+
+    expect(replayed.ok).toBe(true);
+    if (!replayed.ok) return;
+    // Time spent is the one thing the moves cannot rebuild, so it is carried across
+    // whole — a replay that started the clock again would hand back a free game.
+    expect(replayed.game.clock).toEqual(clock);
+  });
+
+  it("replays as untimed when no clock is given", () => {
+    const replayed = replayChessMoves({
+      initialFen: CHESS_START_FEN,
+      humanColor: "w",
+      level: "intermediate",
+      moves: ["e2e4"],
+    });
+    expect(replayed.ok && replayed.game.clock).toBeUndefined();
+  });
+});
+
+describe("canChessColorMate", () => {
+  const mate = (fen: string, color: "w" | "b") => canChessColorMate(parseFen(fen)!, color);
+
+  it("is false for a bare king, and for a king with one minor piece", () => {
+    expect(mate("4k3/8/8/8/8/8/8/4K3 w - - 0 1", "w")).toBe(false);
+    expect(mate("4k3/8/8/8/8/8/8/3BK3 w - - 0 1", "w")).toBe(false);
+    expect(mate("4k3/8/8/8/8/8/8/3NK3 w - - 0 1", "w")).toBe(false);
+  });
+
+  it("is true with a pawn, a rook or a queen", () => {
+    expect(mate("4k3/8/8/8/8/8/P7/4K3 w - - 0 1", "w")).toBe(true);
+    expect(mate("4k3/8/8/8/8/8/8/R3K3 w - - 0 1", "w")).toBe(true);
+    expect(mate("4k3/8/8/8/8/8/8/Q3K3 w - - 0 1", "w")).toBe(true);
+  });
+
+  it("is true with two minor pieces", () => {
+    // A different question from `hasInsufficientMaterial`, which calls two knights a
+    // live game only because mate is reachable — here it is the same answer for the
+    // same reason.
+    expect(mate("4k3/8/8/8/8/8/8/1NN1K3 w - - 0 1", "w")).toBe(true);
+  });
+
+  it("answers about the colour it was asked about", () => {
+    expect(mate("3qk3/8/8/8/8/8/8/4K3 w - - 0 1", "b")).toBe(true);
+    expect(mate("3qk3/8/8/8/8/8/8/4K3 w - - 0 1", "w")).toBe(false);
+  });
+});
+
+describe("assists", () => {
+  it("starts a game with none taken", () => {
+    const game = newGame();
+    expect(game.hintsUsed).toBe(0);
+    expect(game.takebacksUsed).toBe(0);
+  });
+
+  it("counts a hint", () => {
+    expect(recordChessHint(newGame()).hintsUsed).toBe(1);
+    expect(recordChessHint(recordChessHint(newGame())).hintsUsed).toBe(2);
+  });
+
+  it("does not count a hint on a finished game", () => {
+    const mated = play(newGame(), ...SCHOLARS_MATE);
+    expect(recordChessHint(mated).hintsUsed).toBe(0);
+  });
+
+  it("counts a takeback, and keeps the count across later ones", () => {
+    // The rebuild starts from the opening position, so without carrying these across
+    // every takeback would also erase the record of the ones before it.
+    const once = undoChessMove(play(newGame(), "e2e4", "e7e5"));
+    expect(once.takebacksUsed).toBe(1);
+
+    const twice = undoChessMove(play(once, "d2d4", "d7d5"));
+    expect(twice.takebacksUsed).toBe(2);
+  });
+
+  it("keeps a hint count across a takeback", () => {
+    const hinted = recordChessHint(play(newGame(), "e2e4", "e7e5"));
+    expect(undoChessMove(hinted).hintsUsed).toBe(1);
+  });
+
+  it("charges a winning score for each one", () => {
+    const won = play(newGame({ humanColor: "w", level: "advanced" }), ...SCHOLARS_MATE);
+    const clean = scoreChessGame(won);
+
+    const base = CHESS_SCORE_BASE * CHESS_LEVEL_SETUP.advanced.multiplier;
+    const oneHint = scoreChessGame({ ...won, hintsUsed: 1 });
+    expect(oneHint).toBe(Math.round(clean - base * CHESS_ASSIST_PENALTY_FRACTION));
+
+    // A takeback costs the same as a hint.
+    expect(scoreChessGame({ ...won, takebacksUsed: 1 })).toBe(oneHint);
+  });
+
+  it("can take a win all the way to nothing", () => {
+    // Four assists cancel the win outright, rather than stopping at the length floor —
+    // that floor is there for a long hard game, not for one the engine played.
+    const won = play(newGame({ humanColor: "w", level: "advanced" }), ...SCHOLARS_MATE);
+    expect(scoreChessGame({ ...won, hintsUsed: 2, takebacksUsed: 2 })).toBe(0);
+    expect(scoreChessGame({ ...won, hintsUsed: 99 })).toBe(0);
+  });
+
+  it("changes nothing about a loss, which already scored zero", () => {
+    const lost = play(newGame({ humanColor: "w" }), ...FOOLS_MATE);
+    expect(scoreChessGame({ ...lost, hintsUsed: 3 })).toBe(0);
+  });
+});
+
+describe("chessPlayerOptions", () => {
+  it("lists every square the player can reach and every piece that can move", () => {
+    // The opening: eight pawns and two knights can move, to twenty squares between them.
+    /*
+      Ten pieces can move — eight pawns and two knights — and they reach **sixteen**
+      distinct squares, not twenty. There are twenty legal moves, but the knights'
+      destinations (a3, c3, f3, h3) are squares a pawn can also step to, and the aid
+      lights a square once however many pieces can reach it.
+    */
+    const { reachable, movable } = chessPlayerOptions(newGame({ humanColor: "w" }));
+    expect(movable).toHaveLength(10);
+    expect(reachable).toHaveLength(16);
+  });
+
+  it("counts a square only once however many pieces can reach it", () => {
+    // Two rooks both bearing on c1: the aid lights the square, not the pair of moves.
+    const game = newGame({ humanColor: "w", fen: "7k/8/8/8/8/8/4K3/R6R w - - 0 1" });
+    const { reachable } = chessPlayerOptions(game);
+    expect(reachable.filter((square) => square === squareFromName("c1"))).toHaveLength(1);
+  });
+
+  it("counts a promotion square once, not four times", () => {
+    const game = newGame({ humanColor: "w", fen: "8/4P3/8/8/8/8/8/K6k w - - 0 1" });
+    const { reachable } = chessPlayerOptions(game);
+    expect(reachable.filter((square) => square === squareFromName("e8"))).toHaveLength(1);
+  });
+
+  it("shows nothing while it is the computer's turn", () => {
+    // Otherwise the aid would be drawing the computer's options while it thinks, which
+    // is giving away its plan rather than helping the player read their own.
+    const game = play(newGame({ humanColor: "w" }), "e2e4");
+    expect(chessPlayerOptions(game)).toEqual({ reachable: [], movable: [] });
+  });
+
+  it("shows nothing once the game is over", () => {
+    const mated = play(newGame({ humanColor: "w" }), ...SCHOLARS_MATE);
+    expect(chessPlayerOptions(mated).reachable).toEqual([]);
+  });
+
+  it("follows the player's own colour", () => {
+    // Black to move and the player is Black, so these are Black's options.
+    const game = play(newGame({ humanColor: "b" }), "e2e4");
+    const { movable } = chessPlayerOptions(game);
+    expect(movable).toContain(squareFromName("e7"));
+    expect(movable).not.toContain(squareFromName("e4"));
+  });
+});
+
+describe("chessInfluence", () => {
+  it("marks a square its own piece stands on as controlled, because it is defended", () => {
+    // The distinction the aid exists to teach: control is not "can move to". A knight
+    // on a square a pawn defends is safe, and that is only visible if defence counts.
+    // The knight on e4 stands on a square its own pawn on d3 defends. (A pawn on f3
+    // does *not* defend g2 — pawns attack forwards, which an earlier version of this
+    // test had backwards.)
+    const game = newGame({ humanColor: "w", fen: "7k/8/8/8/4N3/3P4/8/K7 w - - 0 1" });
+    const { mine } = chessInfluence(game);
+    expect(mine[squareFromName("e4")]).toBe(true);
+  });
+
+  it("marks the squares a pawn attacks, not the one it moves to", () => {
+    const game = newGame({ humanColor: "w", fen: "7k/8/8/8/4P3/8/8/K7 w - - 0 1" });
+    const { mine } = chessInfluence(game);
+    expect(mine[squareFromName("d5")]).toBe(true);
+    expect(mine[squareFromName("f5")]).toBe(true);
+    expect(mine[squareFromName("e5")]).toBe(false);
+  });
+
+  it("tells the two sides apart, and shows a square both control", () => {
+    // White pawn on e4 and Black pawn on e6 both bear on d5.
+    const game = newGame({ humanColor: "w", fen: "4k3/8/4p3/8/4P3/8/8/4K3 w - - 0 1" });
+    const { mine, theirs } = chessInfluence(game);
+    expect(mine[squareFromName("d5")]).toBe(true);
+    expect(theirs[squareFromName("d5")]).toBe(true);
+    expect(mine[squareFromName("d3")]).toBe(false);
+  });
+
+  it("reads `mine` as the player's side, whichever colour they chose", () => {
+    const asBlack = newGame({ humanColor: "b", fen: "4k3/8/4p3/8/4P3/8/8/4K3 w - - 0 1" });
+    const { mine, theirs } = chessInfluence(asBlack);
+    // d7 is attacked by the black pawn on e6, so it belongs to the player here.
+    expect(mine[squareFromName("d7")]).toBe(true);
+    expect(theirs[squareFromName("d7")]).toBe(false);
+  });
+
+  it("covers all sixty-four squares", () => {
+    const { mine, theirs } = chessInfluence(newGame());
+    expect(mine).toHaveLength(64);
+    expect(theirs).toHaveLength(64);
+  });
+
+  it("still answers once the game is over", () => {
+    // Unlike the move aid: a finished position is exactly the one a beginner wants to
+    // look at, and nothing about it is secret.
+    const mated = play(newGame({ humanColor: "w" }), ...SCHOLARS_MATE);
+    expect(chessInfluence(mated).mine).toHaveLength(64);
+  });
+});
+
 describe("board helpers", () => {
   it("lists where a piece may go", () => {
     const targets = chessMoveTargets(newGame(), squareFromName("g1")).map((square) => square);
@@ -409,5 +780,49 @@ describe("board helpers", () => {
     // "before minus now" would print as -1.
     const game = play(newGame({ fen: "7k/4P3/8/8/8/8/8/K7 w - - 0 1" }), "e7e8q");
     expect(chessCapturedPieces(game, "w")).toEqual([]);
+  });
+});
+
+describe("chessPositionAtPly", () => {
+  it("gives the starting position at ply 0", () => {
+    const game = play(newGame(), "e2e4", "e7e5");
+    const { position, lastMove } = chessPositionAtPly(game, 0);
+    expect(toFen(position)).toBe(CHESS_START_FEN);
+    expect(lastMove).toBeUndefined();
+  });
+
+  it("gives the position after each move, with the move that got there", () => {
+    const game = play(newGame(), "e2e4", "e7e5", "g1f3");
+
+    const first = chessPositionAtPly(game, 1);
+    expect(first.position.turn).toBe("b");
+    expect(first.lastMove).toEqual({
+      from: squareFromName("e2"),
+      to: squareFromName("e4"),
+    });
+
+    const second = chessPositionAtPly(game, 2);
+    expect(second.position.turn).toBe("w");
+    expect(second.lastMove?.to).toBe(squareFromName("e5"));
+  });
+
+  it("gives the current position at the last ply", () => {
+    const game = play(newGame(), "e2e4", "e7e5", "g1f3");
+    expect(toFen(chessPositionAtPly(game, 3).position)).toBe(toFen(game.position));
+  });
+
+  it("clamps rather than refusing an out-of-range ply", () => {
+    // The caller is a pair of arrow buttons, and clamping is exactly what they would
+    // otherwise have to do themselves.
+    const game = play(newGame(), "e2e4", "e7e5");
+    expect(toFen(chessPositionAtPly(game, -5).position)).toBe(CHESS_START_FEN);
+    expect(toFen(chessPositionAtPly(game, 99).position)).toBe(toFen(game.position));
+  });
+
+  it("does not change the game it was given", () => {
+    const game = play(newGame(), "e2e4", "e7e5");
+    const before = toFen(game.position);
+    chessPositionAtPly(game, 1);
+    expect(toFen(game.position)).toBe(before);
   });
 });

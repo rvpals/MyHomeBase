@@ -109,6 +109,7 @@ const KIND_LABELS: Record<JournalMetadataPlanRowKind, string> = {
   tag: "Tags",
   template: "Templates",
   filter: "Saved filters",
+  combo: "Tag & category combos",
 };
 
 /** One line of the plan, e.g. "12 new, 40 updated". */
@@ -116,13 +117,20 @@ function planSummaryLine(plan: JournalMetadataPlan): string {
   const parts: string[] = [];
   if (plan.createCount > 0) parts.push(`${plan.createCount} new`);
   if (plan.updateCount > 0) parts.push(`${plan.updateCount} updated`);
-  if (parts.length === 0) return "This backup holds no categories, tags, templates or filters.";
+  if (parts.length === 0)
+    return "This backup holds no categories, tags, templates, filters or combos.";
   return parts.join(", ");
 }
 
 /** Per-kind create/update tallies, so the dialog says what's changing where. */
 function tallyByKind(plan: JournalMetadataPlan) {
-  const kinds: JournalMetadataPlanRowKind[] = ["category", "tag", "template", "filter"];
+  const kinds: JournalMetadataPlanRowKind[] = [
+    "category",
+    "tag",
+    "template",
+    "filter",
+    "combo",
+  ];
   return kinds
     .map((kind) => {
       const rows = plan.rows.filter((row) => row.kind === kind);
@@ -235,7 +243,8 @@ export function JournalMetadataRestoreCard() {
                   {summary.iconCount > 0 ? ` (${summary.iconCount} icons)` : ""}
                 </li>
                 <li>
-                  {summary.templateCount} templates, {summary.filterCount} saved filters
+                  {summary.templateCount} templates, {summary.filterCount} saved filters,{" "}
+                  {summary.comboCount} combos
                 </li>
                 {summary.preferenceEntries.length > 0 && <li>Preferences applied.</li>}
               </ul>

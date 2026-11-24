@@ -13,14 +13,17 @@ import {
   discardChessAutosave,
   importWords,
   listChessGames,
+  listChessRecords,
   loadArrowRun,
   loadChessAutosave,
   loadChessGame,
   lookupWordWizardDefinition,
   recordScore,
   saveArrowRun,
+  recordChessResult,
   saveChessGame,
   type ChessGame,
+  type ChessRecord,
   type ChessSaveSummary,
   type LoadedChessGame,
   type PictionaryImportSummary,
@@ -260,13 +263,12 @@ export type SaveChessGameResult =
 export async function saveChessGameAction(
   name: string,
   save: unknown,
-  id?: number,
 ): Promise<SaveChessGameResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);
   try {
     const userId = await sessionUserId();
     if (!userId) return { ok: false, error: "Sign in to save a game." };
-    return { ok: true, ...saveChessGame(deps.chessSavesRepo, { userId, name, save, id }) };
+    return { ok: true, ...saveChessGame(deps.chessSavesRepo, { userId, name, save }) };
   } catch (error) {
     return { ok: false, error: errorText(error, "Could not save this game.") };
   }
@@ -360,6 +362,47 @@ export async function discardChessAutosaveAction(): Promise<
     return { ok: true };
   } catch (error) {
     return { ok: false, error: errorText(error, "Could not discard the saved game.") };
+  }
+}
+
+export type ChessRecordsResult =
+  | { ok: true; records: ChessRecord[] }
+  | { ok: false; error: string };
+
+/** The player's win/loss/draw record against each level. */
+export async function listChessRecordsAction(): Promise<ChessRecordsResult> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: true, records: [] };
+    return { ok: true, records: listChessRecords(deps.chessResultsRepo, { userId }) };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not read your record.") };
+  }
+}
+
+/**
+ * Records how a finished game went.
+ *
+ * Separate from `saveScoreAction` because they record different facts: that one posts
+ * what the game was *worth* to a board shared by the household, this one records what
+ * *happened* to a record that is the player's own. A loss, a draw and a heavily hinted
+ * win all score 0, so the scoreboard cannot tell them apart.
+ */
+export async function recordChessResultAction(
+  level: string,
+  result: string,
+  moves: number,
+  score: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireModuleAccess(ACCESS_MODULE_SLUG);
+  try {
+    const userId = await sessionUserId();
+    if (!userId) return { ok: false, error: "Sign in to keep a record." };
+    recordChessResult(deps.chessResultsRepo, { userId, level, result, moves, score });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: errorText(error, "Could not record that game.") };
   }
 }
 

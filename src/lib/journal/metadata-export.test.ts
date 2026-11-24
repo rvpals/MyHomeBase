@@ -18,6 +18,7 @@ import type {
   JournalPreferences,
   JournalPrefillTemplate,
   JournalTag,
+  JournalTaxonomyCombo,
   JournalTaxonomyIcon,
   SavedJournalFilter,
 } from "./types";
@@ -25,14 +26,16 @@ import type { DecodedImage } from "@/lib/shared/image-upload";
 
 // Hand-written in-memory fake covering only the slice of the port the metadata
 // backup touches: the two managed taxonomy lists with their icon blobs, the
-// template table, and the saved filters. Everything else is left off the object,
+// template table (with its own icon blobs, migration 0176), the saved filters and
+// the taxonomy combos (migration 0177). Everything else is left off the object,
 // so a use-case that quietly reaches for an entry query fails loudly rather than
 // passing against a stub that returns [].
 function fakeRepo(seed?: {
   categories?: { name: string; description?: string; icon?: DecodedImage }[];
   tags?: { name: string; description?: string; icon?: DecodedImage }[];
-  templates?: { name: string; description?: string; isEnabled?: boolean }[];
+  templates?: { name: string; description?: string; isEnabled?: boolean; icon?: DecodedImage }[];
   filters?: string[];
+  combos?: { name: string; categories?: string[]; tags?: string[] }[];
 }) {
   const now = "2026-01-01T00:00:00.000Z";
 
@@ -41,7 +44,9 @@ function fakeRepo(seed?: {
   const tags = new Map<string, JournalTag>();
   const tagIcons = new Map<string, JournalTaxonomyIcon>();
   let templates: JournalPrefillTemplate[] = [];
+  const templateIcons = new Map<number, JournalTaxonomyIcon>();
   let filters: SavedJournalFilter[] = [];
+  let combos: JournalTaxonomyCombo[] = [];
   let nextId = 1;
 
   for (const category of seed?.categories ?? []) {
@@ -65,12 +70,26 @@ function fakeRepo(seed?: {
     if (tag.icon) tagIcons.set(tag.name, tag.icon);
   }
   for (const template of seed?.templates ?? []) {
+    const id = nextId++;
     templates.push({
-      id: nextId++,
+      id,
       name: template.name,
       description: template.description ?? "",
       isEnabled: template.isEnabled ?? true,
       fields: [],
+      iconMimeType: template.icon?.mimeType,
+      createdAt: now,
+      updatedAt: now,
+    });
+    if (template.icon) templateIcons.set(id, template.icon);
+  }
+  for (const combo of seed?.combos ?? []) {
+    combos.push({
+      id: nextId++,
+      name: combo.name,
+      description: "",
+      categories: combo.categories ?? [],
+      tags: combo.tags ?? [],
       createdAt: now,
       updatedAt: now,
     });
@@ -164,6 +183,40 @@ function fakeRepo(seed?: {
       templates = [...templates.filter((t) => t.id !== row.id), row];
       return row;
     },
+    // Migration 0176. Mirrors the real split: the bytes live beside the row, and
+    // the domain type carries only `iconMimeType`.
+    getPrefillTemplateIcon: (id: number) => templateIcons.get(id),
+    setPrefillTemplateIcon(id: number, icon: DecodedImage | undefined) {
+      const index = templates.findIndex((t) => t.id === id);
+      if (index === -1) throw new Error(`no such template: ${id}`);
+      if (icon) templateIcons.set(id, icon);
+      else templateIcons.delete(id);
+      templates[index] = { ...templates[index], iconMimeType: icon?.mimeType };
+    },
+
+    // Migration 0177.
+    listTaxonomyCombos: () => [...combos],
+    getTaxonomyComboByName: (name: string) =>
+      combos.find((combo) => combo.name.toLowerCase() === name.trim().toLowerCase()),
+    saveTaxonomyCombo(input: {
+      id?: number;
+      name: string;
+      description: string;
+      categories: string[];
+      tags: string[];
+    }) {
+      const row: JournalTaxonomyCombo = {
+        id: input.id ?? nextId++,
+        name: input.name,
+        description: input.description,
+        categories: input.categories,
+        tags: input.tags,
+        createdAt: now,
+        updatedAt: now,
+      };
+      combos = [...combos.filter((combo) => combo.id !== row.id), row];
+      return row;
+    },
 
     listFilters: () => [...filters],
     saveFilter(input: {
@@ -230,6 +283,9 @@ function bundleOf(overrides: Partial<JournalMetadataBundle> = {}): JournalMetada
     tags: [],
     templates: [],
     filters: [],
+    // Required on `z.output` even though a JSON backup on disk may omit it — a
+    // defaulted field is always present once parsed (migration 0177).
+    combos: [],
     preferences: null,
     ...overrides,
   };
@@ -378,6 +434,47 @@ describe("planMetadataImport", () => {
     expect(plan.rows).toHaveLength(6);
     expect(plan.rows.find((row) => row.name === "Food")?.action).toBe("create");
     expect(plan.rows.find((row) => row.name === "Travel")?.action).toBe("update");
+  });
+
+  it("lists combos as their own kind, create or update (migration 0177)", () => {
+    const repo = fakeRepo({ combos: [{ name: "Gym combo" }] });
+
+    const plan = planMetadataImport(
+      repo,
+      bundleOf({
+        combos: [
+          { name: "Gym combo", description: "", categories: [], tags: [] },
+          { name: "Golf combo", description: "", categories: [], tags: [] },
+        ],
+      }),
+    );
+
+    expect(plan.rows.map((row) => row.kind)).toEqual(["combo", "combo"]);
+    expect(plan.rows.find((row) => row.name === "Gym combo")?.action).toBe("update");
+    expect(plan.rows.find((row) => row.name === "Golf combo")?.action).toBe("create");
+  });
+
+  it("counts a template icon it would replace (migration 0176)", () => {
+    const repo = fakeRepo({
+      templates: [{ name: "Gym", icon: { data: PNG_BYTES, mimeType: "image/png" } }],
+    });
+
+    const plan = planMetadataImport(
+      repo,
+      bundleOf({
+        templates: [
+          {
+            name: "Gym",
+            description: "",
+            isEnabled: true,
+            fields: [],
+            icon: { mimeType: "image/png", base64: PNG_BYTES.toString("base64") },
+          },
+        ],
+      }),
+    );
+
+    expect(plan.iconReplaceCount).toBe(1);
   });
 
   it("counts icons the restore would replace", () => {
@@ -615,6 +712,67 @@ describe("applyMetadataImport", () => {
     expect(target.listTags().map((tag) => tag.name)).toEqual(["family"]);
     expect(target.listPrefillTemplates()[0].isEnabled).toBe(false);
     expect(target.listFilters().map((f) => f.name)).toEqual(["Pinned only"]);
+  });
+
+  it("carries a template's icon and the taxonomy combos through a round trip", () => {
+    // The two things migrations 0176 and 0177 added to the bundle. Asserted
+    // together because they travel for the same reason: the backup claims to be a
+    // complete record of what the module looked like.
+    const source = fakeRepo({
+      templates: [{ name: "Gym", icon: { data: PNG_BYTES, mimeType: "image/png" } }],
+      combos: [{ name: "Gym combo", categories: ["HEALTH"], tags: ["gym", "weights"] }],
+    });
+    const target = fakeRepo();
+
+    const text = serializeMetadataBundle(buildMetadataBundle(source, PREFERENCES));
+    const summary = applyMetadataImport(target, parseMetadataBundle(text));
+
+    expect(summary.comboCount).toBe(1);
+    // The template's icon counts as an icon written, alongside the taxonomy ones.
+    expect(summary.iconCount).toBe(1);
+
+    const restored = target.listPrefillTemplates()[0];
+    expect(restored.iconMimeType).toBe("image/png");
+    expect(target.getPrefillTemplateIcon(restored.id)?.data).toEqual(PNG_BYTES);
+
+    expect(target.listTaxonomyCombos()).toHaveLength(1);
+    expect(target.listTaxonomyCombos()[0]).toMatchObject({
+      name: "Gym combo",
+      categories: ["HEALTH"],
+      tags: ["gym", "weights"],
+    });
+  });
+
+  it("updates a combo that already exists rather than colliding on its name", () => {
+    const target = fakeRepo({ combos: [{ name: "Gym combo", categories: ["OLD"], tags: [] }] });
+
+    applyMetadataImport(
+      target,
+      bundleOf({
+        combos: [{ name: "Gym combo", description: "", categories: ["HEALTH"], tags: ["gym"] }],
+      }),
+    );
+
+    expect(target.listTaxonomyCombos()).toHaveLength(1);
+    expect(target.listTaxonomyCombos()[0].categories).toEqual(["HEALTH"]);
+  });
+
+  it("restores a bundle written before combos existed", () => {
+    // The reason the format version stays at 1: every new field is optional or
+    // defaulted, so an older file is still a legal bundle.
+    const bundle = parseMetadataBundle(
+      JSON.stringify({
+        format: JOURNAL_METADATA_FORMAT,
+        version: 1,
+        categories: [{ name: "Travel" }],
+      }),
+    );
+    expect(bundle.combos).toEqual([]);
+
+    const target = fakeRepo();
+    const summary = applyMetadataImport(target, bundle);
+    expect(summary.comboCount).toBe(0);
+    expect(target.listCategories().map((category) => category.name)).toEqual(["Travel"]);
   });
 });
 

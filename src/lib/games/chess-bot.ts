@@ -1,4 +1,10 @@
-import { oppositeColor, rowOf } from "./chess-board";
+import { oppositeColor, repetitionKey } from "./chess-board";
+import {
+  CHESS_PIECE_VALUES,
+  evaluateChessPosition,
+  hasNonPawnMaterial,
+} from "./chess-evaluate";
+import { chessPositionKey } from "./chess-zobrist";
 import {
   applyChessMove,
   generateLegalCaptures,
@@ -6,15 +12,13 @@ import {
   isInCheck,
 } from "./chess-moves";
 import { isChessGameOver } from "./game-chess";
-import { moveToSan } from "./chess-notation";
+import { findMoveByUci, moveToSan } from "./chess-notation";
 import {
   CHESS_LEVEL_SETUP,
-  CHESS_SQUARE_COUNT,
   type ChessColor,
   type ChessGame,
   type ChessLevel,
   type ChessMove,
-  type ChessPiece,
   type ChessPosition,
 } from "./types";
 
@@ -30,15 +34,12 @@ import {
  * built up from how far it looks, rather than cut down from perfect play.
  */
 
-/** Centipawn values. The king's is nominal — mate is scored separately. */
-export const CHESS_PIECE_VALUES: Record<ChessPiece["type"], number> = {
-  p: 100,
-  n: 320,
-  b: 330,
-  r: 500,
-  q: 900,
-  k: 20_000,
-};
+/**
+ * Material values, the piece-square tables and everything else about *what a position
+ * is worth* now live in `chess-evaluate.ts`. They are re-exported here because this
+ * module was their home and both the analysis screen and the tests import them from it.
+ */
+export { CHESS_PIECE_VALUES, evaluateChessPosition } from "./chess-evaluate";
 
 /** A score this large means mate; the distance to it is subtracted per ply. */
 const MATE_SCORE = 1_000_000;
@@ -49,160 +50,44 @@ const MATE_THRESHOLD = MATE_SCORE - 1_000;
 /** How often the clock is consulted during a search, in nodes. */
 const TIME_CHECK_INTERVAL = 2_048;
 
-/**
- * Piece-square tables, in centipawns, from **White's point of view and in board order**
- * — index 0 is a8, matching `ChessSquare`. Black reads the same table with the rank
- * mirrored, which is what `squareBonus` does.
- *
- * These are the well-known "simplified evaluation" tables. They are not tuned and are
- * not meant to be: their whole job is to stop the engine shuffling pieces aimlessly
- * when material is level, by giving knights a reason to come to the middle and pawns a
- * reason to advance. Material is what decides games at these depths.
- */
-const PAWN_TABLE: readonly number[] = [
-  0, 0, 0, 0, 0, 0, 0, 0,
-  50, 50, 50, 50, 50, 50, 50, 50,
-  10, 10, 20, 30, 30, 20, 10, 10,
-  5, 5, 10, 25, 25, 10, 5, 5,
-  0, 0, 0, 20, 20, 0, 0, 0,
-  5, -5, -10, 0, 0, -10, -5, 5,
-  5, 10, 10, -20, -20, 10, 10, 5,
-  0, 0, 0, 0, 0, 0, 0, 0,
-];
+/* ---------------------------------------------------------------------------------
+   The transposition table.
 
-const KNIGHT_TABLE: readonly number[] = [
-  -50, -40, -30, -30, -30, -30, -40, -50,
-  -40, -20, 0, 0, 0, 0, -20, -40,
-  -30, 0, 10, 15, 15, 10, 0, -30,
-  -30, 5, 15, 20, 20, 15, 5, -30,
-  -30, 0, 15, 20, 20, 15, 0, -30,
-  -30, 5, 10, 15, 15, 10, 5, -30,
-  -40, -20, 0, 5, 5, 0, -20, -40,
-  -50, -40, -30, -30, -30, -30, -40, -50,
-];
+   The same position turns up again and again by different move orders, and without a
+   table every one of them is searched from scratch. Storing what a position was worth
+   — and how deeply it was examined — is the single largest speed-up available to a
+   search of this shape, and it is what lets Advanced reach a usable depth inside its
+   couple of seconds.
 
-const BISHOP_TABLE: readonly number[] = [
-  -20, -10, -10, -10, -10, -10, -10, -20,
-  -10, 0, 0, 0, 0, 0, 0, -10,
-  -10, 0, 5, 10, 10, 5, 0, -10,
-  -10, 5, 5, 10, 10, 5, 5, -10,
-  -10, 0, 10, 10, 10, 10, 0, -10,
-  -10, 10, 10, 10, 10, 10, 10, -10,
-  -10, 5, 0, 0, 0, 0, 5, -10,
-  -20, -10, -10, -10, -10, -10, -10, -20,
-];
+   `flag` records what the stored score *means*, which is the part that is easy to get
+   wrong: alpha-beta does not always return the true value of a position. An `exact`
+   score was fully determined; a `lower` bound means a beta cutoff stopped the search
+   early, so the real value is at least this; an `upper` bound means nothing beat alpha,
+   so the real value is at most this. Reusing a bound as though it were exact is how a
+   table makes an engine play nonsense.
+--------------------------------------------------------------------------------- */
 
-const ROOK_TABLE: readonly number[] = [
-  0, 0, 0, 0, 0, 0, 0, 0,
-  5, 10, 10, 10, 10, 10, 10, 5,
-  -5, 0, 0, 0, 0, 0, 0, -5,
-  -5, 0, 0, 0, 0, 0, 0, -5,
-  -5, 0, 0, 0, 0, 0, 0, -5,
-  -5, 0, 0, 0, 0, 0, 0, -5,
-  -5, 0, 0, 0, 0, 0, 0, -5,
-  0, 0, 0, 5, 5, 0, 0, 0,
-];
+type ScoreFlag = "exact" | "lower" | "upper";
 
-const QUEEN_TABLE: readonly number[] = [
-  -20, -10, -10, -5, -5, -10, -10, -20,
-  -10, 0, 0, 0, 0, 0, 0, -10,
-  -10, 0, 5, 5, 5, 5, 0, -10,
-  -5, 0, 5, 5, 5, 5, 0, -5,
-  0, 0, 5, 5, 5, 5, 0, -5,
-  -10, 5, 5, 5, 5, 5, 0, -10,
-  -10, 0, 5, 0, 0, 0, 0, -10,
-  -20, -10, -10, -5, -5, -10, -10, -20,
-];
-
-/** The king wants to be tucked away behind pawns while there is still an attack. */
-const KING_MIDDLEGAME_TABLE: readonly number[] = [
-  -30, -40, -40, -50, -50, -40, -40, -30,
-  -30, -40, -40, -50, -50, -40, -40, -30,
-  -30, -40, -40, -50, -50, -40, -40, -30,
-  -30, -40, -40, -50, -50, -40, -40, -30,
-  -20, -30, -30, -40, -40, -30, -30, -20,
-  -10, -20, -20, -20, -20, -20, -20, -10,
-  20, 20, 0, 0, 0, 0, 20, 20,
-  20, 30, 10, 0, 0, 10, 30, 20,
-];
-
-/**
- * …and in the endgame it wants the middle. Switching tables is the one piece of phase
- * knowledge in here, and it is the difference between converting a won endgame and
- * shuffling on the back rank while the fifty-move counter runs out.
- */
-const KING_ENDGAME_TABLE: readonly number[] = [
-  -50, -40, -30, -20, -20, -30, -40, -50,
-  -30, -20, -10, 0, 0, -10, -20, -30,
-  -30, -10, 20, 30, 30, 20, -10, -30,
-  -30, -10, 30, 40, 40, 30, -10, -30,
-  -30, -10, 30, 40, 40, 30, -10, -30,
-  -30, -10, 20, 30, 30, 20, -10, -30,
-  -30, -30, 0, 0, 0, 0, -30, -30,
-  -50, -30, -30, -30, -30, -30, -30, -50,
-];
-
-const TABLES: Record<ChessPiece["type"], readonly number[]> = {
-  p: PAWN_TABLE,
-  n: KNIGHT_TABLE,
-  b: BISHOP_TABLE,
-  r: ROOK_TABLE,
-  q: QUEEN_TABLE,
-  k: KING_MIDDLEGAME_TABLE,
-};
-
-/** Non-pawn material (one side) below which the king's endgame table takes over. */
-const ENDGAME_MATERIAL = CHESS_PIECE_VALUES.r + CHESS_PIECE_VALUES.b;
-
-function squareBonus(piece: ChessPiece, square: number, endgame: boolean): number {
-  const table = piece.type === "k" && endgame ? KING_ENDGAME_TABLE : TABLES[piece.type];
-  // Black reads White's table with the rank mirrored: a8 for Black is what h1... is for
-  // White only in rank, not file, because these tables are left-right symmetric.
-  const index = piece.color === "w" ? square : (7 - rowOf(square)) * 8 + (square % 8);
-  return table[index] ?? 0;
+interface TableEntry {
+  key: number;
+  depth: number;
+  score: number;
+  flag: ScoreFlag;
+  /** The move that was best here, tried first next time even when the score cannot be used. */
+  move?: ChessMove;
 }
 
 /**
- * The position in centipawns, **from the point of view of the side to move**.
+ * Entries, as a plain Map keyed by position.
  *
- * Side-to-move relative rather than always-White, because that is what negamax needs:
- * one function, negated at each ply, instead of a sign to keep track of at every call
- * site. Getting that sign wrong in one branch is the classic way an engine starts
- * playing deliberately bad moves.
+ * Cleared at the start of every root search rather than kept between moves. Keeping it
+ * would help, but it also means scores from a position reached by a different route —
+ * with a different repetition history behind it — leaking into a later search, and that
+ * is a class of bug not worth inviting for a game at this scale. The table still pays
+ * for itself many times over inside one search.
  */
-export function evaluateChessPosition(position: ChessPosition): number {
-  let white = 0;
-  let black = 0;
-  let whiteNonPawn = 0;
-  let blackNonPawn = 0;
-
-  // One pass for material, so the endgame test does not need a second walk of the board.
-  for (let square = 0; square < CHESS_SQUARE_COUNT; square += 1) {
-    const piece = position.board[square];
-    if (!piece) continue;
-    const value = CHESS_PIECE_VALUES[piece.type];
-    if (piece.color === "w") {
-      white += value;
-      if (piece.type !== "p" && piece.type !== "k") whiteNonPawn += value;
-    } else {
-      black += value;
-      if (piece.type !== "p" && piece.type !== "k") blackNonPawn += value;
-    }
-  }
-
-  const endgame = whiteNonPawn <= ENDGAME_MATERIAL && blackNonPawn <= ENDGAME_MATERIAL;
-
-  for (let square = 0; square < CHESS_SQUARE_COUNT; square += 1) {
-    const piece = position.board[square];
-    if (!piece) continue;
-    const bonus = squareBonus(piece, square, endgame);
-    if (piece.color === "w") white += bonus;
-    else black += bonus;
-  }
-
-  const score = white - black;
-  return position.turn === "w" ? score : -score;
-}
+const MAX_TABLE_ENTRIES = 200_000;
 
 interface SearchContext {
   deadline: number;
@@ -211,9 +96,26 @@ interface SearchContext {
   nodes: number;
   /** Set once the budget runs out; every frame then unwinds without scoring. */
   aborted: boolean;
+  table: Map<number, TableEntry>;
+  /**
+   * Two moves per ply that caused a beta cutoff without being captures.
+   *
+   * A move that refuted one line usually refutes its siblings too, so trying it early
+   * is worth far more than its static ordering score suggests. Two per ply, because
+   * one is too easily displaced and three rarely adds anything.
+   */
+  killers: (ChessMove | undefined)[][];
+  /** How often a quiet move has caused a cutoff anywhere, indexed by from-to. */
+  history: Int32Array;
+  /**
+   * Position keys on the path from the root, so the search can see a repetition.
+   *
+   * Without it the engine happily walks into a threefold draw while winning, because
+   * every position in the loop evaluates well and nothing tells it the game ends there.
+   */
+  repetitions: string[];
 }
 
-/** One completed depth of the search, reported as it finishes. */
 export interface ChessSearchProgress {
   depth: number;
   /** The best move found so far — it can change as the search looks deeper. */
@@ -222,6 +124,11 @@ export interface ChessSearchProgress {
   score: number;
   nodes: number;
   elapsedMs: number;
+  /**
+   * The line the engine expects, in coordinate form — its own move, the reply it
+   * predicts, and so on. Empty when the search was cut short before one was found.
+   */
+  line: string[];
 }
 
 /**
@@ -243,18 +150,32 @@ export type ChessThinkingEvent =
       budgetMs: number;
       quiescence: boolean;
     }
-  | { kind: "depth"; depth: number; san: string; scoreText: string; nodes: number; elapsedMs: number }
+  | {
+      kind: "depth";
+      depth: number;
+      san: string;
+      scoreText: string;
+      nodes: number;
+      elapsedMs: number;
+      /** The expected continuation, in algebraic notation. */
+      line: string[];
+    }
   | { kind: "candidates"; items: { san: string; scoreText: string }[] }
   | { kind: "note"; text: string }
   | { kind: "chosen"; san: string; elapsedMs: number; depth?: number; nodes?: number };
 
 export interface ChessSearchResult {
   move?: ChessMove;
-  score: number;
   /** The last depth that completed before the budget ran out. */
   depth: number;
+  score: number;
   nodes: number;
+  /** The principal variation — the line the engine expects, in coordinate form. */
+  line: string[];
 }
+
+/** How deep a null-move search is reduced by. Three plies is the usual choice. */
+const NULL_MOVE_REDUCTION = 3;
 
 /**
  * The best move the search can find, within a depth and a time budget.
@@ -266,6 +187,8 @@ export interface ChessSearchResult {
  * position it simply takes as long as it takes, which on a phone is a frozen board.
  *
  * `now` is injected so a test can drive the clock instead of waiting for one.
+ * `history` is the positions already played in the game, so the search can tell that
+ * repeating one ends it.
  */
 export function searchChessMove(
   position: ChessPosition,
@@ -274,6 +197,8 @@ export function searchChessMove(
     timeMs: number;
     quiescence: boolean;
     now?: () => number;
+    /** Repetition keys of the positions already played, oldest first. */
+    history?: readonly string[];
     /** Called after each depth that completes. Absent means no reporting work at all. */
     onProgress?: (progress: ChessSearchProgress) => void;
   },
@@ -286,34 +211,52 @@ export function searchChessMove(
     quiescence: options.quiescence,
     nodes: 0,
     aborted: false,
+    table: new Map(),
+    killers: [],
+    history: new Int32Array(64 * 64),
+    repetitions: [...(options.history ?? [])],
   };
 
-  const moves = orderMoves(generateLegalMoves(position));
-  if (moves.length === 0) return { score: evaluateChessPosition(position), depth: 0, nodes: 0 };
+  const moves = orderMoves(generateLegalMoves(position), position, context, 0);
+  if (moves.length === 0) {
+    return { score: evaluateChessPosition(position), depth: 0, nodes: 0, line: [] };
+  }
 
   // A depth below 1 searches nothing, so the position's own evaluation *is* the answer.
-  // Without this the deepening loop never runs and the caller is handed `-MATE_SCORE`
-  // for a perfectly ordinary position — which, compared across root moves, makes every
-  // one of them look equally lost.
   if (options.depth < 1) {
-    return { move: moves[0], score: evaluateChessPosition(position), depth: 0, nodes: 0 };
+    return {
+      move: moves[0],
+      score: evaluateChessPosition(position),
+      depth: 0,
+      nodes: 0,
+      line: [],
+    };
   }
 
   let best: ChessMove = moves[0]!;
   let bestScore = -MATE_SCORE;
+  let bestLine: string[] = [];
   let completedDepth = 0;
 
   for (let depth = 1; depth <= options.depth; depth += 1) {
     let alpha = -MATE_SCORE;
     let depthBest: ChessMove | undefined;
     let depthScore = -MATE_SCORE;
+    let depthLine: string[] = [];
 
     for (const move of moves) {
-      const score = -negamax(applyChessMove(position, move), depth - 1, -MATE_SCORE, -alpha, 1, context);
+      const line: string[] = [];
+      const after = applyChessMove(position, move);
+
+      context.repetitions.push(repetitionKey(after));
+      const score = -negamax(after, depth - 1, -MATE_SCORE, -alpha, 1, context, line);
+      context.repetitions.pop();
+
       if (context.aborted) break;
       if (score > depthScore) {
         depthScore = score;
         depthBest = move;
+        depthLine = [moveToUciLite(move), ...line];
       }
       if (score > alpha) alpha = score;
     }
@@ -322,6 +265,7 @@ export function searchChessMove(
 
     best = depthBest;
     bestScore = depthScore;
+    bestLine = depthLine;
     completedDepth = depth;
     options.onProgress?.({
       depth,
@@ -329,6 +273,7 @@ export function searchChessMove(
       score: bestScore,
       nodes: context.nodes,
       elapsedMs: now() - startedAt,
+      line: bestLine,
     });
 
     // Searching deeper cannot improve on a forced mate already found, and continuing
@@ -341,7 +286,52 @@ export function searchChessMove(
     moves.unshift(best);
   }
 
-  return { move: best, score: bestScore, depth: completedDepth, nodes: context.nodes };
+  /*
+    No depth finished, so there is no searched score to report.
+
+    `bestScore` is still its `-MATE_SCORE` starting value here, and returning that would
+    say "this position is lost" about a perfectly ordinary one. That matters because
+    `chooseChessMove` negates these scores to compare root moves: a move whose search
+    was cut short would come back as +MATE_SCORE and be played immediately.
+  */
+  if (completedDepth === 0) {
+    return {
+      move: best,
+      score: evaluateChessPosition(position),
+      depth: 0,
+      nodes: context.nodes,
+      line: [],
+    };
+  }
+
+  return {
+    move: best,
+    score: bestScore,
+    depth: completedDepth,
+    nodes: context.nodes,
+    line: bestLine,
+  };
+}
+
+/** A move in coordinate form, without reaching for the notation module. */
+function moveToUciLite(move: ChessMove): string {
+  const name = (square: number) =>
+    `${"abcdefgh"[square % 8]}${8 - Math.floor(square / 8)}`;
+  return `${name(move.from)}${name(move.to)}${move.promotion ?? ""}`;
+}
+
+/** Whether this position has appeared before on the path from the root. */
+function isRepetition(context: SearchContext, key: string): boolean {
+  // Twice is enough inside a search. A position seen once already means the side to
+  // move can force a third by repeating, so treating it as a draw here is what stops
+  // the engine walking into one while winning — and what lets it *reach* for one when
+  // it is losing.
+  let seen = 0;
+  for (const entry of context.repetitions) {
+    if (entry === key) seen += 1;
+    if (seen >= 2) return true;
+  }
+  return false;
 }
 
 /**
@@ -351,6 +341,9 @@ export function searchChessMove(
  * score higher than the same mate found later — without it the engine announces mate
  * and then never actually delivers it, because every mating line looks equally good and
  * it keeps choosing a different one.
+ *
+ * `line` is filled with the continuation this node expects, which is what the Messages
+ * panel prints as the principal variation.
  */
 function negamax(
   position: ChessPosition,
@@ -359,6 +352,7 @@ function negamax(
   beta: number,
   ply: number,
   context: SearchContext,
+  line: string[],
 ): number {
   context.nodes += 1;
   if (context.nodes % TIME_CHECK_INTERVAL === 0 && context.now() > context.deadline) {
@@ -366,30 +360,154 @@ function negamax(
   }
   if (context.aborted) return 0;
 
+  line.length = 0;
+
+  // A position repeated on the way here is a draw, whatever the pieces say. Checked
+  // before anything else, because it ends the game and no evaluation applies.
+  const repetition = repetitionKey(position);
+  if (ply > 0 && isRepetition(context, repetition)) return 0;
+
+  const originalAlpha = alpha;
+  const key = chessPositionKey(position);
+  const stored = context.table.get(key);
+
+  /*
+    A stored result is only usable when it was searched at least as deeply as this, and
+    then only according to what its score means — see `ScoreFlag`. At the root (ply 0)
+    it is never used for the score, because the root has to produce a move and a line,
+    not just a number.
+  */
+  if (stored && stored.key === key && stored.depth >= depth && ply > 0) {
+    if (stored.flag === "exact") return stored.score;
+    if (stored.flag === "lower" && stored.score > alpha) alpha = stored.score;
+    else if (stored.flag === "upper" && stored.score < beta) beta = stored.score;
+    if (alpha >= beta) return stored.score;
+  }
+
   const moves = generateLegalMoves(position);
+  const inCheck = isInCheck(position);
 
   // Mate and stalemate are detected here rather than at depth 0, so a forced mate is
   // found at whatever depth it happens at rather than being scored as material.
-  if (moves.length === 0) {
-    return isInCheck(position) ? -MATE_SCORE + ply : 0;
-  }
+  if (moves.length === 0) return inCheck ? -MATE_SCORE + ply : 0;
 
-  // The fifty-move rule is the one draw the search has to know about: an engine that
+  // The fifty-move rule is the other draw the search has to know about: an engine that
   // cannot see it will happily shuffle in a won endgame until the game is drawn.
   if (position.halfmoveClock >= 100) return 0;
 
   if (depth <= 0) {
-    return context.quiescence ? quiesce(position, alpha, beta, ply, context) : evaluateChessPosition(position);
+    return context.quiescence
+      ? quiesce(position, alpha, beta, ply, context)
+      : evaluateChessPosition(position);
+  }
+
+  /*
+    Null-move pruning: let the opponent move twice and see whether the position is
+    *still* good enough to cut off. If it is, this line is so strong that searching it
+    properly is a waste.
+
+    Three conditions, each for a reason. Not while in check, because passing out of
+    check is not a legal idea and the result would be meaningless. Not in the last two
+    plies, where the reduced search would be shallower than nothing. And not when the
+    side to move has only pawns, where **zugzwang** makes the whole premise false —
+    being forced to move can be worse than passing, so "I could pass and still be fine"
+    proves nothing.
+  */
+  if (
+    depth >= NULL_MOVE_REDUCTION &&
+    !inCheck &&
+    ply > 0 &&
+    hasNonPawnMaterial(position, position.turn)
+  ) {
+    const passed: ChessPosition = {
+      ...position,
+      turn: oppositeColor(position.turn),
+      enPassant: null,
+    };
+    const scratch: string[] = [];
+    const score = -negamax(
+      passed,
+      depth - NULL_MOVE_REDUCTION,
+      -beta,
+      -beta + 1,
+      ply + 1,
+      context,
+      scratch,
+    );
+    if (context.aborted) return 0;
+    if (score >= beta) return beta;
   }
 
   let value = alpha;
-  for (const move of orderMoves(moves)) {
-    const score = -negamax(applyChessMove(position, move), depth - 1, -beta, -value, ply + 1, context);
+  let bestMove: ChessMove | undefined;
+  const child: string[] = [];
+
+  for (const move of orderMoves(moves, position, context, ply, stored?.move)) {
+    const after = applyChessMove(position, move);
+    context.repetitions.push(repetitionKey(after));
+    const score = -negamax(after, depth - 1, -beta, -value, ply + 1, context, child);
+    context.repetitions.pop();
+
     if (context.aborted) return 0;
-    if (score >= beta) return beta;
-    if (score > value) value = score;
+
+    if (score >= beta) {
+      // A quiet move that caused a cutoff is worth trying first elsewhere, so it is
+      // remembered both per ply (a killer) and globally (history).
+      if (!move.captured && !move.promotion) rememberCutoff(context, move, ply, depth);
+      store(context, key, depth, beta, "lower", move);
+      return beta;
+    }
+    if (score > value) {
+      value = score;
+      bestMove = move;
+      line.length = 0;
+      line.push(moveToUciLite(move), ...child);
+    }
   }
+
+  store(
+    context,
+    key,
+    depth,
+    value,
+    value > originalAlpha ? "exact" : "upper",
+    bestMove,
+  );
   return value;
+}
+
+/** Records a result, unless the table has grown past what is worth keeping. */
+function store(
+  context: SearchContext,
+  key: number,
+  depth: number,
+  score: number,
+  flag: ScoreFlag,
+  move?: ChessMove,
+): void {
+  const existing = context.table.get(key);
+  // Depth-preferred: a deeper result is more trustworthy than a shallower one, so it is
+  // never overwritten by a cheaper look at the same position.
+  if (existing && existing.depth > depth) return;
+  if (!existing && context.table.size >= MAX_TABLE_ENTRIES) return;
+  context.table.set(key, { key, depth, score, flag, move });
+}
+
+/** Remembers a quiet move that caused a cutoff, for ordering later. */
+function rememberCutoff(
+  context: SearchContext,
+  move: ChessMove,
+  ply: number,
+  depth: number,
+): void {
+  const slot = (context.killers[ply] ??= [undefined, undefined]);
+  if (slot[0] && slot[0].from === move.from && slot[0].to === move.to) return;
+  slot[1] = slot[0];
+  slot[0] = move;
+
+  // Weighted by depth squared: a cutoff found deep in the tree says far more about a
+  // move than one found at a leaf, and without the weighting shallow noise drowns it.
+  context.history[move.from * 64 + move.to] += depth * depth;
 }
 
 /**
@@ -401,8 +519,10 @@ function negamax(
  * pawn" scores a pawn up and never sees the queen that recaptures — so the engine
  * cheerfully hangs pieces on its last ply, every time, at any depth.
  *
- * The "stand pat" score is the one subtlety: a side is never *forced* to capture, so
- * the position's own evaluation is a lower bound on what it can get.
+ * **While in check it searches every move, not just captures.** Standing pat in check
+ * would score a position the side to move may not legally hold, and the usual symptom
+ * is an engine that cannot see it is being mated. That makes the node more expensive,
+ * which is why it only applies when there actually is a check to answer.
  */
 function quiesce(
   position: ChessPosition,
@@ -417,12 +537,32 @@ function quiesce(
   }
   if (context.aborted) return 0;
 
+  const inCheck = isInCheck(position);
+
+  if (inCheck) {
+    const escapes = generateLegalMoves(position);
+    // No way out: this is mate, and it has to be scored as mate rather than as whatever
+    // the material happens to be.
+    if (escapes.length === 0) return -MATE_SCORE + ply;
+
+    let value = alpha;
+    for (const move of orderMoves(escapes, position, context, ply)) {
+      const score = -quiesce(applyChessMove(position, move), -beta, -value, ply + 1, context);
+      if (context.aborted) return 0;
+      if (score >= beta) return beta;
+      if (score > value) value = score;
+    }
+    return value;
+  }
+
+  // The "stand pat" score: a side is never *forced* to capture, so the position's own
+  // evaluation is a lower bound on what it can get.
   const standPat = evaluateChessPosition(position);
   if (standPat >= beta) return beta;
 
   let value = alpha > standPat ? alpha : standPat;
 
-  for (const move of orderMoves(generateLegalCaptures(position))) {
+  for (const move of orderMoves(generateLegalCaptures(position), position, context, ply)) {
     const score = -quiesce(applyChessMove(position, move), -beta, -value, ply + 1, context);
     if (context.aborted) return 0;
     if (score >= beta) return beta;
@@ -432,35 +572,57 @@ function quiesce(
 }
 
 /**
- * Captures first, best-looking ones first — **MVV-LVA**: most valuable victim, least
- * valuable attacker, so `PxQ` is tried before `QxP`.
+ * Orders moves so that alpha-beta finds its cutoffs as early as possible.
  *
- * Ordering changes no result; it changes how fast alpha-beta finds the cutoffs that let
- * it skip work. On a middlegame position good ordering is worth roughly a whole extra
- * ply for the same time, which is why a dozen lines of sorting sits in the hot path.
+ * Ordering changes no result; it changes how much work is skipped. On a middlegame
+ * position good ordering is worth roughly a whole extra ply for the same time, which is
+ * why this sits in the hot path. The ranking, best first:
+ *
+ * 1. **The table's move** for this position — the one that was best last time it was
+ *    searched, usually still best now.
+ * 2. **Captures**, by MVV-LVA: most valuable victim, least valuable attacker, so `PxQ`
+ *    is tried before `QxP`.
+ * 3. **Killers** — quiet moves that caused a cutoff at this same ply elsewhere.
+ * 4. **History** — quiet moves that have caused cutoffs anywhere, weighted by depth.
  */
-function orderMoves(moves: readonly ChessMove[]): ChessMove[] {
-  return [...moves].sort((left, right) => moveOrderScore(right) - moveOrderScore(left));
+function orderMoves(
+  moves: readonly ChessMove[],
+  position: ChessPosition,
+  context: SearchContext,
+  ply: number,
+  tableMove?: ChessMove,
+): ChessMove[] {
+  const killers = context.killers[ply];
+
+  const score = (move: ChessMove): number => {
+    if (tableMove && move.from === tableMove.from && move.to === tableMove.to) {
+      return 1_000_000;
+    }
+
+    let value = 0;
+    if (move.captured) {
+      value +=
+        100_000 + CHESS_PIECE_VALUES[move.captured] * 10 - CHESS_PIECE_VALUES[move.piece];
+    }
+    if (move.promotion) value += 90_000 + CHESS_PIECE_VALUES[move.promotion];
+    if (value > 0) return value;
+
+    if (killers) {
+      if (killers[0] && killers[0].from === move.from && killers[0].to === move.to) return 80_000;
+      if (killers[1] && killers[1].from === move.from && killers[1].to === move.to) return 79_000;
+    }
+    if (move.isCastle) return 1_000;
+
+    return context.history[move.from * 64 + move.to] ?? 0;
+  };
+
+  // `position` is unused by the ranking today, and is taken so a future term that needs
+  // it — seeing whether a move gives check, say — does not change every call site.
+  void position;
+
+  return [...moves].sort((left, right) => score(right) - score(left));
 }
 
-function moveOrderScore(move: ChessMove): number {
-  let score = 0;
-  if (move.captured) {
-    score += 10_000 + CHESS_PIECE_VALUES[move.captured] * 10 - CHESS_PIECE_VALUES[move.piece];
-  }
-  if (move.promotion) score += 9_000 + CHESS_PIECE_VALUES[move.promotion];
-  if (move.isCastle) score += 50;
-  return score;
-}
-
-/**
- * The move the computer plays, at its level.
- *
- * `rng` and `now` are injected rather than reached for, so this is a pure function of
- * its inputs and a test can pin both. Everything that makes a level feel like itself is
- * here: how deep it looks, whether it checks for recaptures, how often it throws a move
- * away, and how much it varies.
- */
 export function chooseChessMove(
   position: ChessPosition,
   level: ChessLevel,
@@ -469,12 +631,25 @@ export function chooseChessMove(
     now?: () => number;
     /** Narrates the search. Omit it and no narration is built. */
     onEvent?: (event: ChessThinkingEvent) => void;
+    /**
+     * Overrides the level's own time budget — what a clocked game passes so the
+     * computer rations its remaining time instead of flagging itself. See
+     * `chessSearchBudgetMs`.
+     */
+    timeBudgetMs?: number;
+    /**
+     * The positions already played, so the search can see a repetition coming. Without
+     * it the engine will walk into a threefold draw from a winning position, because
+     * every position in the loop evaluates well and nothing says the game ends there.
+     */
+    history?: readonly string[];
   } = {},
 ): ChessMove | undefined {
   const rng = options.rng ?? Math.random;
   const now = options.now ?? Date.now;
   const emit = options.onEvent;
   const setup = CHESS_LEVEL_SETUP[level];
+  const budgetMs = options.timeBudgetMs ?? setup.timeMs;
   const startedAt = emit ? now() : 0;
 
   const moves = generateLegalMoves(position);
@@ -485,7 +660,7 @@ export function chooseChessMove(
     label: setup.label,
     legalMoves: moves.length,
     depth: setup.depth,
-    budgetMs: setup.timeMs,
+    budgetMs,
     quiescence: setup.quiescence,
   });
 
@@ -531,12 +706,38 @@ export function chooseChessMove(
   if (setup.noiseCentipawns <= 0) {
     const result = searchChessMove(position, {
       depth: setup.depth,
-      timeMs: setup.timeMs,
+      timeMs: budgetMs,
       quiescence: setup.quiescence,
       now: options.now,
+      history: options.history,
       onProgress: emit && depthReporter(position, emit),
     });
-    return finish(result.move ?? moves[0], { depth: result.depth, nodes: result.nodes });
+
+    /*
+      Variety at the top level, without weakening the move.
+
+      Advanced adds no noise to its scores, so from a given position it played the
+      identical game every single time — the same opening, move for move, for ever.
+      Rather than making it play worse, the opening moves are chosen at random from
+      those the search rates **within a pawn's tenth of its best**: moves it considers
+      equal, so picking among them costs nothing it can measure.
+
+      Only in the opening, and only among genuinely equal moves, so nothing about the
+      way it plays a real position changes.
+    */
+    const best = result.move ?? moves[0];
+    if (best && position.fullmoveNumber <= OPENING_MOVES && moves.length > 1) {
+      const varied = pickAmongEqual(position, moves, best, result.score, setup, rng, options.now);
+      if (varied !== best) {
+        emit?.({
+          kind: "note",
+          text: "Chose at random among the opening moves it rates as equal, so it does not replay the same game.",
+        });
+        return finish(varied, { depth: result.depth, nodes: result.nodes });
+      }
+    }
+
+    return finish(best, { depth: result.depth, nodes: result.nodes });
   }
 
   // With noise, every root move is scored and then nudged, so the computer does not
@@ -559,9 +760,10 @@ export function chooseChessMove(
       childDepth >= 1
         ? searchChessMove(child, {
             depth: childDepth,
-            timeMs: Math.max(50, Math.floor(setup.timeMs / moves.length)),
+            timeMs: Math.max(50, Math.floor(budgetMs / moves.length)),
             quiescence: setup.quiescence,
             now: options.now,
+            history: options.history,
           }).score
         : evaluateChessPosition(child);
 
@@ -594,6 +796,56 @@ export function chooseChessMove(
   return finish(best);
 }
 
+/**
+ * How many full moves count as "the opening" for the variety rule below.
+ *
+ * Eight is about where a game stops being a known sequence and starts being a position
+ * — early enough that varying costs nothing, late enough to make two games differ.
+ */
+const OPENING_MOVES = 8;
+
+/** How far below the best a move may score and still be treated as equal to it. */
+const EQUAL_MOVE_MARGIN = 10;
+
+/**
+ * Picks at random among the opening moves the search rates as equal to its best.
+ *
+ * Each candidate is scored by searching the position it leads to, which costs a second
+ * pass over the root — acceptable because it only ever runs in the first few moves of a
+ * game, where positions are cheap and the budget is nowhere near spent.
+ *
+ * Returns `best` unchanged if anything goes wrong or nothing ties, so the worst case is
+ * the behaviour this replaced.
+ */
+function pickAmongEqual(
+  position: ChessPosition,
+  moves: readonly ChessMove[],
+  best: ChessMove,
+  bestScore: number,
+  setup: { depth: number; timeMs: number; quiescence: boolean },
+  rng: () => number,
+  now?: () => number,
+): ChessMove {
+  // A forced mate is never "equal" to anything — take it.
+  if (Math.abs(bestScore) > MATE_THRESHOLD) return best;
+
+  const equal: ChessMove[] = [best];
+  const shallow = Math.max(1, setup.depth - 2);
+
+  for (const move of moves) {
+    if (move === best) continue;
+    const result = searchChessMove(applyChessMove(position, move), {
+      depth: shallow,
+      timeMs: Math.max(40, Math.floor(setup.timeMs / (moves.length * 2))),
+      quiescence: setup.quiescence,
+      now,
+    });
+    if (bestScore - -result.score <= EQUAL_MOVE_MARGIN) equal.push(move);
+  }
+
+  return equal[Math.floor(rng() * equal.length) % equal.length] ?? best;
+}
+
 /** Turns each finished depth into a display-ready thinking event. */
 function depthReporter(
   position: ChessPosition,
@@ -607,7 +859,32 @@ function depthReporter(
       scoreText: formatChessScore(progress.score, position.turn, position.turn),
       nodes: progress.nodes,
       elapsedMs: progress.elapsedMs,
+      line: describeLine(position, progress.line),
     });
+}
+
+/**
+ * The principal variation in algebraic notation — the line the engine expects.
+ *
+ * Far more informative than the single move it was showing before: "Nf3" says what it
+ * will play, while "Nf3 Nc6 Bb5" says *why*. Built by replaying the line from the
+ * position it starts in, because SAN depends on what else could reach each square.
+ *
+ * Stops at the first move that does not fit rather than throwing. A line can come back
+ * slightly stale — the table can hand back a move from a position reached another way,
+ * and a 52-bit key can collide — so a short line is a normal outcome, not an error.
+ */
+function describeLine(from: ChessPosition, line: readonly string[]): string[] {
+  const written: string[] = [];
+  let position = from;
+
+  for (const uci of line) {
+    const move = findMoveByUci(position, uci);
+    if (!move) break;
+    written.push(moveToSan(position, move));
+    position = applyChessMove(position, move);
+  }
+  return written;
 }
 
 /**
@@ -641,6 +918,7 @@ export function chessHint(
     timeMs: advanced.timeMs,
     quiescence: true,
     now: options.now,
+    history: game.repetitionKeys,
     onProgress: emit && depthReporter(game.position, emit),
   });
 
@@ -691,6 +969,7 @@ export function shouldAcceptChessDraw(
     timeMs: 400,
     quiescence: true,
     now: options.now,
+    history: game.repetitionKeys,
     onProgress: emit && depthReporter(game.position, emit),
   });
 

@@ -120,8 +120,11 @@ describe("moveToSan", () => {
   it("prefers the file over the rank when disambiguating", () => {
     // Rooks on a1 and h1 with the first rank clear between them, so both reach c1.
     // They differ by file, so SAN names the file — `Rac1`, not `R1c1`.
-    expect(san("7k/8/8/8/8/8/4K3/R6R w - - 0 1", "a1c1")).toBe("Rac1");
-    expect(san("7k/8/8/8/8/8/4K3/R6R w - - 0 1", "h1f1")).toBe("Rhf1");
+    //
+    // The black king is on g8, not h8: on h8 the rook on h1 would already be giving
+    // check up the open h-file, and every move here would pick up a "+".
+    expect(san("6k1/8/8/8/8/8/4K3/R6R w - - 0 1", "a1c1")).toBe("Rac1");
+    expect(san("6k1/8/8/8/8/8/4K3/R6R w - - 0 1", "h1f1")).toBe("Rhf1");
   });
 
   it("falls back to the rank when the files are the same", () => {
@@ -133,12 +136,16 @@ describe("moveToSan", () => {
   it("writes the whole square when neither file nor rank is enough", () => {
     // Three queens bear on e5: a1, a5 and e1. For the a1 queen the a-file is shared
     // with a5 and the first rank with e1, so only both coordinates will do.
-    expect(san("7k/8/8/Q7/8/8/8/Q3Q1K1 w - - 0 1", "a1e5")).toBe("Qa1e5");
+    //
+    // The black king sits on c8, away from every line through e5 — on h8 the move
+    // would give check and each answer would carry a "+".
+    const three = "2k5/8/8/Q7/8/8/8/Q3Q1K1 w - - 0 1";
+    expect(san(three, "a1e5")).toBe("Qa1e5");
     // The same position names the other two by one coordinate each, since for them one
     // of the two is unique: the a5 queen is alone on the fifth rank, and the e1 queen
     // is alone on the e-file.
-    expect(san("7k/8/8/Q7/8/8/8/Q3Q1K1 w - - 0 1", "a5e5")).toBe("Q5e5");
-    expect(san("7k/8/8/Q7/8/8/8/Q3Q1K1 w - - 0 1", "e1e5")).toBe("Qee5");
+    expect(san(three, "a5e5")).toBe("Q5e5");
+    expect(san(three, "e1e5")).toBe("Qee5");
   });
 
   it("does not disambiguate a move only one piece can make", () => {

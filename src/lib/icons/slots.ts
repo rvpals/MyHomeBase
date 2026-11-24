@@ -924,6 +924,32 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  {
+    // The two field groups in the one entry form. Both editors (New Entry and an
+    // existing entry) render the same component, so one slot each covers both —
+    // which is why `where` names them together rather than claiming one screen.
+    id: "journal_group_date_time",
+    label: "Date/Time group",
+    group: "Journal cards",
+    where: "Journal → New Entry, or an entry's editor → the Date/Time group box header.",
+    // A wall calendar: the group is about *when* the entry happened. The time
+    // field shares the box, and a clock glyph would under-describe the date half.
+    defaultConcept: "calendar",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "journal_group_categories_tags",
+    label: "Categories & Tags group",
+    group: "Journal cards",
+    where: "Journal → New Entry, or an entry's editor → the Categories & Tags group box header.",
+    // `shapes` is what journal_section_metadata already uses for the Categories &
+    // Tags screen, so the group and the screen that curates it read as one
+    // subject — an override on either is a deliberate choice, not a surprise.
+    defaultConcept: "shapes",
+    wired: true,
+    namespace: "tree",
+  },
 
   /* ---------------------------------------------------------------------------------
      CSV Analysis — nav sections.

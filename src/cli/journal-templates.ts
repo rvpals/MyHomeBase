@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import {
   applyPrefillTemplate,
+  clearPrefillTemplateIcon,
   deletePrefillTemplate,
   emptyPrefillValues,
   getPrefillTemplateByName,
@@ -7,9 +9,11 @@ import {
   prefillFieldLabel,
   savePrefillTemplate,
   setPrefillTemplateEnabled,
+  setPrefillTemplateIcon,
   type JournalPrefillField,
   type JournalPrefillTemplate,
 } from "@/lib/journal";
+import type { ImageUploadMimeType } from "@/lib/shared/image-upload";
 import { deps } from "@/lib/wiring";
 import { parseFlags } from "./parse-flags";
 
@@ -25,6 +29,8 @@ import { parseFlags } from "./parse-flags";
  *   journal-templates enable  --name "Gym"
  *   journal-templates disable --name "Gym"
  *   journal-templates delete  --name "Gym"
+ *   journal-templates set-icon   --name "Gym" --file ./gym.png
+ *   journal-templates clear-icon --name "Gym"
  *
  * `apply` is the interesting one: it prints what a new entry would be prefilled
  * with, resolving "current date"/"current time" against this machine's clock. It
@@ -55,9 +61,15 @@ export async function journalTemplatesCommand(args: string[]): Promise<void> {
       return setEnabled(flags.name, false);
     case "delete":
       return remove(flags.name);
+    case "set-icon":
+      return setIcon(flags.name, flags.file);
+    case "clear-icon":
+      return clearIcon(flags.name);
     default:
       console.error(`Unknown subcommand "${subcommand ?? "(none)"}".`);
-      console.error("Use: list | show | apply | set | enable | disable | delete");
+      console.error(
+        "Use: list | show | apply | set | enable | disable | delete | set-icon | clear-icon",
+      );
       process.exitCode = 1;
   }
 }
@@ -173,4 +185,70 @@ function remove(name: string | undefined): void {
   if (!template) return;
   deletePrefillTemplate(deps.journalRepo, template.id);
   console.log(`Deleted "${template.name}".`);
+}
+
+/**
+ * The mime type for a file, from its extension.
+ *
+ * An extension map rather than sniffing the bytes: `decodeImageUpload` in lib is
+ * what actually enforces the allowlist, so this only has to name the type the
+ * caller clearly meant. An unknown extension is refused here rather than guessed,
+ * because guessing `image/png` for a `.svg` would smuggle one past a check that
+ * exists to keep script out of a blob this app serves from its own origin.
+ */
+function mimeTypeForFile(file: string): ImageUploadMimeType | undefined {
+  const extension = file.slice(file.lastIndexOf(".")).toLowerCase();
+  if (extension === ".png") return "image/png";
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".gif") return "image/gif";
+  return undefined;
+}
+
+/**
+ * Uploads a template's icon from a file on disk (migration 0176).
+ *
+ * The web form reads the bytes in the browser; here they come off the filesystem.
+ * Both hand the same `{ mimeType, base64Data }` to the same use-case, which is
+ * the point — the size cap and the type allowlist are enforced in `lib`, not in
+ * either adapter.
+ */
+function setIcon(name: string | undefined, file: string | undefined): void {
+  const template = mustFind(name);
+  if (!template) return;
+  if (!file) {
+    console.error("Pass --file with a path to a PNG, JPEG, WebP or GIF.");
+    process.exitCode = 1;
+    return;
+  }
+  const mimeType = mimeTypeForFile(file);
+  if (!mimeType) {
+    console.error(`Can't tell the image type of "${file}" — use .png, .jpg, .webp or .gif.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  let base64Data: string;
+  try {
+    base64Data = readFileSync(file).toString("base64");
+  } catch {
+    console.error(`Couldn't read "${file}".`);
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    setPrefillTemplateIcon(deps.journalRepo, template.id, { mimeType, base64Data });
+    console.log(`Set the icon for "${template.name}" from ${file}.`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}
+
+function clearIcon(name: string | undefined): void {
+  const template = mustFind(name);
+  if (!template) return;
+  clearPrefillTemplateIcon(deps.journalRepo, template.id);
+  console.log(`Removed the icon for "${template.name}".`);
 }

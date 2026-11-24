@@ -9,14 +9,22 @@ import {
   rowOf,
   toFen,
 } from "./chess-board";
-import { applyChessMove, generateLegalMoves, isInCheck } from "./chess-moves";
+import { chargeChessClock, createChessClock, zeroChessClock } from "./chess-clock";
+import {
+  applyChessMove,
+  generateLegalMoves,
+  isInCheck,
+  isSquareAttacked,
+} from "./chess-moves";
 import { findMoveByUci, moveToSan, moveToUci } from "./chess-notation";
 import {
+  CHESS_ASSIST_PENALTY_FRACTION,
   CHESS_FINISHED_STATUSES,
   CHESS_LEVEL_SETUP,
   CHESS_SCORE_BASE,
   CHESS_SCORE_FLOOR_FRACTION,
   CHESS_SQUARE_COUNT,
+  type ChessClock,
   type ChessColor,
   type ChessGame,
   type ChessLevel,
@@ -25,6 +33,7 @@ import {
   type ChessPosition,
   type ChessSquare,
   type ChessStatus,
+  type ChessTimeControl,
 } from "./types";
 
 /**
@@ -51,6 +60,8 @@ export function startChessGame(input: {
   humanColor: ChessColor;
   level: ChessLevel;
   fen?: string;
+  /** Defaults to `untimed`, which is what every caller written before clocks meant. */
+  timeControl?: ChessTimeControl;
 }): ChessGame {
   const initialFen = input.fen?.trim() || CHESS_START_FEN;
   const position = parseFen(initialFen);
@@ -72,7 +83,15 @@ export function startChessGame(input: {
     winner: winnerFor(status, position),
     humanColor: input.humanColor,
     level: input.level,
+    hintsUsed: 0,
+    takebacksUsed: 0,
+    clock: createChessClock(input.timeControl ?? "untimed"),
   };
+}
+
+/** Whether this game is on the clock. */
+export function isChessGameTimed(game: ChessGame): boolean {
+  return game.clock !== undefined;
 }
 
 /** Whether nobody is to move again. */
@@ -90,8 +109,16 @@ export function isHumanTurn(game: ChessGame): boolean {
   return chessTurn(game) === game.humanColor;
 }
 
+/**
+ * The outcome of trying to play a move.
+ *
+ * `move` and `san` are **absent on a flag**: a clock that runs out mid-move ends the
+ * game and the move never lands, so there is nothing to record. That is still `ok`,
+ * because the attempt was understood and the game legitimately moved on — `ok: false`
+ * is reserved for "that is not a legal move", which leaves the game where it was.
+ */
 export type ChessMoveResult =
-  | { ok: true; game: ChessGame; move: ChessMove; san: string }
+  | { ok: true; game: ChessGame; move?: ChessMove; san: string }
   | { ok: false; reason: string };
 
 /**
@@ -102,13 +129,83 @@ export type ChessMoveResult =
  * save — and every caller has something better to do with it than unwind. The same call
  * `evaluate` in `src/lib/calculator` makes.
  */
-export function playChessMove(game: ChessGame, uci: string): ChessMoveResult {
+export function playChessMove(
+  game: ChessGame,
+  uci: string,
+  options: { elapsedMs?: number } = {},
+): ChessMoveResult {
   if (isChessGameOver(game)) return { ok: false, reason: "This game is already over." };
 
   const move = findMoveByUci(game.position, uci);
   if (!move) return { ok: false, reason: "That is not a legal move." };
 
+  /*
+    The clock is charged **before** the move is applied, and a flag stops the move being
+    applied at all. That is the rule rather than a shortcut: a player whose time runs
+    out mid-move has lost, and letting the move land first would let a losing side
+    deliver mate with a fallen flag.
+
+    `elapsedMs` is absent wherever time is not being measured — a replay, the CLI, a
+    test — and an unmeasured move costs nothing, which is what keeps every existing
+    caller correct.
+  */
+  if (game.clock && options.elapsedMs !== undefined) {
+    const mover = game.position.turn;
+    const charged = chargeChessClock(game.clock, mover, options.elapsedMs);
+    if (charged.flagged) {
+      return { ok: true, ...flagToGame({ ...game, clock: charged.clock }, mover) };
+    }
+    return { ok: true, ...applyToGame({ ...game, clock: charged.clock }, move) };
+  }
+
   return { ok: true, ...applyToGame(game, move) };
+}
+
+/**
+ * The game lost on time by `color` — what the view calls when the ticking display
+ * reaches zero and no move has arrived.
+ *
+ * **A flag is not always a win.** If the side still on the clock could not deliver mate
+ * with what it has left on the board, the game is drawn rather than won, which is the
+ * official rule and the one case where running out of time costs nothing.
+ */
+export function flagChessGame(game: ChessGame, color: ChessColor): ChessGame {
+  if (isChessGameOver(game) || !game.clock) return game;
+  return flagToGame({ ...game, clock: zeroChessClock(game.clock, color) }, color).game;
+}
+
+function flagToGame(
+  game: ChessGame,
+  color: ChessColor,
+): { game: ChessGame; move?: ChessMove; san: string } {
+  const opponent = oppositeColor(color);
+  return {
+    san: "",
+    game: {
+      ...game,
+      status: "timeout",
+      winner: canChessColorMate(game.position, opponent) ? opponent : undefined,
+    },
+  };
+}
+
+/**
+ * Whether `color` has enough on the board to checkmate a bare king.
+ *
+ * Deliberately a different question from `hasInsufficientMaterial`, which asks whether
+ * **neither** side can mate. A timeout only needs to know about the side that is still
+ * running: a lone king, or a king with one minor piece, cannot force mate and so cannot
+ * win on time.
+ */
+export function canChessColorMate(position: ChessPosition, color: ChessColor): boolean {
+  let minors = 0;
+  for (const piece of position.board) {
+    if (!piece || piece.color !== color || piece.type === "k") continue;
+    if (piece.type === "p" || piece.type === "r" || piece.type === "q") return true;
+    minors += 1;
+    if (minors > 1) return true;
+  }
+  return false;
 }
 
 /** Plays a move the generator produced, skipping the coordinate lookup. */
@@ -229,11 +326,19 @@ export function hasInsufficientMaterial(position: ChessPosition): boolean {
  * representation of the same history is a second thing that can disagree.
  */
 export function undoChessMove(game: ChessGame): ChessGame {
-  if (game.moves.length === 0) return game;
+  if (!canUndoChessMove(game)) return game;
 
+  /*
+    Take back at least one ply, then keep going until it is the player's move again.
+
+    The old test — "was the move I just removed the computer's?" — stopped one ply
+    short. After 1.e4 e5 it removed only Black's reply and handed back a board with
+    Black to move, so the computer immediately replayed it and nothing had been undone.
+    Asking about the *resulting turn* instead is the question that actually matters, and
+    it is right for a player of either colour.
+  */
   let moves = game.moves.slice(0, -1);
-  // Drop the computer's reply too, when the move just removed was its.
-  if (moves.length > 0 && plyColor(game, moves.length - 1) !== game.humanColor) {
+  while (moves.length > 0 && turnAfter(game, moves.length) !== game.humanColor) {
     moves = moves.slice(0, -1);
   }
 
@@ -242,6 +347,11 @@ export function undoChessMove(game: ChessGame): ChessGame {
     humanColor: game.humanColor,
     level: game.level,
     moves: moves.map((entry) => entry.uci),
+    clock: game.clock,
+    // Carried across and incremented: a rebuild starts from the opening position, so
+    // without this every takeback would also wipe the record of the ones before it.
+    hintsUsed: game.hintsUsed,
+    takebacksUsed: game.takebacksUsed + 1,
   });
 
   // A replay of moves this game already made cannot fail, but it is checked rather
@@ -249,15 +359,34 @@ export function undoChessMove(game: ChessGame): ChessGame {
   return rebuilt.ok ? rebuilt.game : game;
 }
 
-/** The colour that made the move at `index`, from the starting position's turn. */
-function plyColor(game: ChessGame, index: number): ChessColor {
+/** Whose turn it is after `count` plies have been played from the starting position. */
+function turnAfter(game: ChessGame, count: number): ChessColor {
   const first = game.initialFen.trim().split(/\s+/)[1] === "b" ? "b" : "w";
-  return index % 2 === 0 ? first : oppositeColor(first);
+  return count % 2 === 0 ? first : oppositeColor(first);
 }
 
-/** Whether the player may take a move back. */
+/**
+ * Records that the player looked at a hint.
+ *
+ * A separate call rather than something `chessHint` does itself, because that function
+ * is a pure query the analysis screen and the tests also use — only the board knows
+ * that a *player* asked, and only then should it cost anything.
+ */
+export function recordChessHint(game: ChessGame): ChessGame {
+  if (isChessGameOver(game)) return game;
+  return { ...game, hintsUsed: game.hintsUsed + 1 };
+}
+
+/**
+ * Whether the player may take a move back.
+ *
+ * **Never in a timed game.** A takeback would have to put time back on both clocks, and
+ * what a player spent thinking about a move they then unmade is not recoverable — the
+ * honest answer is that the clock has already run. Refusing is also what stops Undo
+ * being a way to play a blitz game at leisure.
+ */
 export function canUndoChessMove(game: ChessGame): boolean {
-  return game.moves.length > 0 && !isChessGameOver(game);
+  return game.moves.length > 0 && !isChessGameOver(game) && !isChessGameTimed(game);
 }
 
 /** The player resigns. The computer wins whatever is on the board. */
@@ -296,6 +425,17 @@ export function replayChessMoves(input: {
   humanColor: ChessColor;
   level: ChessLevel;
   moves: readonly string[];
+  /**
+   * The clock as it stood, attached to the rebuilt game.
+   *
+   * Taken rather than recomputed, because time spent is the one thing about a game the
+   * moves cannot rebuild — so it is stored outright and simply carried across. No move
+   * is charged during a replay: `playChessMove` is called without an elapsed time.
+   */
+  clock?: ChessClock;
+  /** Help already taken, carried across rather than recomputed — see `ChessGame`. */
+  hintsUsed?: number;
+  takebacksUsed?: number;
 }): ChessReplayResult {
   let game: ChessGame;
   try {
@@ -319,7 +459,15 @@ export function replayChessMoves(input: {
     game = played.game;
   }
 
-  return { ok: true, game };
+  return {
+    ok: true,
+    game: {
+      ...game,
+      clock: input.clock,
+      hintsUsed: input.hintsUsed ?? 0,
+      takebacksUsed: input.takebacksUsed ?? 0,
+    },
+  };
 }
 
 /**
@@ -342,6 +490,95 @@ export function chessMoveTargets(game: ChessGame, square: ChessSquare): ChessSqu
 export function chessMovesFrom(game: ChessGame, square: ChessSquare): ChessMove[] {
   if (isChessGameOver(game)) return [];
   return generateLegalMoves(game.position).filter((move) => move.from === square);
+}
+
+/**
+ * What the player could do this turn: every square they can reach, and every piece
+ * that has somewhere to go.
+ *
+ * The **Show valid moves** aid. Both halves come from one walk of the legal move list,
+ * rather than two functions each regenerating it — and the square lists are
+ * deduplicated, so a square three pieces can reach lights up once.
+ *
+ * Returns nothing at all when it is not the player's move: an aid that showed the
+ * computer's options while it was thinking would be giving away its plan, and an aid
+ * that kept showing the player's after they moved would be describing a position that
+ * is no longer on the board.
+ */
+export function chessPlayerOptions(game: ChessGame): {
+  reachable: ChessSquare[];
+  movable: ChessSquare[];
+} {
+  if (!isHumanTurn(game)) return { reachable: [], movable: [] };
+
+  const reachable = new Set<ChessSquare>();
+  const movable = new Set<ChessSquare>();
+
+  for (const move of generateLegalMoves(game.position)) {
+    reachable.add(move.to);
+    movable.add(move.from);
+  }
+  return { reachable: [...reachable], movable: [...movable] };
+}
+
+/**
+ * Which squares each side attacks or defends — the **sphere of influence** aid.
+ *
+ * "Control", not "can move to", and the difference is the whole point of showing it: a
+ * square holding your own piece is still yours, because you are defending it. That is
+ * what makes a piece safe to leave there, and it is the concept a beginner is missing
+ * when they put a knight somewhere it simply gets taken.
+ *
+ * Built from `isSquareAttacked`, the same function the move generator uses to decide
+ * check and castling — so what the board draws and what the rules enforce cannot
+ * disagree. Sixty-four calls per side, run only while the aid is switched on.
+ *
+ * Reveals nothing hidden: every piece it reads is already on screen.
+ */
+export function chessInfluence(game: ChessGame): {
+  mine: boolean[];
+  theirs: boolean[];
+} {
+  const computer = oppositeColor(game.humanColor);
+  const mine: boolean[] = [];
+  const theirs: boolean[] = [];
+
+  for (let square = 0; square < CHESS_SQUARE_COUNT; square += 1) {
+    mine.push(isSquareAttacked(game.position.board, square, game.humanColor));
+    theirs.push(isSquareAttacked(game.position.board, square, computer));
+  }
+  return { mine, theirs };
+}
+
+/**
+ * The position as it stood after `ply` moves, for stepping back through a game.
+ *
+ * `ply` of 0 is the starting position, 1 is after the first move, and so on. Out of
+ * range is clamped rather than refused: the caller is a pair of arrow buttons, and
+ * clamping is exactly what they would otherwise have to do themselves.
+ *
+ * Replayed from the start each time rather than kept as a stack of past positions. A
+ * few hundred moves is nothing next to one search, and a second stored representation
+ * of the game is a second thing that can disagree with the move list.
+ */
+export function chessPositionAtPly(
+  game: ChessGame,
+  ply: number,
+): { position: ChessPosition; lastMove?: { from: ChessSquare; to: ChessSquare } } {
+  const start = parseFen(game.initialFen);
+  if (!start) return { position: game.position };
+
+  const wanted = Math.max(0, Math.min(game.moves.length, Math.floor(ply)));
+  let position = start;
+  let lastMove: { from: ChessSquare; to: ChessSquare } | undefined;
+
+  for (let index = 0; index < wanted; index += 1) {
+    const move = findMoveByUci(position, game.moves[index]!.uci);
+    if (!move) break;
+    lastMove = { from: move.from, to: move.to };
+    position = applyChessMove(position, move);
+  }
+  return { position, lastMove };
 }
 
 /** The square of the king that is in check, or -1 when neither is. */
@@ -372,6 +609,22 @@ export function chessCapturedPieces(game: ChessGame, color: ChessColor): ChessPi
 
   const before = count(start);
   const now = count(game.position);
+
+  /*
+    Promotions are put back before anything is compared.
+
+    A pawn that promoted is missing from the board, and a plain before-minus-now would
+    report it as captured — so promoting a pawn showed, wrongly, as having lost one.
+    Adding the promotion back to the pawn count and taking it off the new piece's count
+    restores what the material comparison is actually trying to measure.
+  */
+  for (const [index, move] of game.moves.entries()) {
+    const promotion = move.uci.length === 5 ? (move.uci[4] as ChessPieceType) : undefined;
+    if (!promotion || turnAfter(game, index) !== color) continue;
+    now.set("p", (now.get("p") ?? 0) + 1);
+    now.set(promotion, Math.max(0, (now.get(promotion) ?? 0) - 1));
+  }
+
   const captured: ChessPieceType[] = [];
 
   // Order is by value, so the row reads as a material count rather than a jumble.
@@ -407,6 +660,9 @@ export function describeChessResult(game: ChessGame): string {
       return "Draw — neither side has enough material to checkmate.";
     case "draw-agreed":
       return "Draw agreed.";
+    case "timeout":
+      if (!game.winner) return "Out of time — a draw, since neither side could checkmate.";
+      return youWon ? "The computer ran out of time — you win." : "You ran out of time.";
     case "check":
       return "Check.";
     default:
@@ -426,7 +682,18 @@ export function scoreChessGame(game: ChessGame): number {
 
   const base = CHESS_SCORE_BASE * CHESS_LEVEL_SETUP[game.level].multiplier;
   const floor = Math.round(base * CHESS_SCORE_FLOOR_FRACTION);
-  return Math.max(floor, base - chessFullMoves(game));
+  const earned = Math.max(floor, base - chessFullMoves(game));
+
+  /*
+    Help is charged after the length floor, not before it.
+
+    The floor exists so a long, hard-fought win still pays something; it is not there to
+    guarantee a payout to a game the engine played on the player's behalf. So assists
+    come off the floored figure and can take it all the way to zero.
+  */
+  const assists = game.hintsUsed + game.takebacksUsed;
+  const penalty = assists * base * CHESS_ASSIST_PENALTY_FRACTION;
+  return Math.max(0, Math.round(earned - penalty));
 }
 
 /** Full moves played, counting a pair of plies as one. */

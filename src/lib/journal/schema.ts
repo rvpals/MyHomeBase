@@ -605,6 +605,76 @@ export function parseStoredPrefillFields(
   return parsed;
 }
 
+// --- Taxonomy combos ---------------------------------------------------------
+//
+// A named pairing of categories and tags. See migration 0177 for why the names
+// are JSON arrays rather than child rows, and why an empty array is a real value.
+
+/**
+ * One name in a combo.
+ *
+ * Trimmed and required-non-empty, because a blank chip is not something the
+ * picker can render or the writer can remove — the editors build these arrays
+ * from `TokenPicker`, which never emits one, so a blank here means hand-written
+ * input and is worth rejecting rather than storing.
+ */
+const comboNameSchema = z.string().trim().min(1, "A combo cannot contain a blank name.");
+
+/**
+ * De-duplicates a name list case-insensitively, keeping the first spelling and
+ * the original order.
+ *
+ * The same folding `TokenPicker` applies while chips are being added, repeated
+ * here because the CLI can pass any array it likes — and because "HEALTH" and
+ * "health" applied to one entry would produce two chips the writer then has to
+ * remove by hand.
+ */
+function dedupeComboNames(names: string[]): string[] {
+  const seen = new Set<string>();
+  const kept: string[] = [];
+  for (const name of names) {
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push(name);
+  }
+  return kept;
+}
+
+export const saveTaxonomyComboSchema = z.object({
+  /** Omitted when creating; present when editing an existing combo. */
+  id: z.number().int().positive().optional(),
+  name: z.string().trim().min(1, "Give the combo a name."),
+  description: z.string().default(""),
+  categories: z.array(comboNameSchema).default([]).transform(dedupeComboNames),
+  tags: z.array(comboNameSchema).default([]).transform(dedupeComboNames),
+});
+
+export type SaveTaxonomyComboInput = z.input<typeof saveTaxonomyComboSchema>;
+
+/** What the repository persists, after defaults and de-duplication. */
+export type TaxonomyComboWriteData = z.output<typeof saveTaxonomyComboSchema>;
+
+/**
+ * Reads a stored `categories_json` / `tags_json` string back into a name list.
+ *
+ * The same forgiving contract as `parseStoredPrefillFields` above, for the same
+ * reason: a combo whose JSON has rotted should come back empty and re-editable,
+ * not 500 the Meta Data screen. Non-string members are dropped individually, so
+ * one bad element doesn't discard a list someone spent time assembling.
+ */
+export function parseStoredComboNames(json: string): string[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(raw)) return [];
+  const names = raw.filter((item): item is string => typeof item === "string" && item.trim() !== "");
+  return dedupeComboNames(names.map((name) => name.trim()));
+}
+
 // --- Calendar (.ics) import --------------------------------------------------
 //
 // What the Calendar Import wizard sends across the boundary. The web action and

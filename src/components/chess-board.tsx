@@ -22,13 +22,22 @@
 // different boards, and only one of them is the game people know. Everything *around*
 // the board stays on theme tokens.
 
-import { type CSSProperties, type ReactElement } from "react";
+import { useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { squareName, type ChessColor, type ChessPieceType } from "@/lib/games";
 
 /** One piece, as the board draws it. */
 export interface ChessBoardPiece {
   type: ChessPieceType;
   color: ChessColor;
+}
+
+/**
+ * Which side attacks or defends each square, for the sphere-of-influence aid. Two
+ * arrays of 64, in board order.
+ */
+export interface ChessBoardInfluence {
+  mine: readonly boolean[];
+  theirs: readonly boolean[];
 }
 
 /** A move the board marks, as a pair of squares. */
@@ -56,8 +65,34 @@ export interface ChessBoardProps {
   checkSquare?: number;
   /** A suggested move, from the Hint button. */
   hint?: ChessBoardMove;
+  /**
+   * Every square the player could move some piece to this turn — the **Show valid
+   * moves** aid, drawn as a soft wash under everything else.
+   */
+  reachable?: readonly number[];
+  /** The player's pieces that have a legal move. Outlined, so they read as pickable. */
+  movable?: readonly number[];
+  /**
+   * Who controls each square — the **sphere of influence** aid. Drawn as a small corner
+   * wedge per side rather than a wash, so a contested square can show both and so it
+   * layers under the selection, last-move, check and hint marks instead of fighting them.
+   */
+  influence?: ChessBoardInfluence;
   /** Raised with the square's **board** index, whatever the orientation. */
   onSquare?: (square: number) => void;
+  /**
+   * Raised when a piece is dragged onto another square — the same intent as tapping
+   * the piece and then the target, and the parent should treat it that way.
+   */
+  onDragMove?: (from: number, to: number) => void;
+  /**
+   * The move to slide in, played once when it changes.
+   *
+   * Separate from `lastMove`, which marks two squares and stays marked: this is a
+   * one-shot animation, and conflating them would replay the slide on every unrelated
+   * re-render.
+   */
+  animate?: ChessBoardMove;
   /** Stops every square being pressed — while the computer is thinking, or once over. */
   disabled?: boolean;
   /** File letters and rank digits in the margins of the squares. On by default. */
@@ -76,7 +111,12 @@ export function ChessBoard({
   lastMove,
   checkSquare,
   hint,
+  reachable,
+  movable,
+  influence,
   onSquare,
+  onDragMove,
+  animate,
   disabled = false,
   showCoordinates = true,
   className = "",
@@ -87,6 +127,47 @@ export function ChessBoard({
     orientation === "w" ? index : 63 - index,
   );
   const targetSet = new Set(targets ?? []);
+  const reachableSet = new Set(reachable ?? []);
+  const movableSet = new Set(movable ?? []);
+
+  /** The square a drag started from, while one is in progress. */
+  const [dragging, setDragging] = useState<number | undefined>(undefined);
+
+  /*
+    Which square holds keyboard focus.
+
+    Sixty-four buttons in a row is sixty-four tab stops, which makes reaching the board
+    with a keyboard an exercise in patience. One stop plus arrow keys is how a grid of
+    controls is meant to behave: the board takes focus once and the arrows walk it.
+  */
+  const [focused, setFocused] = useState(() => (orientation === "w" ? 60 : 4));
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  /** Moves keyboard focus by one square, in the direction the board is drawn. */
+  function moveFocus(rowStep: number, fileStep: number) {
+    const flip = orientation === "w" ? 1 : -1;
+    const row = Math.floor(focused / 8) + rowStep * flip;
+    const file = (focused % 8) + fileStep * flip;
+    if (row < 0 || row > 7 || file < 0 || file > 7) return;
+
+    const next = row * 8 + file;
+    setFocused(next);
+    // The button has to be told to take focus; React only re-renders the attribute.
+    boardRef.current?.querySelector<HTMLButtonElement>(`[data-square="${next}"]`)?.focus();
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const steps: Record<string, [number, number]> = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+    };
+    const step = steps[event.key];
+    if (!step) return;
+    event.preventDefault();
+    moveFocus(step[0], step[1]);
+  }
 
   return (
     <div
@@ -97,6 +178,8 @@ export function ChessBoard({
       // piece of state a screen reader most needs here.
       role="group"
       aria-label="Chessboard"
+      ref={boardRef}
+      onKeyDown={onKeyDown}
     >
       {order.map((square) => {
         const piece = squares[square] ?? null;
@@ -110,6 +193,7 @@ export function ChessBoard({
 
         const marks = [
           (row + file) % 2 === 0 ? "chess-square-light" : "chess-square-dark",
+          square === dragging ? "chess-square-dragging" : "",
           square === selected ? "chess-square-selected" : "",
           square === checkSquare ? "chess-square-check" : "",
           lastMove && (square === lastMove.from || square === lastMove.to)
@@ -129,12 +213,43 @@ export function ChessBoard({
             // rather than taking the hard offset shadow sixty-four times over. See
             // design.md, "A dense grid of keys is not a row of buttons".
             className={`chess-square ${marks}`}
+            data-square={square}
             // Disabled rather than hidden, so the board stays readable while the
             // computer thinks and the layout never shifts.
             disabled={disabled}
             onClick={() => onSquare?.(square)}
             aria-label={describeSquare(square, piece)}
             aria-pressed={square === selected}
+            // One tab stop for the whole board; the arrows walk it from there.
+            tabIndex={square === focused ? 0 : -1}
+            onFocus={() => setFocused(square)}
+            /*
+              Dragging a piece is the other way to say "this one, to there" — the same
+              intent as the two taps, so it is reported as one move rather than as two
+              separate square presses. Tapping still works unchanged, which matters: a
+              drag is awkward on a phone and impossible with a keyboard.
+            */
+            draggable={!disabled && piece !== null}
+            onDragStart={(event) => {
+              if (disabled || !piece) return;
+              setDragging(square);
+              event.dataTransfer.effectAllowed = "move";
+              // Firefox ignores a drag that carries no payload.
+              event.dataTransfer.setData("text/plain", String(square));
+            }}
+            onDragEnd={() => setDragging(undefined)}
+            onDragOver={(event) => {
+              if (disabled || dragging === undefined) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const from = dragging;
+              setDragging(undefined);
+              if (disabled || from === undefined || from === square) return;
+              onDragMove?.(from, square);
+            }}
           >
             {showCoordinates && onBottomEdge && (
               <span className="chess-coord chess-coord-file" aria-hidden="true">
@@ -147,6 +262,23 @@ export function ChessBoard({
               </span>
             )}
 
+            {/*
+              The two learning aids, furthest back of all the marks: a wash for a square
+              the player can reach, an outline for a piece that can move, and a corner
+              wedge per side for who controls the square. All `pointer-events: none`, so
+              none of them changes what a tap does.
+            */}
+            {reachableSet.has(square) && (
+              <span className="chess-reachable" aria-hidden="true" />
+            )}
+            {movableSet.has(square) && <span className="chess-movable" aria-hidden="true" />}
+            {influence?.mine[square] && (
+              <span className="chess-influence chess-influence-mine" aria-hidden="true" />
+            )}
+            {influence?.theirs[square] && (
+              <span className="chess-influence chess-influence-theirs" aria-hidden="true" />
+            )}
+
             {/* The move dot sits under the piece, so a capture shows as a ring around
                 what is being taken rather than a dot on top of it. */}
             {isTarget && (
@@ -156,7 +288,26 @@ export function ChessBoard({
               />
             )}
 
-            {piece && <ChessPieceGlyph piece={piece} />}
+            {piece && (
+              <ChessPieceGlyph
+                piece={piece}
+                className={animate && animate.to === square ? "chess-piece-arriving" : ""}
+                /*
+                  The slide: the piece starts drawn at the square it came from and
+                  travels to where it now is. One CSS animation with the distance passed
+                  in, rather than an overlay of floating pieces — the squares are a
+                  uniform grid, so the offset is just the difference in rows and files.
+                */
+                style={
+                  animate && animate.to === square
+                    ? ({
+                        "--chess-slide-x": `${((animate.from % 8) - file) * (orientation === "w" ? 100 : -100)}%`,
+                        "--chess-slide-y": `${(Math.floor(animate.from / 8) - row) * (orientation === "w" ? 100 : -100)}%`,
+                      } as CSSProperties)
+                    : undefined
+                }
+              />
+            )}
           </button>
         );
       })}

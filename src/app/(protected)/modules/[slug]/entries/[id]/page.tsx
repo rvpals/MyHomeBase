@@ -6,6 +6,7 @@ import {
   getEntryNeighbors,
   listCategories,
   listTags,
+  listTaxonomyCombos,
   resolveJournalPreferences,
 } from "@/lib/journal";
 import { listDashboardTextures } from "@/lib/dashboard-texture";
@@ -86,6 +87,7 @@ export default async function JournalEntryPage({
           tagIcons={tagIcons}
           categoryOptions={categories.map((category) => category.name)}
           tagOptions={tags.map((tag) => tag.name)}
+          taxonomyCombos={listTaxonomyCombos(deps.journalRepo)}
           locationCategoryOptions={listLocationCategories(deps.sysLocationRepo).map(
             (row) => row.name,
           )}

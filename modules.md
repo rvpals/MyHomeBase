@@ -509,9 +509,36 @@ migration:
   entry's date is the writer's calendar day, not the server's instant.
 - **Applying fills blanks only.** A field already typed into is never overwritten, so the
   control needs no confirmation and no undo.
+- **A template can carry an icon** (`migrations/0176`), optional, uploaded in the same
+  dialog that names it. It shows beside the name on the Templates screen and in the New
+  Entry picker — which is why that picker is an `IconSelect` and not a native `<select>`:
+  neither `<select>` nor `<datalist>` can render an image in an option. The icon is keyed
+  by the template's **id**, not its name, because the name is editable.
 
 Locations and weather are deliberately not templatable: the entry form already resolves
 both live from GPS, and a stored copy would be staler than one button press.
+
+**Taxonomy combos** (`migrations/0177`) are the other half of that idea, and deliberately
+*not* the same feature. A combo is a named pairing of categories and tags, managed on
+Configuration → Meta Data → **Prefill Tags & Category Combo**, and applied from the
+**Prefill Category/Tags Combo** button inside the Categories & Tags group box of **both**
+entry editors. Three differences from a template, each load-bearing:
+
+- **A combo replaces; a template fills blanks.** That is the whole point — a combo is the
+  tool for fixing an entry that is already tagged wrongly, which a fill-only-blanks
+  template cannot do. The editor confirms first, but only when there is something to lose.
+- **A combo works on an existing entry.** A template is offered on New Entry only, because
+  an entry written months ago has nothing for a template to seed.
+- **An empty list is a real value.** A combo whose tags are `[]` *clears* the entry's tags.
+
+Like the templates and the saved filters, a combo stores taxonomy **names as JSON**, so a
+category or tag merge has to rewrite it — `taxonomy-merge.ts` now follows a merge into
+three places, and the merge plan names the affected combos before anything is written.
+
+**Both travel in the metadata backup.** The Meta Data screen's backup/restore bundle
+carries the combos and the template icons alongside what it already held. The format
+version stays at 1: every new field is optional or defaulted, so an older bundle still
+restores and an older reader still ignores what it doesn't know.
 
 **CSV import lives in its own section** — *CSV Import*, now the first child of the
 **Data Management** group in the section panel. It used to be an "Import from CSV" card at
@@ -1145,11 +1172,12 @@ is never retried at all. So a track is asked about at most once, ever.
 **Games** (`games`) — a small arcade with a shared high-score board. Sections:
 **Arcade** (the list of games; Play opens the board full-bleed), **Scores**, and
 **Configuration** (the catalogue read-only, plus Pictionary's word bank). Library:
-`src/lib/games`. Four tables: `gam_scores` (`migrations/0074`, registered by `0075`),
+`src/lib/games`. Five tables: `gam_scores` (`migrations/0074`, registered by `0075`),
 `gam_pictionary_words` (`migrations/0164`), `gam_saved_runs` (`migrations/0171`: runs
 in progress, one per player per game key, so a board can be resumed on any device —
 Arrow Clearing through `arrow-save.ts` and `saved-runs.ts`, and the chess autosave) and
-`gam_chess_saves` (`migrations/0173`: chess games kept under a name, many per player).
+`gam_chess_saves` (`migrations/0173`: chess games kept under a name, many per player) and
+`gam_chess_results` (`migrations/0175`: every finished chess game's result and level).
 Fourteen games so far: **2048**,
 **Arrow Clearing**, **Tetris**, **Sudoku**, **Blackjack**, **Minesweeper**,
 **Mahjong Match**, **Mahjong**, **Bridge**, **Pac-Man**, **Pictionary**, **Word Wizard**,
@@ -1197,7 +1225,9 @@ worth knowing:
 - **The Messages panel narrates the search, and only when asked.** A collapsible card in
   the side panel holds a **See machine log** switch (off by default). With it on, the
   engine reports each finished depth of its iterative-deepening search — the move it
-  favours, the score, how many positions it looked at, the elapsed time — plus plain-English
+  favours, **the line it expects** (the principal variation, in algebraic notation, so
+  “Nf3 Nc6 Bb5” says *why* rather than just what), the score, how many positions it
+  looked at, the elapsed time — plus plain-English
   notes for what makes a level weak (it rolled the dice; it does not check recaptures; it
   scored every move and added randomness) and a line for the move finally chosen, with a
   live "Thinking… 1.2s" under it. Hint and Offer draw narrate too. **With the switch off
@@ -1207,6 +1237,154 @@ worth knowing:
   `log` flag on the request and posts progress messages while it searches, so the panel
   fills in live; on the main-thread fallback the same lines arrive in one burst at the end.
   The events (`ChessThinkingEvent`) carry display-ready text, so the view only lays them out.
+- **The clock is optional, and the library never reads one.** Six controls (Untimed —
+  the default — 1+0, 3+2, 5+0, 10+0, 15+10) are picked on the setup screen; `chess-clock.ts`
+  holds the rules and takes **elapsed milliseconds as an argument**, so the whole module
+  is pure and the view is the only thing measuring real time. A stored `startedAt` would
+  have been wrong the moment a save sat on disk overnight, which is the bug that shape
+  makes impossible. Time is charged when a move lands, not per tick, so a throttled tab
+  can make the display stutter but cannot change the result. Four rules worth knowing: an
+  increment is only paid to a move that **arrived in time**, so it can never rescue a
+  fallen flag; a flag is a **draw, not a loss**, when the opponent could not have mated
+  (`canChessColorMate`); the computer rations its budget (`chessSearchBudgetMs` — roughly
+  a thirtieth of its clock) so Advanced does not flag itself in a one-minute game; and
+  **Undo is refused on the clock**, because a takeback cannot honestly restore time
+  already spent. The clock is stored in the save outright — it is the one thing the moves
+  cannot rebuild — as an **optional** field, so every save written before clocks existed
+  still loads, as the untimed game it was. The CLI refuses timed games in both directions:
+  a command that exits between moves has nothing watching the clock.
+- **Two learning aids, both off by default** (Board help card): **Show valid moves**
+  outlines every piece of yours that can move and tints the squares you could move one
+  to, and **Show sphere of influence** marks every square with who attacks or defends
+  it — green yours, red the computer's, both when contested. The second is the one worth
+  understanding: it counts **control, not "can move to"**, so a square your own piece
+  stands on is marked as yours because you are defending it, which is exactly what a
+  beginner is missing when a knight they placed simply gets taken. Both read the player's
+  side only, both come from functions already used by the rules (`generateLegalMoves`,
+  `isSquareAttacked`) so the aid and the rules cannot disagree, and both are computed
+  only while switched on. The moves aid draws nothing during the computer's turn, which
+  would otherwise be showing its options while it thinks. The choices live in
+  `localStorage`, per device: a beginner learning on the tablet should not have hints
+  follow them to the desktop.
+- **Post-game analysis scores every position once, not twice.** *Analyse game* appears
+  only on a finished game and produces an evaluation graph, a move list tagged Best /
+  Good / Inaccuracy / Mistake / Blunder, per-side counts, an average centipawn loss, and
+  a board you can click any move into to see what was played against what the engine
+  preferred. The obvious implementation — score the position before a move, then score
+  it again after — does double the work, because **the second score is the first score
+  of the next position**: so the run walks the game once and derives each move's loss
+  from the pair either side of it, 81 searches for an 80-move game rather than 160.
+  Four more choices worth knowing: the reader picks **Fast, Normal or Careful** per run
+  (roughly 8, 20 or 50 seconds for a 40-move game) because the accuracy-for-waiting
+  trade is theirs to make, and the screen names the speed that produced a verdict rather
+  than presenting it as fact; evaluations are **clamped to ±20 pawns**, or one forced
+  mate would flatten the graph and report a two-million-centipawn loss; a **terminal
+  position is decided outright** rather than searched, since with no legal moves the
+  search falls back to counting material and would score a checkmate as comfortable and
+  the mating move as a blunder; and **cancelling means terminating the worker**, which
+  is why analysis gets its own short-lived instance instead of sharing the one that
+  answers moves — a worker cannot be interrupted mid-search. Nothing is stored: a report
+  is recomputed on demand, because a stored one goes stale the moment the engine changes.
+- **Help is counted, and it costs.** Hint searches at **Advanced strength whatever
+  level you are playing**, and Undo is unlimited — both were free, which made a 300-point
+  Advanced win something the engine could have played on your behalf with every mistake
+  taken back. Each hint and each takeback now costs a quarter of the level base
+  (`CHESS_ASSIST_PENALTY_FRACTION`), charged **after** the length floor so four uses
+  cancel a win outright: that floor exists for a long hard game, not to guarantee a
+  payout to an assisted one. The counts live on the game and in the save, so closing and
+  reloading cannot wash them off, and they are optional in the save format so older rows
+  still load. Counted rather than forbidden, because Hint and Undo are how somebody
+  learns — a game played with help is still worth finishing, just not worth the same.
+- **The search, and what makes it quick enough to be worth a few seconds.** The engine
+  is alpha-beta with iterative deepening, and four things on top of it, all in
+  `chess-bot.ts`: a **transposition table** keyed by Zobrist hash (`chess-zobrist.ts`),
+  so a position reached by two move orders is searched once; **killer moves and a
+  history table**, so a move that refuted one line is tried first in its siblings;
+  **null-move pruning**, skipped while in check and in pawns-only positions where
+  zugzwang makes its premise false; and **repetition awareness**, so the computer stops
+  walking into a threefold draw from a winning position. The table stores *what a score
+  means* (`exact`, `lower`, `upper`), because alpha-beta does not always return a
+  position's true value and reusing a bound as exact is how a table makes an engine play
+  nonsense. Quiescence now **searches every move while in check** rather than standing
+  pat, which it could not legally do.
+- **Legality is decided by a pin table, not by copying the board sixty times a node.**
+  The generator used to test every pseudo-legal move by copying all 64 squares and
+  asking whether the king was left attacked, which was the most expensive thing the
+  search did. A piece can only expose its king by stepping off a line between the two,
+  so those lines are found **once** per position: an unpinned piece is legal with no
+  test, a pinned one may still move along its pin, and only king moves, en-passant
+  captures and moves played while in check take the full test. Each of those three can
+  expose a king in a way no pin table describes — a king walks into attacks rather than
+  off a line, and en passant removes two pieces from one rank at once, which is the case
+  every generator gets wrong. **Perft is what makes this safe to do**: it is exactly the
+  kind of change that looks right and quietly produces illegal moves.
+- **Measured: Advanced now reaches depth 6 from the opening — its configured maximum —
+  and depth 4 in a crowded middlegame inside 2.5 seconds, at roughly 32,000 positions a
+  second.** That is about 2.2× the node rate before the pin table, and a full ply deeper
+  in both positions. Full make/unmake would go further and is still **not** done; the
+  remaining cost is that every node still builds a new position object.
+- **The evaluation is its own file** (`chess-evaluate.ts`), because deciding what a
+  position is worth and deciding what to play are different jobs. Beyond material and
+  piece-square tables it understands king safety (the pawn shield and the file the king
+  stands on), doubled, isolated and passed pawns, the bishop pair, rooks on open and
+  half-open files, mobility, and — in the endgame — **driving a lone king to the edge**,
+  without which king and queen against a bare king shuffles until the fifty-move rule
+  ends it. One trap found by its own test and worth keeping in mind: the endgame is
+  decided by the **queen-and-minors rule**, not a material threshold, because a lone
+  queen outweighs a rook and a bishop, so a threshold left K+Q versus K classed as a
+  middlegame and the mating drive never ran.
+- **Advanced varies its openings without playing worse.** It adds no noise to its
+  scores, so it used to play the identical game every time. For the first eight moves it
+  now picks at random among the moves it rates **within a tenth of a pawn of its best** —
+  moves it considers equal, so the choice costs nothing it can measure. A forced mate is
+  never "equal" to anything.
+- **The board is as big as the window allows, and can be turned round.** Chess is the
+  one Arcade game opted into a wider container, because it draws a square board *and* a
+  side panel — at the shared width the board came out around 450px on any monitor. It is
+  also capped by `dvh`, so a short wide window does not push the controls off the
+  bottom (`dvh` rather than `vh`: Safari's collapsing URL bar makes `vh` lie). **Flip**
+  turns the board round; it follows your own colour until you ask otherwise.
+- **A move can be dragged as well as tapped, and both go through one function** —
+  so promotion, illegal targets and everything else behave identically whichever way
+  the move was made. The piece **slides** to its square, which needs no overlay: the
+  squares are a uniform grid, so the distance is two percentages handed to a CSS
+  keyframe, and it goes under reduced motion.
+- **The game can be stepped back through while it is still being played.** The strip
+  under the board walks the move list, and `chessPositionAtPly` replays from the start
+  to produce each position rather than keeping a stack of them — a second
+  representation of the game is a second thing that can disagree with the move list.
+  While reviewing, **every other mark stands down**: no selection, no legal-move dots,
+  no check glow, no learning aids, and the board is disabled. They all describe a
+  position that is not the one on screen. Making a move returns to the live board.
+- **Level, colour, time control, sound, the machine log and both learning aids are
+  remembered per device**, in one `localStorage` key written from the handler that
+  changed them. One key rather than six, because they are read and written together; and
+  written from the handler rather than an effect, which would also fire on the restore
+  and write back what it had just read.
+- **A screen reader is told what the computer played.** The board is sixty-four buttons,
+  so there is otherwise no way to notice that one of them changed. The live region is
+  off-screen rather than hidden, because `display: none` takes it out of the
+  accessibility tree and it then announces nothing at all.
+- **A record is not a score, and `gam_scores` could not hold one.** A chess loss
+  scores 0, a draw scores 0, and a win scores 0 once enough hints have been charged
+  against it — so the scoreboard cannot tell the three apart, and the level is not on it
+  at all (every level posts under the one `chess` key, deliberately: three keys would
+  mean three Arcade cards and three scoreboards, the shape Arrow Clearing withdrew in
+  0077). `gam_chess_results` records the **result** instead, per level, and the setup
+  screen shows "12–3–1" beside each level so the choice is made knowing how it has
+  actually gone. Nothing is backfilled and the screen says so. A `level` column on
+  `gam_scores` was rejected: that table is shared by fourteen games and it would be null
+  for thirteen of them.
+- **A position or a game can be pasted in, and SAN is resolved rather than parsed.**
+  *Set up a position* takes either a FEN or a PGN in one field — `looksLikeChessPgn`
+  tells them apart, because making somebody classify their own clipboard is a question
+  with an obvious answer. The PGN reader strips comments, nested variations, annotation
+  glyphs and the result token, then matches each move token against **the SAN the engine
+  itself would write** for every legal move in that position. That reuses `moveToSan`
+  rather than writing a grammar for algebraic notation, and it makes a class of parser
+  bug impossible: a token either names a legal move or it does not. Check marks and
+  `0-0` versus `O-O` are normalised away, because real exporters disagree about both.
+  Four practice positions ship in code, for the reason the game catalogue is code.
 - **Two save stores, and they answer different questions.** The **autosave** is one row
   in `gam_saved_runs` under the `chess` key — "put me back where I was", written after
   every move, disposable, and deleted when it cannot be restored (Arrow Clearing's rule).

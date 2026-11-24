@@ -58,7 +58,8 @@ alongside its row here.
 | [`browse-csv`](#browse-csv) | read + write | no |
 | [`journal-taxonomy`](#journal-taxonomy) | read (writes with `--unused --delete`, or `--merge --apply`) | no |
 | [`journal-topics`](#journal-topics) | read | no |
-| [`journal-templates`](#journal-templates) | read (writes with `set`/`enable`/`disable`/`delete`) | no |
+| [`journal-templates`](#journal-templates) | read (writes with `set`/`enable`/`disable`/`delete`/`set-icon`/`clear-icon`) | no |
+| [`journal-combos`](#journal-combos) | read (writes with `set`/`delete`) | no |
 | [`expense-top-spenders`](#expense-top-spenders) | read | no |
 | [`explain-rule`](#explain-rule) | read | no |
 | [`expense-create-rule`](#expense-create-rule) | write | no |
@@ -779,6 +780,8 @@ npm run cli -- journal-templates set --name "Today" --field date --now
 npm run cli -- journal-templates enable --name "Gym"
 npm run cli -- journal-templates disable --name "Gym"
 npm run cli -- journal-templates delete --name "Gym"
+npm run cli -- journal-templates set-icon   --name "Gym" --file ./gym.png
+npm run cli -- journal-templates clear-icon --name "Gym"
 ```
 
 **Input**
@@ -791,6 +794,8 @@ npm run cli -- journal-templates delete --name "Gym"
 | `set` | `--name`, `--field`, `--value` \| `--now`, `--description` | upserts **one field**; creates the template if it doesn't exist |
 | `enable` / `disable` | `--name` | whether the New Entry dropdown offers it |
 | `delete` | `--name` | |
+| `set-icon` | `--name`, `--file` | uploads the template's icon (migration 0176) from a PNG, JPEG, WebP or GIF on disk |
+| `clear-icon` | `--name` | removes it, leaving the template itself untouched |
 
 `--name` is matched case-insensitively, like the unique index. `--now` is a bare switch
 and only legal on `--field date` / `--field time` — **put it last**, since `parseFlags`
@@ -801,8 +806,8 @@ place to quote JSON, and the web editor is the right tool for building a whole t
 at once.
 
 **Calls** — `listPrefillTemplates` / `getPrefillTemplateByName` / `savePrefillTemplate` /
-`setPrefillTemplateEnabled` / `deletePrefillTemplate` / `applyPrefillTemplate`, all from
-`@/lib/journal`. Validation is the same `savePrefillTemplateSchema` the web action uses,
+`setPrefillTemplateEnabled` / `deletePrefillTemplate` / `applyPrefillTemplate` /
+`setPrefillTemplateIcon` / `clearPrefillTemplateIcon`, all from `@/lib/journal`. Validation is the same `savePrefillTemplateSchema` the web action uses,
 so a duplicate name or an illegal `--now` fails identically in both.
 
 **Output** — one template per block, field label and value, with `<current>` for a
@@ -820,9 +825,74 @@ Weekday workout
 machine's clock through the same `applyPrefillTemplate` the browser calls, so if the
 merge couldn't be printed here the logic would have leaked into the entry form.
 
-**Exit** — 0; 1 on an unknown subcommand, a missing `--name`/`--field`, a template that
-doesn't exist, or a validation failure (duplicate name, unknown field, illegal `--now`).
+**Exit** — 0; 1 on an unknown subcommand, a missing `--name`/`--field`/`--file`, a
+template that doesn't exist, an image file that can't be read or whose extension isn't
+one of the four allowed, or a validation failure (duplicate name, unknown field, illegal
+`--now`, an icon over the size cap).
 Source: [src/cli/journal-templates.ts](src/cli/journal-templates.ts)
+
+---
+
+## `journal-combos`
+
+Journal taxonomy combos (migration 0177) — the same use-cases the Meta Data screen's
+*Prefill Tags & Category Combo* tab drives. A combo is a named pairing of categories
+**and** tags that either entry editor fills both taxonomy fields from in one click.
+
+```
+npm run cli -- journal-combos list
+npm run cli -- journal-combos list --search gym
+npm run cli -- journal-combos show   --name "Gym"
+npm run cli -- journal-combos apply  --name "Gym"
+npm run cli -- journal-combos set    --name "Gym" --categories "HEALTH,SPORT" --tags "gym weights"
+npm run cli -- journal-combos set    --name "Gym" --description "Weights day."
+npm run cli -- journal-combos delete --name "Gym"
+```
+
+**Input**
+
+| Subcommand | Flags | Notes |
+|---|---|---|
+| `list` | `--search` | every combo; `--search` matches name, description, category or tag |
+| `show` | `--name` | one combo |
+| `apply` | `--name` | the two lists an entry would end up with |
+| `set` | `--name`, `--categories`, `--tags`, `--description` | upserts the **whole** combo; creates it if it doesn't exist |
+| `delete` | `--name` | |
+
+`--name` is matched case-insensitively, like the unique index. Both lists take commas
+**or** whitespace as separators, since a shell makes quoting commas awkward and no
+category or tag name here contains either.
+
+**An omitted list flag and an empty one are different instructions.** Leaving
+`--categories` off keeps the stored list; `--categories ""` clears it — and a cleared
+list is a real value, because applying a combo *replaces* both fields, so an empty one
+strips that field on the entry.
+
+Unlike `journal-templates set`, which takes one field per invocation, this takes all
+four at once: a combo has a bounded field list where a template's is unbounded.
+
+**Calls** — `listTaxonomyCombos` / `getTaxonomyComboByName` / `saveTaxonomyCombo` /
+`deleteTaxonomyCombo` / `searchTaxonomyCombos` / `applyTaxonomyCombo` /
+`describeTaxonomyCombo`, all from `@/lib/journal`. Validation is the same
+`saveTaxonomyComboSchema` the web action uses, so a duplicate name fails identically in
+both.
+
+**Output** — one combo per block: the name, the description when it has one, and the
+summary `describeTaxonomyCombo` builds. `apply` prints the two resulting lists, with
+`(cleared)` rather than a blank line where a list is empty — an empty list is an
+instruction here, and a blank line would read as a bug:
+
+```
+Categories   HEALTH, SPORT
+Tags         gym, weights
+```
+
+`apply` is the layering check: the replace rule itself lives in `applyTaxonomyCombo`,
+and this command only prints what it returned.
+
+**Exit** — 0; 1 on an unknown subcommand, a missing `--name`, a combo that doesn't
+exist, or a validation failure.
+Source: [src/cli/journal-combos.ts](src/cli/journal-combos.ts)
 
 ---
 
@@ -3541,6 +3611,13 @@ the web board uses — a game started here can be finished in the browser and th
 way round. `--reply` lets the computer answer in the same run, which is what makes
 playing from a terminal practical.
 
+**Timed games are board-only.** `--time` is refused when starting a game, and a saved
+game that carries a clock can be printed here (`--pgn`, the board) but not played: a
+command that loads, moves and exits has nothing watching the clock between runs, so
+either every move would be free or the player would be charged for the hours their
+terminal was shut. Saying so beats quietly starting an untimed game under a name the
+player chose for a blitz one.
+
 **Input** — `--user <id>` is required for anything touching a saved game (`list-users`
 shows the ids). `--name` takes the game's name or its numeric id. `--level` is
 `beginner`, `intermediate` or `advanced` (default `intermediate`); `--color` is `w` or
@@ -3552,7 +3629,7 @@ re-checked against a real board without running the test suite.
 
 **Calls** — `startChessGame`, `playChessMove`, `undoChessMove`, `chooseChessMove`,
 `saveChessGame`, `loadChessGame`, `listChessGames`, `deleteChessGame`, `gameToPgn`,
-`scoreChessGame` and `perft`, all from `@/lib/games` — the same use-cases the board
+`scoreChessGame`, `isChessGameTimed` and `perft`, all from `@/lib/games` — the same use-cases the board
 calls, with no rules reimplemented here.
 
 **Output** — the board in FEN's own letter case (upper for White, lower for Black)

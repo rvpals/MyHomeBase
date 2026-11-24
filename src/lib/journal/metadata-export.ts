@@ -1,7 +1,8 @@
 // Back up and restore the My Journal module's *metadata* — the things a reader
 // assembles by hand and would hate to rebuild: the managed category and tag
-// lists with their icons, the prefill templates, the saved entry filters, and
-// the module preferences.
+// lists with their icons, the prefill templates (with their icons, migration
+// 0176), the taxonomy combos (migration 0177), the saved entry filters, and the
+// module preferences.
 //
 // Entries are deliberately NOT in here. They already have a CSV import/export
 // path (./csv-import.ts) that understands duplicates and overwriting, and
@@ -76,6 +77,29 @@ const metadataTemplateSchema = z.object({
   description: z.string().default(""),
   isEnabled: z.boolean().default(true),
   fields: z.array(journalPrefillFieldValueSchema).default([]),
+  /**
+   * Migration 0176. Nullish, so a bundle written before templates had icons is
+   * still a legal file — which is why the format version does not move: an old
+   * reader ignores an unknown key, and a new reader defaults a missing one.
+   * Same `null`-means-none convention as the taxonomy icons above.
+   */
+  icon: metadataIconSchema.nullish(),
+});
+
+/**
+ * A taxonomy combo (migration 0177).
+ *
+ * The member names travel as plain strings and are **not** checked against the
+ * managed lists on restore — exactly as a prefill template's categories/tags
+ * already do. A combo naming a category this install hasn't got is not broken:
+ * applying it adds that name as a new chip, and saving the entry registers it,
+ * which is how this module has always treated taxonomy names.
+ */
+const metadataComboSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().default(""),
+  categories: z.array(z.string().min(1)).default([]),
+  tags: z.array(z.string().min(1)).default([]),
 });
 
 const metadataFilterSchema = z.object({
@@ -204,6 +228,12 @@ export const journalMetadataBundleSchema = z.object({
   tags: z.array(metadataTaxonomySchema).default([]),
   templates: z.array(metadataTemplateSchema).default([]),
   filters: z.array(metadataFilterSchema).default([]),
+  /**
+   * Migration 0177. Defaulted like every other list, so a bundle exported before
+   * combos existed restores as it always did and the format version stays at 1 —
+   * the documented rule above: adding an optional field needs no bump.
+   */
+  combos: z.array(metadataComboSchema).default([]),
   preferences: metadataPreferencesSchema.nullish(),
 });
 
@@ -273,6 +303,19 @@ export function buildMetadataBundle(
     description: template.description,
     isEnabled: template.isEnabled,
     fields: template.fields,
+    // Guarded by `iconMimeType` so the blob read only happens for the templates
+    // that have one — the same shape the two taxonomy lists above use, and the
+    // reason the domain type carries presence rather than bytes.
+    icon: toMetadataIcon(
+      template.iconMimeType ? repo.getPrefillTemplateIcon(template.id) : undefined,
+    ),
+  }));
+
+  const combos = repo.listTaxonomyCombos().map((combo) => ({
+    name: combo.name,
+    description: combo.description,
+    categories: combo.categories,
+    tags: combo.tags,
   }));
 
   const filters = repo.listFilters().map((saved) => ({
@@ -290,6 +333,7 @@ export function buildMetadataBundle(
     tags,
     templates,
     filters,
+    combos,
     preferences: {
       defaultLocation: preferences.defaultLocation,
       temperatureUnit: preferences.temperatureUnit,
@@ -332,7 +376,7 @@ export type JournalMetadataAction = "create" | "update";
 
 /** One row of the restore plan, as listed in the confirmation dialog. */
 export interface JournalMetadataPlanRow {
-  kind: "category" | "tag" | "template" | "filter";
+  kind: "category" | "tag" | "template" | "filter" | "combo";
   name: string;
   action: JournalMetadataAction;
   /** True when this row will replace an icon the stored item already has. */
@@ -397,10 +441,14 @@ export function planMetadataImport(
   }
 
   for (const template of bundle.templates) {
+    const stored = repo.getPrefillTemplateByName(template.name);
     rows.push({
       kind: "template",
       name: template.name,
-      action: repo.getPrefillTemplateByName(template.name) ? "update" : "create",
+      action: stored ? "update" : "create",
+      // Templates carry icons from migration 0176, so they join the
+      // icon-replacement count the dialog warns about.
+      replacesIcon: Boolean(stored?.iconMimeType && template.icon),
     });
   }
 
@@ -413,6 +461,14 @@ export function planMetadataImport(
       kind: "filter",
       name: filter.name,
       action: storedFilterNames.has(filter.name) ? "update" : "create",
+    });
+  }
+
+  for (const combo of bundle.combos) {
+    rows.push({
+      kind: "combo",
+      name: combo.name,
+      action: repo.getTaxonomyComboByName(combo.name) ? "update" : "create",
     });
   }
 
@@ -509,6 +565,7 @@ export interface JournalMetadataRestoreSummary {
   tagCount: number;
   templateCount: number;
   filterCount: number;
+  comboCount: number;
   iconCount: number;
   /** Preference entries the caller still needs to persist. Possibly empty. */
   preferenceEntries: { key: string; value: string }[];
@@ -555,13 +612,19 @@ export function applyMetadataImport(
     // Carry the stored id so an existing name is updated rather than colliding
     // with the table's UNIQUE (name).
     const stored = repo.getPrefillTemplateByName(template.name);
-    repo.savePrefillTemplate({
+    const saved = repo.savePrefillTemplate({
       id: stored?.id,
       name: template.name,
       description: template.description,
       isEnabled: template.isEnabled,
       fields: template.fields,
     });
+    // Written after the row exists, since the icon is keyed by id — unlike the
+    // taxonomy icons above, which are keyed by the name the upsert just wrote.
+    if (template.icon) {
+      repo.setPrefillTemplateIcon(saved.id, decodeMetadataIcon(template.icon, template.name));
+      iconCount += 1;
+    }
   }
 
   for (const filter of bundle.filters) {
@@ -576,11 +639,25 @@ export function applyMetadataImport(
     });
   }
 
+  for (const combo of bundle.combos) {
+    // Carry the stored id so an existing name is updated rather than colliding
+    // with the table's UNIQUE (name) — the same rule the templates above follow.
+    const stored = repo.getTaxonomyComboByName(combo.name);
+    repo.saveTaxonomyCombo({
+      id: stored?.id,
+      name: combo.name,
+      description: combo.description,
+      categories: combo.categories,
+      tags: combo.tags,
+    });
+  }
+
   return {
     categoryCount: bundle.categories.length,
     tagCount: bundle.tags.length,
     templateCount: bundle.templates.length,
     filterCount: bundle.filters.length,
+    comboCount: bundle.combos.length,
     iconCount,
     preferenceEntries: metadataPreferenceEntries(bundle),
   };

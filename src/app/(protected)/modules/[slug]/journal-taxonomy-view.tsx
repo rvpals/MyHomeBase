@@ -66,6 +66,7 @@ import {
   MAX_JOURNAL_ICON_BYTES,
   type JournalCategory,
   type JournalTag,
+  type JournalTaxonomyCombo,
   type TaxonomyMergePlan,
 } from "@/lib/journal";
 import { matchesSearch } from "@/lib/shared/table";
@@ -92,7 +93,9 @@ import {
   TaxonomyIconThumbnail,
   journalEntriesFilterHref,
   journalTaxonomyIconUrl,
+  readImageFileAsBase64,
 } from "./journal-shared";
+import { JournalTaxonomyCombosView } from "./journal-taxonomy-combos-view";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-line bg-paper px-3 py-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
@@ -107,19 +110,6 @@ interface TaxonomyItem {
 }
 
 type Kind = "category" | "tag";
-
-/** Reads a File as bare base64 (no data-URL prefix), which the action wants. */
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result ?? "");
-      resolve(result.slice(result.indexOf(",") + 1));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("Failed to read the image."));
-    reader.readAsDataURL(file);
-  });
-}
 
 /** Where an item's icon is served from, or undefined when it has none. */
 function iconUrl(kind: Kind, item: TaxonomyItem, updatedAt: string): string | undefined {
@@ -226,7 +216,7 @@ function EditTaxonomyModal({
     }
     setIsBusy(true);
     try {
-      const base64Data = await readFileAsBase64(file);
+      const base64Data = await readImageFileAsBase64(file);
       const result = await saveIconAction(item.name, file.type, base64Data);
       if (!result.ok) setError(result.error);
       else router.refresh();
@@ -443,7 +433,8 @@ function MergeTaxonomyModal({
         setError(outcome.error ?? `Failed to merge the selected ${plural}.`);
         return;
       }
-      const { mergedCount, entryCount, rewrittenFilters, rewrittenTemplates } = outcome.result;
+      const { mergedCount, entryCount, rewrittenFilters, rewrittenTemplates, rewrittenCombos } =
+        outcome.result;
       const extras = [
         rewrittenFilters > 0
           ? `${rewrittenFilters} saved filter${rewrittenFilters === 1 ? "" : "s"}`
@@ -451,11 +442,16 @@ function MergeTaxonomyModal({
         rewrittenTemplates > 0
           ? `${rewrittenTemplates} template${rewrittenTemplates === 1 ? "" : "s"}`
           : undefined,
+        rewrittenCombos > 0
+          ? `${rewrittenCombos} combo${rewrittenCombos === 1 ? "" : "s"}`
+          : undefined,
       ].filter((part): part is string => part !== undefined);
       onMerged(
         `Merged ${mergedCount} ${mergedCount === 1 ? noun : plural} into "${outcome.result.target}" — ` +
           `${entryCount} ${entryCount === 1 ? "entry" : "entries"} now carr${entryCount === 1 ? "ies" : "y"} it` +
-          `${extras.length > 0 ? `, and ${extras.join(" and ")} updated` : ""}.`,
+          // Comma-joined rather than " and "-joined: there are three of these now
+          // (filters, templates, combos) and "a and b and c" reads badly.
+          `${extras.length > 0 ? `, and ${extras.join(", ")} updated` : ""}.`,
       );
     } finally {
       setIsBusy(false);
@@ -533,7 +529,9 @@ function MergeTaxonomyModal({
                 {plan.entryCount} {plan.entryCount === 1 ? "entry" : "entries"} will carry &ldquo;
                 {plan.target}&rdquo;.
               </p>
-              {(plan.affectedFilters.length > 0 || plan.affectedTemplates.length > 0) && (
+              {(plan.affectedFilters.length > 0 ||
+                plan.affectedTemplates.length > 0 ||
+                plan.affectedCombos.length > 0) && (
                 <p className="text-muted">
                   Also updates{" "}
                   {[
@@ -543,9 +541,15 @@ function MergeTaxonomyModal({
                     plan.affectedTemplates.length > 0
                       ? `${plan.affectedTemplates.length} template${plan.affectedTemplates.length === 1 ? "" : "s"} (${plan.affectedTemplates.join(", ")})`
                       : undefined,
+                    // Combos store their names as JSON too (migration 0177), so a
+                    // merge rewrites them for the same reason it rewrites the
+                    // other two — and the reader is told which, before it happens.
+                    plan.affectedCombos.length > 0
+                      ? `${plan.affectedCombos.length} combo${plan.affectedCombos.length === 1 ? "" : "s"} (${plan.affectedCombos.join(", ")})`
+                      : undefined,
                   ]
                     .filter(Boolean)
-                    .join(" and ")}
+                    .join(", ")}
                   .
                 </p>
               )}
@@ -1159,15 +1163,21 @@ function GenerateAllIconsButton({ missing }: { missing: number }) {
 export function JournalTaxonomyView({
   categories,
   tags,
+  combos,
 }: {
   categories: JournalCategory[];
   tags: JournalTag[];
+  /** Taxonomy combos (migration 0177) — the third tab. */
+  combos: JournalTaxonomyCombo[];
 }) {
   const missing = [...categories, ...tags].filter((item) => !item.iconMimeType).length;
 
   // One list at a time. Both panels are long — a couple of hundred tags is
   // normal — so stacking them buried Categories under a scroll. The "draw the
   // missing icons" banner stays above the strip because it covers both lists.
+  //
+  // The third tab is combos, which are *made of* the first two lists — which is
+  // why it belongs on this strip rather than on a screen of its own.
   return (
     <div className="flex flex-col gap-6">
       <GenerateAllIconsButton missing={missing} />
@@ -1194,6 +1204,17 @@ export function JournalTaxonomyView({
                 title="Tags"
                 helpText="Tags are created automatically when you use a new name on an entry — add one here to give it a description up front, or an icon that shows up wherever the tag appears. The ⚡ button draws an icon from the name."
                 items={tags}
+              />
+            ),
+          },
+          {
+            key: "combo",
+            label: "Prefill Tags & Category Combo",
+            content: (
+              <JournalTaxonomyCombosView
+                combos={combos}
+                categoryOptions={categories.map((category) => category.name)}
+                tagOptions={tags.map((tag) => tag.name)}
               />
             ),
           },

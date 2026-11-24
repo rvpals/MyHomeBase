@@ -8,6 +8,7 @@ import {
   describeChessResult,
   gameToPgn,
   isChessGameOver,
+  isChessGameTimed,
   listChessGames,
   loadChessGame,
   moveToUci,
@@ -139,6 +140,22 @@ export async function chessCommand(args: string[]): Promise<void> {
     const loaded = loadChessGame(deps.chessSavesRepo, { userId, id: found.id });
     let game = loaded.game;
 
+    /*
+      A timed game may be read here but not played, for the reason `--new` refuses to
+      start one: a command that exits between moves cannot charge a clock, so every move
+      made from here would be free. Reading is allowed because `--pgn` and the board
+      print are harmless and useful.
+    */
+    const playing = "move" in flags || "reply" in flags || "undo" in flags;
+    if (isChessGameTimed(game) && playing) {
+      console.error(
+        `"${found.name}" is a timed game, so it can only be played on the board. ` +
+          "You can still print it here with --pgn.",
+      );
+      process.exitCode = 1;
+      return;
+    }
+
     if ("pgn" in flags) {
       console.log(gameToPgn(game, { date: pgnDate() }));
       return;
@@ -185,9 +202,9 @@ export async function chessCommand(args: string[]): Promise<void> {
       return;
     }
 
+    // Keyed on the name, which is the save's only key — see `saveChessGameSchema`.
     saveChessGame(deps.chessSavesRepo, {
       userId,
-      id: found.id,
       name: found.name,
       save: buildChessSave(game),
     });
@@ -201,6 +218,24 @@ function startGame(userId: number, flags: Record<string, string | true>): void {
   const name = text(flags, "name");
   if (!name) {
     console.error('Give the game a name: --name "Sunday game".');
+    process.exitCode = 1;
+    return;
+  }
+
+  /*
+    Timed games are deliberately not playable from here, and saying so beats quietly
+    starting an untimed one under a name the player chose for a blitz game.
+
+    A run of this command is one move: it loads, plays and exits. There is nothing to
+    hold a clock between runs but wall time, which would charge a player for the hours
+    their terminal was closed. A clock needs something watching it, and that is the
+    board.
+  */
+  if ("time" in flags) {
+    console.error(
+      "Timed games are played on the board, not from here — a command runs once and " +
+        "exits, so nothing would be watching the clock between moves.",
+    );
     process.exitCode = 1;
     return;
   }

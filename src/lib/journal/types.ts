@@ -617,6 +617,12 @@ export interface JournalPrefillTemplate {
    *  dropdown. See 0062. */
   isEnabled: boolean;
   fields: JournalPrefillFieldValue[];
+  /**
+   * Presence, not bytes (migration 0176). The icon itself is read only by
+   * `/api/journal/prefill-templates/<id>/icon`; everything rendering a list uses
+   * this to choose between the artwork and an indent.
+   */
+  iconMimeType?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -628,6 +634,42 @@ export interface JournalPrefillTemplate {
  * is a straight string set with no parsing in the view.
  */
 export type JournalPrefillFormValues = Record<JournalPrefillField, string>;
+
+// --- Taxonomy combos ---------------------------------------------------------
+//
+// A named pairing of categories and tags, applied to an entry's two taxonomy
+// fields in one click. Stored as two JSON arrays in jrn_taxonomy_combos; see
+// migration 0177 for why that isn't a pair of child tables, and why this is not
+// just a prefill template with two fields.
+
+/** A named combo as stored. */
+export interface JournalTaxonomyCombo {
+  id: number;
+  name: string;
+  description: string;
+  /**
+   * Category names, in the order the chips were added — which is the order they
+   * are written back onto the entry. An empty array is a real value, not
+   * "unset": applying such a combo clears the entry's categories.
+   */
+  categories: string[];
+  /** Tag names, same contract as `categories`. */
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * What applying a combo produces: the two lists an entry form should now hold.
+ *
+ * Arrays, not the delimited strings `JournalPrefillFormValues` uses, because both
+ * editors hold their taxonomy as `string[]` for `TokenPicker` — a combo is picked
+ * straight into those fields with no splitting on the way.
+ */
+export interface JournalTaxonomySelection {
+  categories: string[];
+  tags: string[];
+}
 
 /**
  * An entry sitting in the recycle bin (migration 0079).
