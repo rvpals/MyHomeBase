@@ -1,5 +1,22 @@
 # Change History
 
+## 2026-11-24 — `dash.bat`: batch-file launcher menu
+
+**No migrations, no dependency changes, no paid or outside service.** One new root file,
+`dash.bat`; nothing under `src/` or `migrations/` changed.
+
+**Not seen on a real console, and no gate was run.** Listing, selection, argument
+pass-through and exit-code reporting were exercised in isolation (including two dummy
+scripts in a scratch folder), but a full menu → run → menu → quit session needs a keyboard.
+
+- Lists every `*.bat` in the repo root (itself excluded), numbered, with a description
+  read from each file's leading `REM` block — new scripts appear automatically.
+- Pick a number, optionally add arguments, confirm `[Y/N]`, then it runs the script,
+  reports the exit code and returns to the menu. `Q` quits; a bad pick redraws.
+- Runs the target via `%~dp0` — a bare `call "name.bat"` fails where
+  `NoDefaultCurrentDirectoryInExePath=1` is set, as it is on this machine.
+- Three consecutive blank picks exit, so exhausted stdin can't spin the loop.
+
 ## 2026-11-24 — Code Library module; Journal: Duplicate entries section; Photo Albums card resized; lint-clean React patterns
 
 **Seven migrations, `0178`–`0184`: `0178_create_code_library` (`cod_snippets`),
