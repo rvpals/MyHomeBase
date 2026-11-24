@@ -27,6 +27,31 @@ export interface TodoDeps {
  * ordering is the repository's — both orders have an index behind them, so re-sorting
  * here would throw away the work the database already did and risk disagreeing with it.
  */
+/**
+ * How much of the whole board is done, as one set of counts.
+ *
+ * Here rather than at the call site because it is a fact about a TODO board, not
+ * about any one screen: the home screen's Systems card reads it, and a CLI
+ * status command would want exactly the same four numbers.
+ *
+ * Counts **lists as well as items** so a household with three empty lists reads
+ * as three lists rather than as nothing at all.
+ */
+export function summariseBoard(board: TodoBoard): {
+  lists: number;
+  open: number;
+  completed: number;
+  total: number;
+} {
+  let open = 0;
+  let completed = 0;
+  for (const entry of board.categories) {
+    open += entry.open.length;
+    completed += entry.completed.length;
+  }
+  return { lists: board.categories.length, open, completed, total: open + completed };
+}
+
 export function splitItems(items: readonly TodoItem[]): { open: TodoItem[]; completed: TodoItem[] } {
   return {
     open: items.filter((item) => !item.isDone),

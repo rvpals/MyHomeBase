@@ -64,6 +64,7 @@ export {
   reorderItems,
   setItemDone,
   splitItems,
+  summariseBoard,
   updateItem,
   type TodoDeps,
 } from "./todo";

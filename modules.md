@@ -3343,9 +3343,10 @@ under each row in the admin list, and it is load-bearing rather than decoration:
 alone is ambiguous once there are fifty-odd positions, because all five modules have a
 "Dashboard" section and two admin entries share the `palette` glyph.
 
-**86 positions are registered and all 86 are wired up** — every module's section nav,
-the whole Admin nav, and the home screen's Daily Quote, Photo of the Day and Random
-Photo cards. A slot that is registered but not yet converted at its call site would be
+**233 positions are registered and all 233 are wired up** — every module's section nav,
+the whole Admin nav, and the home screen's Daily Quote, Photo of the Day, Random Photo
+and Systems cards. (The figure quoted here was 86 for several releases after the section
+navs landed; it is a count of `ICON_SLOTS`, so check it rather than trusting it.) A slot that is registered but not yet converted at its call site would be
 inert (it appears in the admin list and accepts an upload, yet the screen keeps
 rendering the default concept); the `wired` flag on the slot drives that note in each
 row, and there are currently none in that state.
@@ -3520,6 +3521,20 @@ Four things worth knowing before touching it:
   top margin while the others hardcoded `mt-8`. Once any card can be first, the gap has
   to follow position — and it follows the first *drawn* card, not the first ticked one,
   because a ticked-but-empty card would otherwise leave a stray gap at the top.
+
+**The Systems card groups the modules.** It draws one panel per *system* — Money,
+Journal & Notes, Household, Media, Classroom, Workbench, and "Everything else" for
+anything the grouping has not been taught about. That registry is
+`src/lib/home-systems`, and it is **code, not data**: there is no table, no migration
+and no admin screen, because which modules belong together is editorial judgement
+rather than a household setting. Two things follow for anyone adding a module:
+
+- **You do not have to touch it.** An unclaimed slug falls into "Everything else", so
+  a new module appears on the home screen the day it is registered. Filing it under
+  its real system is a one-line edit to `HOME_SYSTEMS` whenever you get to it.
+- **A panel's colour is a tint key** from the shared palette (`@/lib/shared/tint`),
+  mixed into the theme's tokens by `.clip-tint` — never a literal colour. The
+  catch-all panel takes `""`, the plain surface. design.md → *Tinted surfaces*.
 
 Adding a card: append its id to `HOME_WIDGET_IDS`, give it `HOME_WIDGET_INFO` copy, and
 add a `case` to the switch in `page.tsx`. **No migration** — `resolveHomeWidgets`

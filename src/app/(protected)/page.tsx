@@ -16,12 +16,13 @@ import {
   type HomeWidgetId,
 } from "@/lib/home-dashboard";
 import { DEFAULT_HOME_COLUMNS } from "@/lib/home-layout";
-import { listTodayInHistory } from "@/lib/journal";
+import { groupModulesBySystem, type HomeSystemId } from "@/lib/home-systems";
+import { listRecentEntries, listTodayInHistory } from "@/lib/journal";
 import { listPendingPopupMessages } from "@/lib/messages";
 import { listModules } from "@/lib/modules";
 import { getSetting, getStartupMessage } from "@/lib/settings";
 import { todayIsoLocal } from "@/lib/shared/date";
-import { buildTodoBoard } from "@/lib/todo";
+import { buildTodoBoard, summariseBoard } from "@/lib/todo";
 import { getSiteVisitSummary } from "@/lib/site-visits";
 import {
   computeDayMovesByType,
@@ -37,6 +38,11 @@ import { deps } from "@/lib/wiring";
 import { BadLoginAlert } from "./bad-login-alert";
 import { DailyQuoteWidget } from "./daily-quote-widget";
 import { HomeShell } from "./home-shell";
+import {
+  HomeSystemsWidget,
+  type HomeSystemActivity,
+  type HomeSystemPanel,
+} from "./home-systems-widget";
 import { HomeWidgetGrid, type HomeWidgetItem } from "./home-widget-grid";
 import { MyShortcutsWidget } from "./my-shortcuts-widget";
 import { PhotoAlbumsWidget } from "./photo-albums-widget";
@@ -165,7 +171,13 @@ export default async function Home({
   // Positions are read only once that's true, and an empty portfolio renders
   // nothing rather than a card of zeroes.
   const stockModule = modules.find((appModule) => appModule.slug === INVESTMENTS_MODULE_SLUG);
-  const positions = stockModule && shows("stockGlance") ? listPositions(deps.stockPositionRepo) : [];
+  // Read when either card that needs them is shown, and read **once** for both: the
+  // Systems card wants the same day move Daily Glance does, and a second
+  // `listPositions` for it would double the cost of a screen that already reads it.
+  const positions =
+    stockModule && (shows("stockGlance") || shows("systems"))
+      ? listPositions(deps.stockPositionRepo)
+      : [];
   // Each dashboard card is badged with its own module's icon, so it's obvious at
   // a glance which module the numbers belong to. Undefined when the module is
   // hidden or not granted, in which case the card simply shows no glyph.
@@ -177,8 +189,11 @@ export default async function Home({
   // Tools pays for no query. The card's action enforces the same thing server-side, since
   // hiding a card gates nothing on its own.
   const toolsModule = modules.find((appModule) => appModule.slug === TOOLS_MODULE_SLUG);
+  // Shared with the Systems card on the positions rule above: the Household panel
+  // reports this same board, so it is built once and summed twice rather than read
+  // again. Still gated on the module, so a reader without Tools pays for no query.
   const todoBoard =
-    toolsModule && shows("todo")
+    toolsModule && (shows("todo") || shows("systems"))
       ? buildTodoBoard({ categoryRepo: deps.todoCategoryRepo, itemRepo: deps.todoItemRepo })
       : undefined;
 
@@ -205,12 +220,81 @@ export default async function Home({
   // Cheap to read: the settings row carries `hasImage`, never the bytes.
   const textureVars = homeTexture(getDashboardTexture(deps.dashboardTextureRepo)).vars;
 
+  // The Systems card: the reader's modules clustered by what they are for.
+  //
+  // `modules` is already access-filtered, so the grouping never names a module this
+  // reader cannot open, and a system whose every module is hidden or ungranted drops
+  // out rather than drawing an empty heading. A module no system claims lands under
+  // "Everything else" instead of vanishing — see `groupModulesBySystem`.
+  const systemCards = shows("systems") ? groupModulesBySystem(modules) : [];
+
+  // The journal's three most recent entries, for the Journal & Notes panel. The only
+  // read this card adds that no other card was already making — the other two strips
+  // sum data the TODO and Daily Glance cards read anyway. LIMITed in SQL, so it is
+  // three indexed rows rather than the whole journal.
+  const recentEntries =
+    journalModule && shows("systems") ? listRecentEntries(deps.journalRepo, 3) : [];
+
+  // Today's move, summed over the positions already read above. Only when there is
+  // something to report: an empty portfolio would otherwise chip "+$0.00 today",
+  // which is the same call `hasContent.stockGlance` makes for the Daily Glance card.
+  const systemDayMove = positions.length > 0 ? computeDayMovesByType(positions).total : undefined;
+
+  // Which panels say something about this reader's own state. Three of the seven do;
+  // the rest list their modules and stop, because no cheap summary read exists for
+  // those domains yet. A panel with no entry here simply draws no strip.
+  const systemActivity: Partial<Record<HomeSystemId, HomeSystemActivity>> = {};
+  if (systemDayMove) {
+    systemActivity.money = {
+      kind: "money",
+      gainLossCents: systemDayMove.gainLossCents,
+      changePct: systemDayMove.changePct,
+    };
+  }
+  if (todoBoard) {
+    // Summed in `lib`, not here: how much of a board is done is a fact about a TODO
+    // board, and a `reduce` in a .tsx is exactly the leak ARCHITECTURE.md forbids.
+    systemActivity.household = { kind: "todo", ...summariseBoard(todoBoard) };
+  }
+  if (recentEntries.length > 0) {
+    systemActivity.journal = {
+      kind: "journal",
+      entries: recentEntries.map((entry) => ({
+        id: entry.id,
+        date: entry.date,
+        title: entry.title,
+      })),
+    };
+  }
+
+  // Plain data across the boundary — the card is a client island and cannot be handed
+  // the module records themselves. Names and descriptions come from the rows rather
+  // than from the system registry, because both are admin-editable at runtime.
+  const systemPanels: HomeSystemPanel[] = systemCards.map((card) => ({
+    id: card.system.id,
+    name: card.system.name,
+    tagline: card.system.tagline,
+    tint: card.system.tint,
+    modules: card.modules.map((appModule) => ({
+      slug: appModule.slug,
+      name: appModule.shortName,
+      description: appModule.description,
+      icon: appModule.icon,
+      href: `/modules/${appModule.slug}`,
+    })),
+    activity: systemActivity[card.system.id],
+  }));
+
   // The cards that will actually appear, in order. Visibility alone isn't enough:
   // Daily Quote draws nothing until a quote exists and Daily Glance nothing without
   // positions, so a ticked-but-empty card would otherwise take the "first card" slot
   // and leave the real first card with a stray gap above it.
   const hasContent: Record<HomeWidgetId, boolean> = {
     carousel: true,
+    // False only when the reader can open nothing at all, which the (protected)
+    // layout already makes unlikely — but an empty card would be a heading over
+    // nothing, so it is tested like every other card rather than assumed.
+    systems: systemPanels.length > 0,
     // Always true, unlike Daily Quote: an empty shortcut list draws the card's
     // empty state with its Add button, and hiding the card until a shortcut
     // exists would leave nowhere to make the first one.
@@ -317,6 +401,19 @@ export default async function Home({
                         }))}
                       />
                     ),
+                  },
+                ];
+              case "systems":
+                return [
+                  {
+                    id,
+                    label: "Systems",
+                    // Spans both columns, like the carousel and for a related reason:
+                    // its body is itself a grid that sizes its own columns, so handing
+                    // it half the page would make the browser draw one narrow panel per
+                    // row. A spanning card is also not draggable — see HomeWidgetItem.
+                    spansBothColumns: true,
+                    node: <HomeSystemsWidget panels={systemPanels} />,
                   },
                 ];
               case "myShortcuts":

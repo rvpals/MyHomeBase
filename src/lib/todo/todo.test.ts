@@ -9,6 +9,7 @@ import {
   reorderItems,
   setItemDone,
   splitItems,
+  summariseBoard,
   updateItem,
   type TodoDeps,
 } from "./todo";
@@ -343,6 +344,44 @@ describe("clearCompleted", () => {
     expect(clearCompleted(makeDeps(), { categoryId: 99 })).toEqual({
       ok: false,
       message: "That list no longer exists.",
+    });
+  });
+});
+
+describe("summariseBoard", () => {
+  it("counts items across every list, open and completed", () => {
+    const deps = makeDeps(["To BUY", "Learning"]);
+    createItem(deps, { categoryId: 1, title: "Milk" });
+    createItem(deps, { categoryId: 1, title: "Bread" });
+    const done = deps.itemRepo.create(2, "Read the manual", "");
+    deps.itemRepo.setDone(done.id, true);
+
+    expect(summariseBoard(buildTodoBoard(deps))).toEqual({
+      lists: 2,
+      open: 2,
+      completed: 1,
+      total: 3,
+    });
+  });
+
+  it("counts an empty list as a list, not as nothing", () => {
+    // The home screen reports "3 lists" for a household that has made three and
+    // filled none; reporting zero would read as the module being unused.
+    const deps = makeDeps(["To BUY", "Learning", "Someday"]);
+    expect(summariseBoard(buildTodoBoard(deps))).toEqual({
+      lists: 3,
+      open: 0,
+      completed: 0,
+      total: 0,
+    });
+  });
+
+  it("reports zeroes for a board with no lists at all", () => {
+    expect(summariseBoard({ categories: [] })).toEqual({
+      lists: 0,
+      open: 0,
+      completed: 0,
+      total: 0,
     });
   });
 });

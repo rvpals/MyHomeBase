@@ -175,6 +175,93 @@ export const ICON_SLOTS: IconSlot[] = [
     wired: true,
     namespace: "tree",
   },
+  /* The Systems card and its panels. The card header takes a `tree` glyph like its
+     sibling cards above; each panel heading takes a `module` one, because a system is
+     named after the kind of work its modules do and the module table is where those
+     subjects are drawn. The module rows *inside* a panel deliberately have no slots:
+     each is badged with its own module icon, which is already replaceable per module
+     (Admin → Configuration → Module Configuration, and the upload from 0150). Slotting
+     them would be a second, competing way to set one value — see the note at the top
+     of this file. */
+  {
+    // `grid`, the concept this app already uses for "everything laid out at once" — the
+    // card is a grid of system panels.
+    id: "homescreen_card_systems",
+    label: "Systems card",
+    group: "Home screen",
+    where: "Home screen → the Systems card header, immediately left of the title.",
+    defaultConcept: "grid",
+    wired: true,
+    namespace: "tree",
+  },
+  {
+    id: "homescreen_system_money",
+    label: "Money system",
+    group: "Home screen",
+    where: "Home screen → Systems card → the Money panel heading.",
+    defaultConcept: "wallet",
+    wired: true,
+    namespace: "module",
+  },
+  {
+    id: "homescreen_system_journal",
+    label: "Journal & Notes system",
+    group: "Home screen",
+    where: "Home screen → Systems card → the Journal & Notes panel heading.",
+    defaultConcept: "journal",
+    wired: true,
+    namespace: "module",
+  },
+  {
+    id: "homescreen_system_household",
+    label: "Household system",
+    group: "Home screen",
+    where: "Home screen → Systems card → the Household panel heading.",
+    defaultConcept: "household",
+    wired: true,
+    namespace: "module",
+  },
+  {
+    // `photo` rather than `music` or `game`: the panel holds all three, and the picture
+    // glyph is the one a reader is least likely to read as "this panel is only music".
+    id: "homescreen_system_media",
+    label: "Media system",
+    group: "Home screen",
+    where: "Home screen → Systems card → the Media panel heading.",
+    defaultConcept: "photo",
+    wired: true,
+    namespace: "module",
+  },
+  {
+    // `classroom` (a schoolhouse), not the module's own `roster`: the panel is the
+    // place, the register is one thing kept there. The module row below it still draws
+    // `roster`, so the two read as heading and contents rather than as a repeat.
+    id: "homescreen_system_classroom",
+    label: "Classroom system",
+    group: "Home screen",
+    where: "Home screen → Systems card → the Classroom panel heading.",
+    defaultConcept: "classroom",
+    wired: true,
+    namespace: "module",
+  },
+  {
+    id: "homescreen_system_workbench",
+    label: "Workbench system",
+    group: "Home screen",
+    where: "Home screen → Systems card → the Workbench panel heading.",
+    defaultConcept: "tool",
+    wired: true,
+    namespace: "module",
+  },
+  {
+    id: "homescreen_system_other",
+    label: "Everything else system",
+    group: "Home screen",
+    where: "Home screen → Systems card → the Everything Else panel heading, shown only when a module belongs to no other system.",
+    defaultConcept: "folder",
+    wired: true,
+    namespace: "module",
+  },
   {
     id: "homescreen_card_photo_albums",
     label: "Photo Albums card",

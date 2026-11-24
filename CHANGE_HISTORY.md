@@ -1,5 +1,26 @@
 # Change History
 
+## 2026-11-24 — Home screen: Systems card (modules grouped by system)
+
+**No migrations, no dependency changes, no paid or outside service.** Adding a home card
+needs no migration (`resolveHomeWidgets` inserts it at its catalogue position, visible).
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted,
+tested or opened in a browser, including the tests written with it. Treat it as unverified.
+
+- New home-screen card `systems`, after the carousel, spanning both columns. One tinted panel
+  per system: Money (ocean), Journal & Notes (rose), Household (sage), Media (indigo),
+  **Classroom (amber, on its own)**, Workbench (slate), Everything else (untinted catch-all).
+  Tints are keys from the shared palette mixed into theme tokens, not literal colours.
+- Activity strips: Money shows today’s move, Household the TODO progress bar, Journal & Notes
+  the three latest entries. Positions and the TODO board are read once and shared with the
+  Daily Glance and TODO cards.
+- New `src/lib/home-systems` (registry + `groupModulesBySystem`, tested); `summariseBoard` added
+  to `src/lib/todo`. Eight new icon slots (`homescreen_card_systems`, `homescreen_system_*`).
+- Not built: the spec’s Ask-AI button, entrance animation, whole-card hub links, and the
+  signed-out view — each conflicts with this app’s theme, navigation or login rules.
+- Docs: `modules.md` (Systems card; icon slot count corrected 86 → 233), `MyHomeBase_feature.md`.
+
 ## 2026-11-24 — `dash.bat`: batch-file launcher menu
 
 **No migrations, no dependency changes, no paid or outside service.** One new root file,

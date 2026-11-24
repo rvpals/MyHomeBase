@@ -40,12 +40,13 @@ describe("resolveHomeWidgets", () => {
     const widgets = resolveHomeWidgets(
       "stockGlance,carousel,dailyQuote,todayInHistory",
     );
-    // `myShortcuts` is absent from this stored value, so it is restored at its
+    // `systems` and `myShortcuts` are absent from this stored value, so each is restored at its
     // catalogue position — immediately before `dailyQuote`, the first card that
     // follows it in the catalogue and is present here.
     expect(widgets.map((widget) => widget.id)).toEqual([
       "stockGlance",
       "carousel",
+      "systems",
       "myShortcuts",
       "dailyQuote",
       "todayInHistory",
@@ -59,7 +60,7 @@ describe("resolveHomeWidgets", () => {
 
   it("reads a hyphen prefix as hidden", () => {
     const widgets = resolveHomeWidgets(
-      "carousel,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo,photoAlbums",
+      "carousel,systems,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo,photoAlbums",
     );
     expect(widgets.find((widget) => widget.id === "dailyQuote")?.visible).toBe(false);
     expect(widgets.find((widget) => widget.id === "carousel")?.visible).toBe(true);
@@ -90,6 +91,7 @@ describe("resolveHomeWidgets", () => {
     const widgets = resolveHomeWidgets("dailyQuote,todayInHistory,stockGlance");
     expect(widgets.map((widget) => widget.id)).toEqual([
       "carousel",
+      "systems",
       "myShortcuts",
       "dailyQuote",
       "todayInHistory",

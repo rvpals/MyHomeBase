@@ -39,6 +39,7 @@ The shell, the chrome and the services every module sits on.
   age), Clock with local weather, a handwritten Daily Quote, My Shortcuts, Daily Glance,
   journal search, Pinned and Recently Edited entries, TODO lists, and per-module cards.
 - **Module carousel**: a grid on desktop, coverflow on phones, with per-module artwork.
+- **Systems card**: every module you can open, grouped by what it is for — Money, Journal & Notes, Household, Media, Classroom, Workbench — as tinted panels, with Everything else catching any module no grouping claims. Money shows today’s portfolio move, Household the TODO completion bar, Journal & Notes the three latest entries. Panel icons are replaceable icon slots; the card can be hidden from Dashboard Widgets or closed per reader.
 - **Deployment announcements** and one-shot startup notices.
 
 ### Appearance

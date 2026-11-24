@@ -30,6 +30,7 @@
  */
 export const HOME_WIDGET_IDS = [
   "carousel",
+  "systems",
   "myShortcuts",
   "dailyQuote",
   "todayInHistory",
@@ -53,6 +54,12 @@ export const HOME_WIDGET_INFO: Record<HomeWidgetId, HomeWidgetInfo> = {
     label: "Module Carousel",
     description:
       "The scrolling strip of module cards with their artwork. Hiding it leaves the module rail as the way into a module, so the home screen stays navigable either way.",
+  },
+  systems: {
+    id: "systems",
+    label: "Systems",
+    description:
+      "The modules grouped by what they are for — Money, Journal & Notes, Household, Media, Classroom, Workbench — each panel listing only the modules that reader can open, with a line of that system's current state where there is one. A module no grouping claims still appears, under Everything else.",
   },
   myShortcuts: {
     id: "myShortcuts",
