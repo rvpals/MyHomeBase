@@ -19,15 +19,32 @@
 // components registry forbids — the same shape and the same reason as
 // journal-entries-grid.tsx, which it renders.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/modal";
 import { JournalViewer } from "@/components/journal-viewer";
-import { formatMonthDayHeading, monthDayOf, type JournalEntry } from "@/lib/journal";
+import type { DataGridColumn } from "@/components/data-grid";
+import {
+  formatMonthDayHeading,
+  ON_THIS_DAY_EXCERPT_WORDS,
+  monthDayOf,
+  type JournalEntry,
+  type OnThisDayRow,
+} from "@/lib/journal";
 import type { BulkRefreshScope } from "./journal-bulk-actions";
 import { getJournalEntryAction } from "./journal-correct-actions";
-import { JournalEntriesGrid, type JournalEntryFormOptions } from "./journal-entries-grid";
+import {
+  JOURNAL_ENTRY_COLUMNS,
+  JournalEntriesGrid,
+  type JournalEntryFormOptions,
+} from "./journal-entries-grid";
 import { onThisDayEntriesAction } from "./journal-on-this-day-actions";
 import { journalEntriesFilterHref } from "./journal-shared";
+
+/** "This year" / "1 year ago" / "7 years ago" — the first column's cell. */
+function yearsAgoLabel(yearsAgo: number): string {
+  if (yearsAgo === 0) return "This year";
+  return yearsAgo === 1 ? "1 year ago" : `${yearsAgo} years ago`;
+}
 
 export interface JournalOnThisDayDialogProps {
   /** The cell that was pressed, "YYYY-MM-DD". Only its month and day are used. */
@@ -47,7 +64,7 @@ export function JournalOnThisDayDialog({
   formOptions,
   onClose,
 }: JournalOnThisDayDialogProps) {
-  const [rows, setRows] = useState<JournalEntry[]>([]);
+  const [rows, setRows] = useState<OnThisDayRow[]>([]);
   const [clipCounts, setClipCounts] = useState<Record<number, number>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
@@ -85,6 +102,67 @@ export function JournalOnThisDayDialog({
    */
   const scope = useCallback((): BulkRefreshScope => ({ tab: "onThisDay", monthDay: monthDayOf(date) }), [date]);
 
+  /**
+   * This screen's columns: **Years ago**, then Date / Time / Title taken verbatim
+   * from the shared set, then the body excerpt.
+   *
+   * Built by filtering `JOURNAL_ENTRY_COLUMNS` rather than retyping those three,
+   * so they stay byte-identical to every other journal grid — a re-declared
+   * column is a column free to drift, which is the thing `JournalEntriesGrid`
+   * exists to prevent.
+   *
+   * Categories and Tags are dropped. On a list that spans one date across twenty
+   * years they are the same handful of values repeating down the page, where the
+   * body text is what actually distinguishes one row from the next.
+   *
+   * `yearsAgo` is derived here rather than carried on the row: it only means
+   * anything relative to the cell that was pressed, and the server has no idea
+   * which year that was — the refresh scope deliberately carries only a
+   * month-day. Memoized on `date` because the reference year is the only input.
+   */
+  const columns = useMemo<DataGridColumn<OnThisDayRow>[]>(() => {
+    const referenceYear = Number(date.slice(0, 4));
+    const yearsAgoOf = (row: OnThisDayRow) => referenceYear - Number(row.date.slice(0, 4));
+
+    const yearsAgoColumn: DataGridColumn<OnThisDayRow> = {
+      key: "yearsAgo",
+      header: "Years ago",
+      // The number, so the column sorts chronologically rather than
+      // alphabetically — "10 years ago" must not sort between "1" and "2".
+      value: yearsAgoOf,
+      render: (row) => (
+        <span className="whitespace-nowrap">{yearsAgoLabel(yearsAgoOf(row))}</span>
+      ),
+    };
+
+    const contentColumn: DataGridColumn<OnThisDayRow> = {
+      key: "excerpt",
+      header: "Content",
+      // The excerpt, not `content` — the body is blanked on these rows, and
+      // sorting or exporting an empty string would be a column of nothing.
+      value: (row) => row.excerpt,
+      hint: `The first ${ON_THIS_DAY_EXCERPT_WORDS} words of the entry. Open the row for the whole thing.`,
+      // Wraps to three lines and clips, rather than one truncated line: the
+      // excerpt is the reason this column exists, and one line of a hundred
+      // words shows almost none of it. `break-words` so an unbroken paste can't
+      // push the column wider than its share.
+      className: "align-top",
+      render: (row) => (
+        <span className="line-clamp-3 break-words text-xs leading-snug text-muted">
+          {row.excerpt}
+        </span>
+      ),
+    };
+
+    return [
+      yearsAgoColumn,
+      ...(JOURNAL_ENTRY_COLUMNS as DataGridColumn<OnThisDayRow>[]).filter(
+        (column) => column.key !== "categories" && column.key !== "tags",
+      ),
+      contentColumn,
+    ];
+  }, [date]);
+
   async function openLiveEntry(entryId: number) {
     setIsBusy(true);
     setError(undefined);
@@ -114,6 +192,14 @@ export function JournalOnThisDayDialog({
               : `${rows.length} entries filed on ${heading}, across every year.`
         }
         size="lg"
+        // Wider than `lg`'s own 4xl: this grid carries six columns, one of them a
+        // three-line excerpt. `className` is merged last onto the panel, which is
+        // the sanctioned way to take a different shape without a new size — see
+        // the `Modal` entry in components.md. Capped against the viewport, so a
+        // laptop still gets a dialog rather than a full-bleed sheet. Below 1024px
+        // it is already full-width and `DataGrid` is in its card layout, so the
+        // cap never bites there.
+        className="max-w-[min(90rem,95vw)]"
         isBusy={isBusy}
         onClose={onClose}
       >
@@ -143,10 +229,11 @@ export function JournalOnThisDayDialog({
             // the calendar and this dialog with it.
             onRowClick={(row) => void openLiveEntry(row.id)}
             clipCounts={clipCounts}
-            // The shared column set exactly, so it shares the Entries list's key:
-            // a column hidden there is hidden here, which is the right answer for
-            // two grids showing the same five columns.
-            storageKey="myhomebase:journal-entries-grid"
+            columns={columns}
+            // Its own key, not the Entries list's: this grid re-cuts the shared
+            // set, so sharing one would let a hidden-column choice made here
+            // change a screen that has different columns.
+            storageKey="myhomebase:journal-on-this-day-grid"
             exportFileName={`journal-on-this-day-${monthDayOf(date)}`}
             emptyMessage={`Nothing is filed on ${heading} in any year.`}
             formOptions={formOptions}

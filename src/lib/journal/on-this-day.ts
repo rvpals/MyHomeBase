@@ -17,10 +17,42 @@
 // near-identical questions with opposite narrowing is exactly the pair that a
 // shared function with a boolean starts silently answering wrong.
 
+import { excerptWords } from "./duplicates";
 import type { JournalRepository } from "./ports";
 import type { JournalEntry } from "./types";
 
 const ISO_DATE_PATTERN = /^\d{4}-(\d{2}-\d{2})$/;
+
+/**
+ * How many words of an entry's body the dialog's Content column shows.
+ *
+ * The same 100 as the Duplicates and Review Data screens, and — like
+ * `SAME_DATE_EXCERPT_WORDS` — its own constant rather than an import of
+ * `DUPLICATE_EXCERPT_WORDS`, so the three screens can diverge later without one
+ * silently changing the others.
+ */
+export const ON_THIS_DAY_EXCERPT_WORDS = 100;
+
+/**
+ * One row in the Today in history dialog: a whole entry with its body replaced
+ * by a short excerpt.
+ *
+ * A subtype of `JournalEntry` rather than a trimmed shape of its own, for the
+ * reason `DuplicateRow` is one — it feeds `JournalEntriesGrid`, which reads a
+ * `JournalEntry`, and a reduced shape would mean a second column set and a
+ * second action bar. See the note on `DuplicateGroup` in duplicates.ts.
+ *
+ * **`content` is blanked and `excerpt` carries the first
+ * `ON_THIS_DAY_EXCERPT_WORDS` words instead.** Blanked rather than truncated in
+ * place, so nothing downstream can mistake the short text for the entry's real
+ * body — a Merge or a Bulk overwrite reading `content` here would otherwise
+ * write 100 words over the whole entry. The writes all re-read from the
+ * repository by id, and the row click fetches the entry whole.
+ */
+export interface OnThisDayRow extends JournalEntry {
+  /** First `ON_THIS_DAY_EXCERPT_WORDS` words of the body, "…"-suffixed if cut. */
+  excerpt: string;
+}
 
 /**
  * The "MM-DD" of an ISO date — the key the repository matches on.
@@ -38,20 +70,32 @@ export function monthDayOf(date: string): string {
 }
 
 /**
+ * Excerpt first, then blank — the order matters, and reversing it would hand
+ * every row an empty excerpt.
+ *
+ * An encrypted entry needs no special case: migration 0131 blanks `content` in
+ * the row and keeps the ciphertext in `contentEncrypted`, which nothing here
+ * reads, so its excerpt comes out empty on its own.
+ */
+function toRows(entries: JournalEntry[]): OnThisDayRow[] {
+  return entries.map((entry) => ({
+    ...entry,
+    excerpt: excerptWords(entry.content, ON_THIS_DAY_EXCERPT_WORDS),
+    content: "",
+  }));
+}
+
+/**
  * Every entry falling on the same month and day as `date`, in **any** year,
  * newest first.
  *
- * `content` is blanked on every row. Nothing in the grid these rows feed reads
- * the body — the columns are Date, Time, Title, Categories, Tags — and this
- * read is unbounded by design: an imported calendar can hold hundreds of routine
- * events on one date, so across twenty years the bodies would be the whole
- * payload for none of the benefit. The dialog fetches the one entry a reader
- * clicks, exactly as the Duplicates card does.
+ * The read is unbounded by design: an imported calendar can hold hundreds of
+ * routine events on one date, so across twenty years the full bodies would be
+ * the whole payload. What crosses the wire is one 100-word excerpt per row
+ * instead.
  */
-export function listEntriesOnMonthDay(repo: JournalRepository, date: string): JournalEntry[] {
-  return repo
-    .listEntriesByMonthDay(monthDayOf(date))
-    .map((entry) => ({ ...entry, content: "" }));
+export function listEntriesOnMonthDay(repo: JournalRepository, date: string): OnThisDayRow[] {
+  return toRows(repo.listEntriesByMonthDay(monthDayOf(date)));
 }
 
 /**
@@ -64,9 +108,9 @@ export function listEntriesOnMonthDay(repo: JournalRepository, date: string): Jo
 export function listEntriesOnMonthDayKey(
   repo: JournalRepository,
   monthDay: string,
-): JournalEntry[] {
+): OnThisDayRow[] {
   if (!/^\d{2}-\d{2}$/.test(monthDay)) {
     throw new Error(`listEntriesOnMonthDayKey: monthDay must be MM-DD, got "${monthDay}".`);
   }
-  return repo.listEntriesByMonthDay(monthDay).map((entry) => ({ ...entry, content: "" }));
+  return toRows(repo.listEntriesByMonthDay(monthDay));
 }

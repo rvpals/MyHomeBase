@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { listEntriesOnMonthDay, listEntriesOnMonthDayKey, monthDayOf } from "./on-this-day";
+import {
+  ON_THIS_DAY_EXCERPT_WORDS,
+  listEntriesOnMonthDay,
+  listEntriesOnMonthDayKey,
+  monthDayOf,
+} from "./on-this-day";
 import type { JournalRepository } from "./ports";
 import type { JournalEntry } from "./types";
 
@@ -85,13 +90,50 @@ describe("listEntriesOnMonthDay", () => {
     expect(listEntriesOnMonthDay(repo, "2026-11-24").map((row) => row.id)).toEqual([1, 2]);
   });
 
-  it("blanks the body — the grid never reads it and the read is unbounded", () => {
+  it("blanks the body and carries a short excerpt in its place", () => {
     const { repo } = fakeRepo([entry(1, "2026-11-24")]);
 
     const [row] = listEntriesOnMonthDay(repo, "2026-11-24");
 
     expect(row.content).toBe("");
+    expect(row.excerpt).toBe("the body of this entry");
     expect(row.title).toBe("Entry 1");
+  });
+
+  it("cuts a long body at the word limit and marks it as cut", () => {
+    const body = Array.from({ length: ON_THIS_DAY_EXCERPT_WORDS + 40 }, (_, i) => `w${i}`).join(" ");
+    const { repo } = fakeRepo([entry(1, "2026-11-24", { content: body })]);
+
+    const [row] = listEntriesOnMonthDay(repo, "2026-11-24");
+
+    expect(row.excerpt.endsWith("…")).toBe(true);
+    expect(row.excerpt.replace("…", "").trim().split(/\s+/)).toHaveLength(
+      ON_THIS_DAY_EXCERPT_WORDS,
+    );
+  });
+
+  it("leaves a body shorter than the limit uncut", () => {
+    const { repo } = fakeRepo([entry(1, "2026-11-24", { content: "two words" })]);
+
+    expect(listEntriesOnMonthDay(repo, "2026-11-24")[0].excerpt).toBe("two words");
+  });
+
+  /**
+   * Migration 0131 blanks `content` on an encrypted row and keeps the ciphertext
+   * in `contentEncrypted`, which this module never reads — so the empty excerpt
+   * falls out rather than needing a branch. Pinned because a future change that
+   * excerpted `contentEncrypted` instead would leak ciphertext onto the screen.
+   */
+  it("gives an encrypted entry an empty excerpt, never its ciphertext", () => {
+    const { repo } = fakeRepo([
+      entry(1, "2026-11-24", {
+        content: "",
+        isEncrypted: true,
+        contentEncrypted: "AAAA-ciphertext-BBBB",
+      }),
+    ]);
+
+    expect(listEntriesOnMonthDay(repo, "2026-11-24")[0].excerpt).toBe("");
   });
 
   it("matches only other leap years on February 29", () => {
@@ -129,6 +171,7 @@ describe("listEntriesOnMonthDayKey", () => {
     expect(asked).toEqual(["11-24"]);
     expect(result.map((row) => row.date)).toEqual(["2026-11-24", "2019-11-24"]);
     expect(result[0].content).toBe("");
+    expect(result[0].excerpt).toBe("the body of this entry");
   });
 
   it("rejects anything that isn't MM-DD", () => {

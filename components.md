@@ -1015,7 +1015,8 @@ before they were folded back together.
 | `onBusyChange?` | `(busy: boolean) => void` | Raised around every write, for the caller's own disabled states. |
 | `onRowClick` | `(row: Row) => void` | What a click does. The Entries list navigates to the entry screen; the Duplicates card raises a read-only viewer so the ticks survive. |
 | `clipCounts` | `Record<number, number>` | Clips per entry id, for the paperclip. Ids with none are simply absent. |
-| `leadingColumns?` | `DataGridColumn<Row>[]` | Columns placed **in front of** the shared set, for a screen with a genuine extra dimension. Not a way to re-cut the shared ones. |
+| `leadingColumns?` | `DataGridColumn<Row>[]` | Columns placed **in front of** the set below. |
+| `columns?` | `DataGridColumn<Row>[]` | The column set this screen shows, **replacing** `JOURNAL_ENTRY_COLUMNS`. Omit for the shared default. Build it by filtering/concatenating the exported array — see below. |
 | `storageKey` | `string` | The grid's persisted layout. Screens with the same columns share one key; a screen with `leadingColumns` needs its own. |
 | `exportFileName`, `emptyMessage` | `string` | Forwarded to `DataGrid`. |
 | `getRowGroupKey?`, `stripeClassName?` | — | Zebra banding by group. Forwarded to `DataGrid`. |
@@ -1062,14 +1063,25 @@ component.
 3. **Supply `formOptions`** — copy the reads from
    [journal-correct-panel.tsx](<src/app/(protected)/modules/[slug]/journal-correct-panel.tsx>),
    which is the smaller of the two examples.
-4. **Pick a `storageKey`.** Reuse `myhomebase:journal-entries-grid` only if your columns
-   are exactly the shared set; add `leadingColumns` and you need your own key, or hiding a
-   column on one screen silently changes the other.
+4. **If the screen needs different columns, pass `columns`** — built from `JOURNAL_ENTRY_COLUMNS`,
+   not retyped. Filtering and concatenating the exported array keeps Date / Time / Title
+   byte-identical across every journal grid, which is the point of the shared set: a column
+   *re-declared* per screen is a column free to drift, and four screens drifting apart is
+   what this component was extracted to stop. The clips paperclip still attaches as long as
+   the set keeps a column keyed `"title"`. Today only the **Today in history** dialog does
+   this — it drops Categories and Tags (the same few values repeating down a list that spans
+   one date across twenty years) and adds a 100-word body excerpt plus a **Years ago**
+   column at the front.
+5. **Pick a `storageKey`.** Reuse `myhomebase:journal-entries-grid` only if your columns
+   are exactly the shared set; pass `leadingColumns` or `columns` and you need your own key,
+   or hiding a column on one screen silently changes the other.
 
 **The row subtype is asserted, not proved.** `scope` and the `Row` type argument have to
-agree: `{ tab: "duplicates" }` hands back `DuplicateRow`s, every other arm hands back plain
-`JournalEntry`s, and the grid casts once (see `adopt` in the source). TypeScript will not
-catch a mismatch — it shows up as a blank `leadingColumns` cell. Keep the two together.
+agree: `{ tab: "duplicates" }` hands back `DuplicateRow`s, `{ tab: "onThisDay" }` hands back
+`OnThisDayRow`s (carrying the `excerpt` its Content column reads), and every other arm hands
+back plain `JournalEntry`s. The grid casts once (see `adopt` in the source), so TypeScript
+will not catch a mismatch — it shows up as a blank cell in whichever column reads the extra
+field. Keep the two together.
 
 **Not for other modules.** The rows are `JournalEntry`, the writes are the journal's server
 actions, and the refresh is `BulkRefreshScope`. A Documents or Expense grid shares none of

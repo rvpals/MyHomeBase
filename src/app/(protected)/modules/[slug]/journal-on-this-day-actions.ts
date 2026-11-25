@@ -14,7 +14,7 @@
 // journal-bulk-actions.ts, under the `{ tab: "onThisDay" }` refresh scope. This
 // file holds the read alone.
 
-import { listEntriesOnMonthDay, type JournalEntry } from "@/lib/journal";
+import { listEntriesOnMonthDay, type OnThisDayRow } from "@/lib/journal";
 // Clips is read here, in the presentation layer, so `src/lib/journal` never has
 // to import `src/lib/clips` — the Journal must not know about Clips, or the two
 // library modules would import each other. Same reasoning as
@@ -29,8 +29,11 @@ const ACCESS_MODULE_SLUG = "journal";
 export interface OnThisDayResult {
   ok: boolean;
   error?: string;
-  /** The matching entries, newest first, with `content` blanked. */
-  entries?: JournalEntry[];
+  /**
+   * The matching entries, newest first, each with `content` blanked and a
+   * 100-word `excerpt` in its place — the dialog's Content column.
+   */
+  entries?: OnThisDayRow[];
   /**
    * Clips attached per entry id, for the grid's paperclip badge. A plain object
    * rather than the Map `countClipsForTargets` returns: this crosses the

@@ -91,13 +91,21 @@ const CLIP_SLOT = getIconSlot("clips_linked_badge")!;
 /**
  * The one column set, shared by every screen that lists journal entries.
  *
- * Deliberately not per-screen. Two tabs used to have their own — the Substantial
- * tab swapped Place for a Body Length column, the Log tab had a merged "When"
- * plus Source and Note — and the result read as four different screens over the
- * same table. A column that earns its place on one screen earns it on all of
- * them, so add it here; `DataGrid` already lets a reader hide per grid what they
- * don't want, and a screen with something genuinely of its own (the Duplicates
- * card's "Duplicate of") passes it as `leadingColumns`.
+ * **The default, and what every screen should start from.** Two tabs used to
+ * have their own — the Substantial tab swapped Place for a Body Length column,
+ * the Log tab had a merged "When" plus Source and Note — and the result read as
+ * four different screens over the same table. A column that earns its place on
+ * one screen generally earns it on all of them, so add it here; `DataGrid`
+ * already lets a reader hide per grid what they don't want, and a screen with
+ * something genuinely of its own (the Duplicates card's "Duplicate of") passes
+ * it as `leadingColumns`.
+ *
+ * A screen whose question is genuinely different may pass its own `columns` —
+ * the Today in history dialog does, trading Categories and Tags for the body
+ * excerpt. **It must build that set from this array**, filtering and
+ * concatenating rather than retyping Date / Time / Title, so those stay
+ * byte-identical everywhere. A re-declared column is a column free to drift,
+ * which is the whole failure above.
  */
 export const JOURNAL_ENTRY_COLUMNS: DataGridColumn<JournalEntry>[] = [
   { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
@@ -248,10 +256,30 @@ export interface JournalEntriesGridProps<Row extends JournalEntry> {
   clipCounts: Record<number, number>;
   /**
    * Columns placed **in front of** the shared set — for a screen with a genuine
-   * extra dimension, like the Duplicates card's "Duplicate of". Not a licence to
-   * re-cut the shared columns: see the note on `JOURNAL_ENTRY_COLUMNS`.
+   * extra dimension, like the Duplicates card's "Duplicate of".
    */
   leadingColumns?: DataGridColumn<Row>[];
+  /**
+   * The column set this screen shows, **replacing** `JOURNAL_ENTRY_COLUMNS`.
+   * Omit it — as the Entries tabs, Search Results and the Duplicates card all do
+   * — and the shared default is used unchanged.
+   *
+   * This exists because one screen genuinely reads differently: the Today in
+   * history dialog answers "what else did I write on this date?", so it wants
+   * the body text in view and has no use for Categories and Tags, which on that
+   * screen are the same handful of values repeating down the page.
+   *
+   * **Build it from `JOURNAL_ENTRY_COLUMNS`, don't retype it.** Filtering and
+   * concatenating the exported array keeps Date / Time / Title byte-identical to
+   * every other screen's, which is the whole point of the shared set — a column
+   * that is *re-declared* here is a column free to drift, and four screens
+   * drifting apart is what this component was extracted to stop. A screen that
+   * re-cuts the set also needs its own `storageKey`.
+   *
+   * The paperclip still attaches, as long as the set keeps a column keyed
+   * `"title"` — see `withClipBadge`.
+   */
+  columns?: DataGridColumn<Row>[];
   /**
    * The grid's persisted layout key. The Entries tabs and Search Results all
    * share one, so a width or a hidden column set on one holds on all of them. A
@@ -289,6 +317,7 @@ export function JournalEntriesGrid<Row extends JournalEntry>({
   onRowClick,
   clipCounts,
   leadingColumns,
+  columns: columnSet = JOURNAL_ENTRY_COLUMNS as DataGridColumn<Row>[],
   storageKey,
   exportFileName,
   emptyMessage,
@@ -443,10 +472,11 @@ export function JournalEntriesGrid<Row extends JournalEntry>({
   // and a statement the server declined to send means there is nothing to show.
   const sqlProps = sql && onRunSql ? { sql, onRunSql } : {};
 
-  // Leading columns first, then the shared set — one array, so a screen cannot
-  // interleave its own column into the middle of the shared ones.
-  const columns = withClipBadge<Row>(
-    [...(leadingColumns ?? []), ...JOURNAL_ENTRY_COLUMNS],
+  // Leading columns first, then the screen's set — which is the shared
+  // JOURNAL_ENTRY_COLUMNS unless the caller passed its own. One array, so a
+  // screen cannot interleave its own column into the middle of that set.
+  const gridColumns = withClipBadge<Row>(
+    [...(leadingColumns ?? []), ...columnSet],
     clipCounts,
     setClipsForEntry,
   );
@@ -454,7 +484,7 @@ export function JournalEntriesGrid<Row extends JournalEntry>({
   return (
     <>
       <DataGrid
-        columns={columns}
+        columns={gridColumns}
         rows={rows}
         getRowKey={(entry) => entry.id}
         emptyMessage={emptyMessage}

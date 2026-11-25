@@ -1,5 +1,29 @@
 # Change History
 
+## 2026-11-24 (later) — Today in history: own column set with body excerpt and "Years ago"; Music albums: black vinyl, name on the sleeve
+
+**No migrations, no dependency changes, no paid or outside service.**
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted,
+tested or opened in a browser, including the new tests.
+
+- **Today in history dialog** now shows **Years ago**, Date, Time, Title and a **Content**
+  column (first 100 words of the body, three lines clamped). Categories and Tags are dropped
+  on this screen. The dialog is wider (`min(90rem, 95vw)`) and has its own grid layout key,
+  `myhomebase:journal-on-this-day-grid`, so hiding a column here no longer touches the
+  Entries list.
+- **`JournalEntriesGrid` takes a `columns` prop** replacing `JOURNAL_ENTRY_COLUMNS`; callers
+  must build it from that array (Date/Time/Title stay identical everywhere). All other
+  screens omit it and are unchanged.
+- **Library:** new `OnThisDayRow` (`content` blanked, `excerpt` in its place) and
+  `ON_THIS_DAY_EXCERPT_WORDS`; an encrypted entry's excerpt is empty, never ciphertext.
+  Tests added for cut, uncut and encrypted bodies.
+- **Music → Albums:** the record peeking from the sleeve is now black vinyl with a sheen,
+  grooves and track gaps (was red). A cover-less sleeve shows the album name large instead
+  of a vinyl glyph; the track count moved to the sleeve's upper right and the artist to its
+  lower right; the caption under the sleeve is the name plus year only.
+- `components.md` documents the `columns` prop and the `OnThisDayRow` subtype.
+
 ## 2026-11-24 — Journal Calendar: entry count badge on the day number; "Today in history" button and dialog
 
 **No migrations, no dependency changes, no paid or outside service.**

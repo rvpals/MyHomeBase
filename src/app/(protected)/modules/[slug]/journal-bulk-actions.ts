@@ -81,7 +81,9 @@ const ENTRIES_LIMIT = 500;
  * duplicate pair really does drop both rows from the list. See the note on
  * `adopt` in journal-entries-grid.tsx, which is where that is relied on.
  *
- * `"onThisDay"` is the Calendar cell's **Today in history** dialog, which has no
+ * `"onThisDay"` hands back a subtype too — `OnThisDayRow`, carrying the
+ * 100-word `excerpt` its Content column reads in place of the blanked body. It
+ * is the Calendar cell's **Today in history** dialog, which has no
  * filter either: it re-asks "every entry on this month and day, in any year".
  * Keyed by the month-day rather than by the date that was clicked, because the
  * dialog's question has no year in it — handing back one year's entries after a

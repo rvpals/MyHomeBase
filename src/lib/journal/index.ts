@@ -453,6 +453,8 @@ export {
   listEntriesOnMonthDayKey,
   monthDayOf,
 } from "./on-this-day";
+export type { OnThisDayRow } from "./on-this-day";
+export { ON_THIS_DAY_EXCERPT_WORDS } from "./on-this-day";
 
 // The recycle bin behind the Duplicate entries screen's bulk delete (migration 0079).
 export {

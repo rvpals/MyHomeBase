@@ -400,16 +400,22 @@ function Albums({
                   <span
                     aria-hidden="true"
                     className="absolute right-0 top-[4%] flex aspect-square h-[92%] items-center justify-center rounded-full shadow-md transition-transform duration-300 group-hover:translate-x-[6%]"
-                    /* Red vinyl is a physical colour like cover art, not a theme colour,
-                       so it is literal. Fine concentric grooves over a conic sheen. */
+                    /* Black vinyl is a physical colour like cover art, not a theme colour,
+                       so it is literal. Three layers: a conic sheen (two opposite light
+                       wedges, as light catches a real record), fine light/dark groove
+                       lines, and a near-black base. */
                     style={{
+                      backgroundColor: "#0b0b0c",
                       backgroundImage:
-                        "repeating-radial-gradient(circle at center, rgba(0,0,0,0.22) 0 0.6px, rgba(0,0,0,0) 0.6px 2.2px), conic-gradient(from 20deg, #a30f17, #e0252f 12%, #8a0a11 28%, #b8131c 45%, #e8343d 58%, #8a0a11 75%, #c4161f 90%, #a30f17)",
+                        "conic-gradient(from 35deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.22) 28deg, rgba(255,255,255,0) 62deg, rgba(255,255,255,0) 180deg, rgba(255,255,255,0.18) 208deg, rgba(255,255,255,0) 242deg, rgba(255,255,255,0) 360deg), repeating-radial-gradient(circle at center, rgba(255,255,255,0.09) 0 0.5px, rgba(0,0,0,0.35) 0.5px 1.1px, rgba(255,255,255,0.03) 1.1px 1.8px)",
                     }}
                   >
-                    {/* Lead-in and run-out bands between the groove zones. */}
-                    <span className="absolute inset-[7%] rounded-full border border-black/30" />
-                    <span className="absolute inset-[34%] rounded-full border border-black/30" />
+                    {/* Smooth lead-in at the rim, the gaps between tracks, and the
+                        run-out ring beside the label. */}
+                    <span className="absolute inset-[3%] rounded-full border-[3px] border-black/60" />
+                    <span className="absolute inset-[18%] rounded-full border-2 border-black/55" />
+                    <span className="absolute inset-[27%] rounded-full border-2 border-black/55" />
+                    <span className="absolute inset-[33%] rounded-full border-[3px] border-black/70" />
                     {/* Centre label: solid red with a darker rim and the spindle hole. */}
                     <span className="flex h-[32%] w-[32%] items-center justify-center rounded-full border-2 border-[#7a0910] bg-[#d1202a]">
                       <span className="h-[14%] w-[14%] min-h-[3px] min-w-[3px] rounded-full bg-ink" />
@@ -428,20 +434,27 @@ function Albums({
                         className="h-full w-full object-cover transition group-hover:opacity-90"
                       />
                     ) : (
-                      <span className="flex h-full w-full items-center justify-center">
-                        <TreeIcon name="vinyl" className="h-8 w-8 text-paper" />
+                      /* No cover: the album's name, large, is the face of the sleeve. */
+                      <span className="flex h-full w-full items-center justify-center p-3 pb-9 pt-9">
+                        <span className="line-clamp-4 break-words text-center text-lg font-bold leading-tight text-paper">
+                          {album.name}
+                        </span>
                       </span>
                     )}
+                    {/* Track count, upper right. */}
+                    <span className="absolute right-1.5 top-1.5 rounded-full bg-ink/80 px-2 py-0.5 text-[11px] font-medium text-paper">
+                      {album.trackCount} {album.trackCount === 1 ? "track" : "tracks"}
+                    </span>
+                    {/* Artist, lower right. */}
+                    <span className="absolute bottom-1.5 right-1.5 max-w-[calc(100%-0.75rem)] truncate rounded-full bg-ink/80 px-2 py-0.5 text-[11px] font-medium text-paper">
+                      {album.albumArtist === "" ? "Unknown artist" : album.albumArtist}
+                    </span>
                   </span>
                 </span>
                 <span className="mt-1.5 block truncate text-sm text-ink">{album.name}</span>
-                <span className="block truncate text-xs text-muted">
-                  {album.albumArtist === "" ? "Unknown artist" : album.albumArtist}
-                </span>
-                <span className="block text-xs text-muted">
-                  {album.trackCount} {album.trackCount === 1 ? "track" : "tracks"}
-                  {album.releaseYear !== undefined && ` · ${album.releaseYear}`}
-                </span>
+                {album.releaseYear !== undefined && (
+                  <span className="block text-xs text-muted">{album.releaseYear}</span>
+                )}
               </button>
             </li>
           ))}
