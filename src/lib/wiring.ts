@@ -98,6 +98,7 @@ import { SqliteDailySnapshotRepository } from "./stock-daily-snapshot/repository
 import { SqliteStockPositionRepository } from "./stock-positions/repository";
 import { SqliteStockWatchListRepository } from "./stock-watchlist/repository";
 import { SqliteTaxLotRepository } from "./tax-lots/repository";
+import { SqliteTBillRepository } from "./treasury-bills/repository";
 import { RealSystemInfoRepository } from "./system-info/repository";
 import { YahooTickerNewsClient } from "./ticker-news/yahoo-news-client";
 import { FmpTickerLogoClient } from "./ticker-logos/fmp-logo-client";
@@ -459,6 +460,10 @@ export const deps = {
   // only — every split normalization and return figure is a pure function over
   // these rows, in src/lib/tax-lots.
   taxLotRepo: new SqliteTaxLotRepository(db),
+  // US Treasury Bill purchases for the T-Bill section (migrations/0186). Storage
+  // only: gain, gain %, days to maturity and yield are pure functions over these
+  // rows in src/lib/treasury-bills, never columns.
+  tbillRepo: new SqliteTBillRepository(db),
   stockAnalyticsRepo: new SqliteStockAnalyticsRepository(db),
   sqlExplorerRepo: new SqliteSqlExplorerRepository(db),
   savedQueryRepo: new SqliteSavedQueryRepository(db),

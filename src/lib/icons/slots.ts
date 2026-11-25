@@ -366,6 +366,18 @@ export const ICON_SLOTS: IconSlot[] = [
     namespace: "tree",
   },
   {
+    // Derived, not free-form: `sectionSlotId("stock", "t-bill")` must equal this id,
+    // which is what ties the slug and the slot together. It is also the section's
+    // permanent menu-item id.
+    id: "stock_section_t_bill",
+    label: "T-Bill",
+    group: "Investments sections",
+    where: "Investments → section panel → T-Bill.",
+    defaultConcept: "money",
+    wired: true,
+    namespace: "tree",
+  },
+  {
     id: "stock_section_ai_export",
     label: "Export for AI Analysis",
     group: "Investments sections",
@@ -533,6 +545,19 @@ export const ICON_SLOTS: IconSlot[] = [
     group: "Investments cards",
     where: "Investments → Tax Lots → the Lot Breakdown card header.",
     defaultConcept: "list",
+    wired: true,
+    namespace: "tree",
+  },
+
+  /* The T-Bill section's one card. The purchases grid below it takes no slot — it is
+     the section's content rather than a card with a header of its own, and the five
+     stat tiles inside the card are numbers, not places. */
+  {
+    id: "stock_card_tbill_stats",
+    label: "T-Bill Stats card",
+    group: "Investments cards",
+    where: "Investments → T-Bill → the T-Bill Stats card header.",
+    defaultConcept: "chart",
     wired: true,
     namespace: "tree",
   },

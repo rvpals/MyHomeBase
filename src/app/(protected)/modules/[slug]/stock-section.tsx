@@ -43,6 +43,7 @@ import {
   type TickerPricing,
 } from "@/lib/tax-lots";
 import { loadSectorMap, resolveSector } from "@/lib/ticker-profiles";
+import { listPurchases as listTBillPurchases, computeStats as computeTBillStats } from "@/lib/treasury-bills";
 import { deps } from "@/lib/wiring";
 import { NextDayActionsView } from "./next-day-actions-view";
 import { StockAccountsView, type AccountEntry } from "./stock-accounts-view";
@@ -65,6 +66,7 @@ import {
   StockTaxLotsTable,
   type TaxLotsViewProps,
 } from "./stock-tax-lots-view";
+import { StockTBillView } from "./stock-tbill-view";
 import { StockFavoritesMenu } from "./stock-favorites-menu";
 import { StockTickerSearch } from "./stock-ticker-search";
 import { StockTransactionsView } from "./stock-transactions-view";
@@ -560,6 +562,13 @@ function SectionBody({
           totalMarketValue={preview.summary.totalMarketValue}
         />
       );
+    }
+
+    // One read of the purchases; the stats (including the chart series) are a fold
+    // over those same rows rather than a second query.
+    case "t-bill": {
+      const purchases = listTBillPurchases(deps.tbillRepo);
+      return <StockTBillView purchases={purchases} stats={computeTBillStats(purchases)} />;
     }
 
     case "import":

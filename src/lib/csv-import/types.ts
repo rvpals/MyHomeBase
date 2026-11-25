@@ -8,7 +8,15 @@ export type ImportType =
   // Household's recipe box. The value is what ties a saved mapping to its
   // module in the shared `csv_named_mappings` table — the table is keyed by
   // `import_type`, so a new importer needs a new value here and nothing else.
-  | "Recipe";
+  | "Recipe"
+  // Investments' T-Bill purchases — the fourth type on that module's one CSV
+  // Import screen, beside Position, Transaction and Performance.
+  //
+  // **This value is permanent.** It is written into every saved mapping row, so
+  // renaming it orphans the reader's saved mappings exactly the way an icon slot
+  // id does. It must stay in step with `importTypeSchema` in ./schema.ts: one
+  // without the other typechecks green and fails zod at runtime.
+  | "TBill";
 
 /** CSV column index (as a string key) -> target field name. Columns absent from the map are ignored. */
 export type ColumnMapping = Record<string, string>;

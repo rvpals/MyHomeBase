@@ -737,6 +737,93 @@ function TaxLotsInstructions() {
   );
 }
 
+function TBillInstructions() {
+  return (
+    <>
+      <p className="text-sm text-muted">
+        Every US Treasury Bill you have bought, what it cost, what it paid out at maturity,
+        and the yield that works out to. Add, edit and delete rows here; a file of them
+        loads through CSV Import.
+      </p>
+      <Section title="Why a bill is recorded whole, up front">
+        <p>
+          A T-Bill is bought at a discount and redeemed at face value on a date fixed the
+          day you buy it. Nothing about it is uncertain afterwards — which is why the
+          payout date and payout amount are required fields rather than something you come
+          back and fill in. Both are on the confirmation.
+        </p>
+      </Section>
+      <Section title="Purchase Price is per $100 of face value">
+        <p>
+          That is the unit a Treasury confirmation quotes — <em>98.6375</em>, not a dollar
+          price per share. The yield formula below only means anything against that unit,
+          so a price above 100 is refused rather than silently producing a negative yield
+          that looks like a real reading.
+        </p>
+      </Section>
+      <Section title="What is stored and what is worked out">
+        <p>
+          Stored: symbol, description, the two dates, shares, price, amount spent and
+          payout amount. <strong>Amount Spent</strong> fills itself in from shares × price
+          as you type, and you can overwrite it — a broker&apos;s settled figure includes
+          rounding the formula doesn&apos;t reproduce, and the gain is measured against
+          what actually left the account.
+        </p>
+        <p>
+          Worked out on every read, never stored:{" "}
+          <strong>Gain Amount</strong> (payout − spent), <strong>Gain %</strong>,{" "}
+          <strong># of Days to Maturity</strong>, and <strong>Yield</strong> —{" "}
+          <em>(100 − price) ÷ price × 100 × 365 ÷ days</em>. Edit a row and all four follow
+          it, because there is no second copy to fall out of step.
+        </p>
+        <p>
+          Gain % and Yield read &quot;—&quot; when there is nothing to divide by — a
+          same-day maturity, or a zero price. That is a genuine absence of an answer, not a
+          zero return.
+        </p>
+      </Section>
+      <Section title="Reading the stats card">
+        <p>
+          <strong>Total Return</strong> is total gained over total invested. It is a{" "}
+          <em>period</em> figure, not an annual rate: a 4-week bill and a 52-week bill
+          count the same in it. The per-row <strong>Yield</strong> column is the annualised
+          one.
+        </p>
+        <p>
+          <strong>Total Average Yield</strong> and <strong>Total Average Gain</strong> are
+          plain averages of their columns — a $500 bill counts as much as a $50,000 one.
+          The average yield is taken over the rows that have a yield, so a row reading
+          &quot;—&quot; doesn&apos;t drag it toward zero.
+        </p>
+      </Section>
+      <Section title="The chart">
+        <p>
+          <strong>Total gain over time</strong> is the running total of gain, plotted
+          against each bill&apos;s <em>payout</em> date rather than its purchase date —
+          the money arrives when the bill matures, and crediting it at purchase would make
+          the line climb months ahead of the account. Bills maturing on the same day
+          collapse to one point, and the line steps down if a matured bill lost money.
+        </p>
+      </Section>
+      <Section title="Importing a file">
+        <p>
+          Go to <strong>CSV Import</strong> and pick <strong>T-Bill Purchases</strong> as
+          the file type. Re-importing the same export is a no-op: a row whose symbol and
+          purchase date are already recorded is skipped and reported. Two genuine buys of
+          the same bill on one day both import — the check counts how many copies the file
+          holds against how many are stored, rather than refusing anything that looks
+          similar.
+        </p>
+        <p>
+          A row whose dates can&apos;t be read is skipped and listed with its row number,
+          never guessed at. If the export writes dates as <em>01/05/2026</em>, set the
+          source date format on those columns in the mapping table.
+        </p>
+      </Section>
+    </>
+  );
+}
+
 export function StockInstructions({ section }: { section: StockSection }) {
   switch (section) {
     case "main":
@@ -753,6 +840,8 @@ export function StockInstructions({ section }: { section: StockSection }) {
       return <ChartsInstructions />;
     case "tax-lots":
       return <TaxLotsInstructions />;
+    case "t-bill":
+      return <TBillInstructions />;
     case "import":
       return <ImportInstructions />;
     case "settings":

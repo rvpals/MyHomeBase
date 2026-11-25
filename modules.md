@@ -130,6 +130,51 @@ Reachable from the CLI as `npm run cli -- tax-lots --ticker NVDA`, plus
 storing nothing unless `--save`), `--from-trades --ticker NVDA` (seed from the
 ledger) and `--tickers NVDA,AAPL,MSFT` (the multi-ticker roll-up).
 
+The **T-Bill** section (migration 0186) tracks US Treasury Bill purchases, which are
+neither positions nor tax lots and get their own table, `inv_tbill_purchases`, and
+library module, `src/lib/treasury-bills`. Four things worth knowing:
+
+- **A bill is recorded whole, on the day it is bought.** It is purchased at a discount
+  and redeemed at face value on a date fixed at purchase, so the payout date and
+  payout amount are **required**, not filled in at maturity. There is no pending state
+  to model, which is why every row can compute its gain and yield immediately.
+- **Four figures are not columns.** Gain Amount, Gain %, # of Days to Maturity and
+  Yield are recomputed on every read, so an edited row can never disagree with its own
+  derived values. Gain % and Yield read **"—", never 0%**, when there is nothing to
+  divide by — the same rule the Tax Lots XIRR follows, and for the same reason.
+- **Purchase Price is a quoted rate, not money**, so it is `REAL` rather than cents: a
+  Treasury price is per **$100 of face value** and carries six decimals, and rounding
+  to cents moves the computed yield. The schema caps it at 100, because the yield
+  formula is only meaningful below par. `amount_spent_cents` and
+  `payout_amount_cents` *are* money and stay integer cents.
+- **Amount Spent is stored, not derived.** It could be shares × price, and the form
+  auto-fills it that way, but the broker's settled figure includes rounding the
+  formula does not reproduce — and the gain is measured against what actually left
+  the account.
+
+The **T-Bill Stats** card carries five totals (invested, gained, total return, average
+yield, average gain) and a **total gain over time** line. Both averages are plain
+unweighted means of their column, as specified, so a $500 bill counts as much as a
+$50,000 one; the average yield is taken over the rows that *have* a yield rather than
+over all rows, so a "—" does not drag it toward zero. The chart's axis is each bill's
+**payout** date, not its purchase date: the money arrives when the bill matures, and
+crediting it at purchase would make the line climb ahead of the account.
+
+CSV files load through the module's existing **CSV Import** section as a fourth import
+type beside Positions, Transactions and Account Performance — that screen was always
+"one screen for all import types", so a separate T-Bill import screen would have been a
+second one in the same module's nav. It adds **no migration**: saved mappings live in
+the shared `csv_named_mappings` table under `import_type = 'TBill'`. The importer
+matches on **symbol + purchase date**, reads the stored keys once before the run so a
+file's second genuine buy of one bill on one day is not mistaken for a duplicate, and
+**refuses** a row whose date it cannot read rather than defaulting it to today the way
+the shared `parseDateToIso` would — a misread date changes the term, and the term
+divides into the yield.
+
+Reachable from the CLI as `npm run cli -- t-bills`, plus `--stats`, `--chart`, `--add`,
+`--edit`, `--delete`, and `npm run cli -- import-tbills-csv --file <path>` with an
+optional `--dry-run`.
+
 The **Export for AI Analysis** section packages the portfolio as a prompt to paste
 into any LLM. It **adds no table and no migration** — everything is derived from
 the positions and accounts already stored, recomputed per request. Its library

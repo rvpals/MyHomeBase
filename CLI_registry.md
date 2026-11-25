@@ -2,7 +2,7 @@
 
 Reference for driving MyHomeBase from a terminal.
 
-**Part 1** documents the 65 commands that work today.
+**Part 1** documents the 83 commands that work today.
 **Part 2** is the full inventory of library use-cases — what a command *could* call.
 **Part 3** summarises the coverage gap.
 
@@ -28,7 +28,7 @@ command list and exits 1. There is no `--help`.
 
 # Part 1 — Available commands
 
-Sixty-four commands, registered in [src/cli/index.ts](src/cli/index.ts).
+Eighty-three commands, registered in [src/cli/index.ts](src/cli/index.ts).
 
 The table below is the index — every command links to its own section. Those sections
 are **not all contiguous**: the file grew by appending, so some sit after Part 2 and
@@ -78,6 +78,8 @@ alongside its row here.
 | [`consult-ticker`](#consult-ticker) | read (writes nothing) | **yes** (not with `--no-quote`) |
 | [`favorite-quotes`](#favorite-quotes) | read | no |
 | [`tax-lots`](#tax-lots) | read (writes with `--save`) | no |
+| [`t-bills`](#t-bills) | read (writes with `--add`/`--edit`/`--delete`) | no |
+| [`import-tbills-csv`](#import-tbills-csv) | write (read with `--dry-run`) | no |
 | [`set-startup-message`](#set-startup-message) | write | no |
 | [`user-preferences`](#user-preferences) | read (writes with `--favorite`/`--startup`) | no |
 | [`calculator`](#calculator) | read (writes with `--expression`/`--clear-history`) | no |
@@ -3737,6 +3739,83 @@ long-term *and* in profit, the tax-efficient ones to trim. XIRR prints
 ticker can be resolved, when the ticker has no usable price and no `--price` was given,
 or when either schema rejects a flag.
 Source: [src/cli/tax-lots.ts](src/cli/tax-lots.ts)
+
+---
+
+## `t-bills`
+
+The Investments *T-Bill* section from a terminal — the same use-cases the web screen
+drives, printed as a table.
+
+```
+npm run cli -- t-bills
+npm run cli -- t-bills --stats
+npm run cli -- t-bills --chart
+npm run cli -- t-bills --add 912797LS4 --purchased 2026-01-05 --payout 2026-04-05 --shares 100 --price 98.75
+npm run cli -- t-bills --edit 3 --price 98.80
+npm run cli -- t-bills --delete 3,4
+```
+
+**Input** — with no flags it lists every purchase, newest first. `--stats` prints the
+T-Bill Stats card's five figures; `--chart` prints the total-gain-over-time series as
+rows, by payout date.
+
+`--add <symbol>` needs `--purchased`, `--payout`, `--shares` and `--price` (per **$100
+of face value**). `--spent` defaults to shares × price, exactly as the web form
+auto-fills it, and `--payout-amount` defaults to shares × 100 — a bill's face value.
+Give either explicitly when the broker's settled figures differ. `--description` is
+optional.
+
+`--edit <id>` changes only the flags given; every other field keeps its stored value,
+so a one-field correction does not need the whole record retyped. `--delete` takes a
+comma-separated list of ids.
+
+**Calls** — `listPurchases`, `summarizePurchases`, `createPurchase`, `updatePurchase`,
+`deletePurchase`. Every rule (a required symbol, a price at or below par, a payout no
+earlier than the purchase) lives in `createTBillPurchaseSchema`, so this refuses
+exactly what the web form refuses, with the same sentence.
+
+**Output** — one row per purchase: id, symbol, the two dates, days to maturity, amount
+spent, gain and yield. Gain % and Yield print `—` rather than `0%` when there is
+nothing to divide by.
+
+**Exit** — 0 including when nothing is recorded (a fact, not an error); 1 when an id
+does not exist or the schema rejects a flag.
+Source: [src/cli/t-bills.ts](src/cli/t-bills.ts)
+
+---
+
+## `import-tbills-csv`
+
+Loads a CSV of Treasury Bill purchases — the same use-case, and the same saved
+mappings, as the Investments *CSV Import* screen's **T-Bill Purchases** type.
+
+```
+npm run cli -- import-tbills-csv --file ./tbills.csv
+npm run cli -- import-tbills-csv --file ./tbills.csv --mapping "Fidelity T-Bills"
+npm run cli -- import-tbills-csv --file ./tbills.csv --dry-run
+npm run cli -- import-tbills-csv --file ./tbills.csv --allow-duplicates
+```
+
+**Input** — `--file` is required. `--mapping` names a mapping saved from the web
+screen; mappings live in `csv_named_mappings` under the `TBill` import type, so one
+built in the browser is usable here by name. Without it, the headers are auto-mapped
+and unknown ones are left unmapped rather than guessed at.
+
+Duplicates are skipped by default — a row whose **symbol + purchase date** is already
+recorded — so re-running the same import is a no-op. `--allow-duplicates` turns that
+off. `--dry-run` is the CLI's version of the screen's plan step: the same walk decides
+each row, so what it prints is what a real run would then do.
+
+**Calls** — `autoMapTbillHeaders`, `planTbillImport` (for `--dry-run`),
+`importTbillCsv`.
+
+**Output** — the counts, then one line per skipped row with its file row number and
+the reason. A row whose dates cannot be read is reported, not guessed at and not fatal.
+
+**Exit** — 0 on a completed run, even one that imported nothing; 1 when the file
+cannot be read or a named mapping does not exist.
+Source: [src/cli/import-tbills-csv.ts](src/cli/import-tbills-csv.ts)
 
 ---
 

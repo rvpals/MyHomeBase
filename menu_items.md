@@ -82,6 +82,7 @@ Section files are still named `stock-*`: migration 0108 renamed the module, not 
 | Watch & Test | `watch-test` | `stock-quote` | `/modules/investments/watch-test` | Watch lists, next-day signals, and what-if backtests on any ticker. |
 | Chart & Analysis | `charts` | `chart` | `/modules/investments/charts` | Volatility, correlation and Sharpe ratio across the portfolio. |
 | Tax Lots | `tax-lots` | `history` | `/modules/investments/tax-lots` | Split-adjusted purchase lots, their return and CAGR, and which are long-term. |
+| T-Bill | `t-bill` | `money` | `/modules/investments/t-bill` | US Treasury Bill purchases — what each one cost, what it paid out, and the yield it earned. |
 | Export for AI Analysis | `ai-export` | `quote` | `/modules/investments/ai-export` | Package the portfolio as an AI-ready prompt — holdings, weights and returns, with account names stripped. |
 | CSV Import | `import` | `upload` | `/modules/investments/import` | Define a reusable mapping per broker export, then import with it. |
 | Configuration | `settings` | `sliders` | `/modules/investments/settings` | Thresholds the next-day scan uses to decide what's worth flagging. |

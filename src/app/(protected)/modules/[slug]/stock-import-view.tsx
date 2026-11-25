@@ -37,6 +37,9 @@ import {
   resolvePositionType,
   type PositionType,
 } from "@/lib/stock-positions";
+// The leaf module, not the `@/lib/treasury-bills` barrel: the barrel re-exports the
+// SQLite repository, which would drag better-sqlite3 into this client bundle.
+import { TBILL_DATE_FIELDS, TBILL_IMPORT_FIELDS } from "@/lib/treasury-bills/csv-import";
 import {
   deleteNamedMappingAction,
   executeImportAction,
@@ -53,8 +56,16 @@ const INPUT_CLASS =
 const SMALL_SELECT_CLASS =
   "w-full rounded-md border border-line bg-paper px-2 py-1 text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass";
 
-/** Fields whose column needs a source date format. Only Transactions has one. */
-const DATE_FIELDS = new Set(["date"]);
+/**
+ * Fields whose column needs a source date format.
+ *
+ * `date` is Transactions'. `datePurchased`/`datePayout` are the T-Bill importer's,
+ * and both matter more than most: their difference is the bill's term, and the term
+ * divides into the yield, so a misread date is a wrong number rather than a wrong
+ * label. The names come from `TBILL_DATE_FIELDS` so this set cannot drift from the
+ * importer's own list.
+ */
+const DATE_FIELDS = new Set<string>(["date", ...TBILL_DATE_FIELDS]);
 
 const IMPORT_TYPES: { value: StockImportType; label: string; blurb: string }[] = [
   {
@@ -75,12 +86,19 @@ const IMPORT_TYPES: { value: StockImportType; label: string; blurb: string }[] =
     blurb:
       "One row per account value snapshot. If you map an Account Name column, you'll be asked to match those names to your accounts.",
   },
+  {
+    value: "TBill",
+    label: "T-Bill Purchases",
+    blurb:
+      "One row per Treasury Bill bought. Rows whose symbol and purchase date are already recorded are skipped, so re-importing is safe. Price is per $100 of face value.",
+  },
 ];
 
 const FIELDS_BY_TYPE: Record<StockImportType, readonly { value: string; label: string }[]> = {
   Position: POSITION_IMPORT_FIELDS,
   Transaction: TRANSACTION_IMPORT_FIELDS,
   Performance: PERFORMANCE_IMPORT_FIELDS,
+  TBill: TBILL_IMPORT_FIELDS,
 };
 
 export interface ImportAccountOption {

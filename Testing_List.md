@@ -146,6 +146,35 @@ changelog entries, lint fixes) are omitted: nothing to click.
 
 ---
 
+## 2026-11-25 — Investments: the T-Bill section, its stats card and CSV import
+
+**Migration 0186** creates `inv_tbill_purchases` — run it before testing. Two new icon
+slots (`stock_section_t_bill`, `stock_card_tbill_stats`) and one new CSV import type
+(`TBill`). **Not seen on screen** — nothing below has been opened in a browser.
+
+- [ ] **1.** Investments → the tree shows **T-Bill** between Tax Lots and Export for AI Analysis, on the desktop tree *and* in the compact bottom bar
+- [ ] **2.** Investments → T-Bill opens at /modules/investments/t-bill with the heading, its description and the Instruction card
+- [ ] **3.** **Add T-Bill purchase** saves a row; typing Shares and Purchase Price auto-fills Amount Spent, and typing over Amount Spent by hand is not then overwritten
+- [ ] **4.** The grid shows all twelve columns, and Gain Amount / Gain % are green for a profit and red for a loss
+- [ ] **5.** Edit changes a row and every derived figure follows it; Delete asks first and removes it
+- [ ] **6.** Ticking rows offers **Delete N**, which confirms with the total spent before deleting
+- [ ] **7.** A price above 100 is refused with a sentence about $100 of face value; a payout date before the purchase date is refused too
+- [ ] **8.** A same-day maturity saves, and its Yield column reads **—**, not 0%
+- [ ] **9.** **T-Bill Stats** shows the five figures, and they match the grid's own column totals
+- [ ] **10.** The **total gain over time** line plots by payout date, steps rather than curves, and reads "Nothing to plot yet" with no rows
+- [ ] **11.** Investments → CSV Import offers **T-Bill Purchases** as a fourth file type, and picking it offers only the T-Bill fields
+- [ ] **12.** Importing a T-Bill CSV works; the date columns offer a source date format control
+- [ ] **13.** Re-importing the same file imports nothing and reports every row as already recorded
+- [ ] **14.** A file with an unreadable date reports those rows with their row numbers rather than importing them dated today
+- [ ] **15.** Saving a mapping under a name and re-selecting it restores the mapping
+- [ ] **16.** Admin → SQL Explorer: `inv_tbill_purchases` appears in the Investments group with its description
+- [ ] **17.** Admin → Display Settings → Menu Items lists **T-Bill**, and renaming it changes the tree, breadcrumb and compact bar
+- [ ] **18.** Admin → Configuration → Icons lists both new slots, and an upload against either one takes effect
+- [ ] **19.** Phone width: the stats tiles reflow to two across, the grid falls back to its card layout, and the add form is one column
+- [ ] **20.** CLI: `npm run cli -- t-bills`, `--stats`, `--chart`, and `import-tbills-csv --dry-run` all print and write nothing unexpected
+
+---
+
 ## 2026-11-24 — Journal: Duplicate entries becomes its own section
 
 **No migration.** One new icon slot (`journal_section_duplicate_entries`), so a republish

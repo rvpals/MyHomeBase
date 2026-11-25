@@ -32,6 +32,7 @@ import {
   POSITION_IMPORT_FIELDS,
   TRANSACTION_IMPORT_FIELDS,
 } from "@/lib/stock-positions";
+import { TBILL_IMPORT_FIELDS, importTbillCsv } from "@/lib/treasury-bills";
 import { deps } from "@/lib/wiring";
 import { requireModuleAccess } from "../../require-access";
 
@@ -41,17 +42,18 @@ const ACCESS_MODULE_SLUG = "investments";
 const INVESTMENTS_MODULE_PATH = "/modules/investments";
 
 /**
- * The three import types this module offers — a narrowing of the shared
+ * The four import types this module offers — a narrowing of the shared
  * `ImportType`, which also covers Journal and Expense. Naming them here keeps the
  * Stocks importer from being handed a Journal mapping.
  */
-export type StockImportType = "Position" | "Transaction" | "Performance";
+export type StockImportType = "Position" | "Transaction" | "Performance" | "TBill";
 
 /** Which target fields each type's importer actually reads. */
 const FIELDS_BY_TYPE: Record<StockImportType, readonly { value: string }[]> = {
   Position: POSITION_IMPORT_FIELDS,
   Transaction: TRANSACTION_IMPORT_FIELDS,
   Performance: PERFORMANCE_IMPORT_FIELDS,
+  TBill: TBILL_IMPORT_FIELDS,
 };
 
 function allowedFields(importType: StockImportType): string[] {
@@ -240,6 +242,13 @@ export async function executeImportAction(
           })),
         },
       );
+    } else if (importType === "TBill") {
+      // No account matching: a T-Bill purchase is not filed against a brokerage
+      // account here, so there is no name column to resolve.
+      summary = importTbillCsv(deps.tbillRepo, fileText, columnMapping, {
+        fieldOptions,
+        excludedRowIndexes,
+      });
     } else {
       summary = importPerformanceFromCsv(
         deps.investmentAccountRepo,

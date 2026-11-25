@@ -76,6 +76,8 @@ import { documentsIndexTextCommand } from "./documents-index-text";
 import { listDocumentsCommand } from "./list-documents";
 import { todoCommand } from "./todo";
 import { taxLotsCommand } from "./tax-lots";
+import { tbillsCommand } from "./t-bills";
+import { importTbillsCsvCommand } from "./import-tbills-csv";
 import { simulateTickerCommand } from "./simulate-ticker";
 import { tickerOverviewCommand } from "./ticker-overview";
 import { calculatorCommand } from "./calculator";
@@ -160,6 +162,8 @@ const commands: Record<string, Command> = {
   culling: cullingCommand,
   "play-queue": playQueueCommand,
   "tax-lots": taxLotsCommand,
+  "t-bills": tbillsCommand,
+  "import-tbills-csv": importTbillsCsvCommand,
   "browse-sqlite": browseSqliteCommand,
   "browse-csv": browseCsvCommand,
   "saved-sql": savedSqlCommand,

@@ -14,6 +14,7 @@ export const STOCK_SECTIONS = [
   "watch-test",
   "charts",
   "tax-lots",
+  "t-bill",
   "ai-export",
   "import",
   "settings",
@@ -56,6 +57,11 @@ export const STOCK_SECTION_INFO: Record<StockSection, { label: string; descripti
     description:
       "Split-adjusted purchase lots, their return and CAGR, and which are long-term.",
   },
+  "t-bill": {
+    label: "T-Bill",
+    description:
+      "US Treasury Bill purchases — what each one cost, what it paid out, and the yield it earned.",
+  },
   "ai-export": {
     label: "Export for AI Analysis",
     description:
@@ -80,6 +86,7 @@ export const STOCK_SECTION_ICONS: Record<StockSection, string> = {
   "watch-test": "stock-quote",
   charts: "chart",
   "tax-lots": "history",
+  "t-bill": "money",
   "ai-export": "quote",
   import: "upload",
   settings: "sliders",

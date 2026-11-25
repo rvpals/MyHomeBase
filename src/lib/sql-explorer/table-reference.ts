@@ -53,6 +53,7 @@ const GROUPS: TableReferenceGroup[] = [
       ["inv_daily_snapshots", "One row per calendar day of whole-portfolio value and gain/loss, split by stock, ETF and other."],
       ["inv_account_performance_records", "The manual performance history of one account — its total value on a given date."],
       ["inv_tax_lots", "Historical purchase lots for the Tax Lot Analyzer, with a flag saying whether the shares are already split-adjusted."],
+      ["inv_tbill_purchases", "US Treasury Bill purchases — what was paid, what matures when, and what it pays out. Gain, gain %, days to maturity and yield are computed on read, never stored."],
       ["inv_stock_watch_lists", "Named watch lists."],
       ["inv_stock_watch_list_items", "The tickers on a watch list, with hypothetical shares, the price when added and an optional reminder."],
       ["inv_ticker_favorites", "One row per starred ticker, read back as a newest-first jump list on the dashboard."],

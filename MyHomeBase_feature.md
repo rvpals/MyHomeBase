@@ -116,6 +116,10 @@ that opens into a detail panel, **Biggest Changes** and **Volatility**.
 - **Yahoo Finance Detail** — six sections in one request.
 - **Account Performance Over Time** — every account on one set of axes.
 - **Tax Lots** and the **Tax Lot Portfolio Analyzer**.
+- **T-Bill** — Treasury Bill purchases with their gain, yield and days to maturity
+  worked out per row, a **T-Bill Stats** card (invested, gained, total return, average
+  yield, average gain) and a total-gain-over-time line plotted by payout date. Loads
+  from a broker CSV through the module's CSV Import screen.
 - **Sector allocation**, and cached risk that only *Recalculate* refreshes.
 
 ### Watch & Test

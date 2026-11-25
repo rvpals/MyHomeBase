@@ -1,5 +1,37 @@
 # Change History
 
+## 2026-11-25 (later) — Investments: T-Bill section with a Stats card and gain-over-time chart; T-Bill CSV import
+
+**Migration 0186** (`inv_tbill_purchases`) — it has never been applied to a real database, so
+run it on the NAS (`node --env-file-if-exists=.env migrate.cjs`) or the T-Bill screen fails
+with "no such table". No dependency changes, no paid or outside service.
+
+**Not seen on screen.** Typecheck, lint, the lib-boundary check and the full unit suite were
+run (9231 of 9232 pass; the one failure, `journal/calendar.test.ts:573` `maskJumpDate`, is
+pre-existing and was reproduced with this work stashed). The migration dry-run could not
+start (`MYHOMEBASE_DB` unset); the SQL was applied to a throwaway empty database instead.
+Nothing below has been opened in a browser.
+
+- **New Investments section "T-Bill"** (`/modules/investments/t-bill`) for US Treasury Bill
+  purchases: Date Purchased, Share Purchased, Purchase Price (per $100 face), Symbol,
+  Amount Spent, Description, Date Payout, Payout Amount, plus computed Gain Amount, Gain %,
+  # of Days to Maturity and Yield. Add, Edit, Delete and a ticked bulk delete.
+- **Gain, Gain %, days and Yield are computed on read, never stored.** Gain % and Yield read
+  "—", not 0%, when there is nothing to divide by. Amount Spent is stored (auto-filled from
+  shares × price, overwritable) because a broker's settled figure includes rounding.
+  Payout date and amount are required: a bill's maturity is fixed at purchase.
+- **T-Bill Stats card:** total invested, total gained, total return, average yield, average
+  gain (plain unweighted means; yield averaged over rows that have one), and a **total gain
+  over time** line plotted by payout date, so a bill counts from maturity, not purchase.
+- **CSV Import** gains a fourth type, **T-Bill Purchases**, on the existing screen. Matches on
+  symbol + purchase date, so re-importing is a no-op while two same-day buys both import.
+  Unreadable dates are reported per row rather than defaulted to today. New import type
+  `TBill` in both `ImportType` and `importTypeSchema`; no mapping table of its own.
+- New library module `src/lib/treasury-bills` (48 new tests); CLI `t-bills` and
+  `import-tbills-csv`. Two icon slots: `stock_section_t_bill`, `stock_card_tbill_stats`.
+- Docs: `modules.md`, `menu_items.md`, `CLI_registry.md` (command count corrected to 83),
+  `MyHomeBase_feature.md`, `coding-guide.md`, `Testing_List.md` (20 items), migration log 0186.
+
 ## 2026-11-25 — Journal: one full entry viewer everywhere; Jump-to-date mask, "Today in history" in the day list; Arrows Nightmare retuned
 
 **No migrations, no dependency changes, no paid or outside service.**

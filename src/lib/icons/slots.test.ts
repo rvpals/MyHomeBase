@@ -127,7 +127,7 @@ describe("sectionSlotId", () => {
     const sections: Record<string, string[]> = {
       stock: [
         "main", "positions", "transactions", "accounts", "watch-test",
-        "charts", "tax-lots", "ai-export", "import", "settings",
+        "charts", "tax-lots", "t-bill", "ai-export", "import", "settings",
       ],
       // No "log" — Log is the second tab of Entries now, not a panel row. Its
       // slot (`journal_section_log`) is still registered and still rendered, on

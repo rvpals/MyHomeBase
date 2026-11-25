@@ -8,6 +8,8 @@ export const importTypeSchema = z.enum([
   "Expense",
   "Roster",
   "Recipe",
+  // Keep in step with `ImportType` in ./types.ts — see the note there.
+  "TBill",
 ]);
 
 // Keys are CSV column indices, serialized as strings by JS object semantics.
