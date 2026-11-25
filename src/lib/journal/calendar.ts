@@ -693,6 +693,59 @@ export function formatJumpDate(date: string, format: JournalDateFormat): string 
   return `${mm}/${dd}/${year}`;
 }
 
+/** The shape each Jump format masks to: group widths and the separator between them. */
+const JUMP_MASK_SHAPES: Record<
+  JournalDateFormat,
+  { readonly sizes: readonly number[]; readonly separator: string }
+> = {
+  "MM/DD/YYYY": { sizes: [2, 2, 4], separator: "/" },
+  "DD/MM/YYYY": { sizes: [2, 2, 4], separator: "/" },
+  "YYYY-MM-DD": { sizes: [4, 2, 2], separator: "-" },
+};
+
+/** The separators a reader might type themselves — the same set parseJumpDate accepts. */
+const JUMP_SEPARATOR_CHARS = "/-.";
+
+/**
+ * Inserts the chosen format's separators as digits are typed, so a reader on a
+ * numeric keypad can enter 11252026 and see 11/25/2026.
+ *
+ * Grouping follows the *selected* format and nothing else — the same eight
+ * digits become 2026-11-25 under YYYY-MM-DD. Three details earn their keep:
+ *
+ * - No trailing separator. "0821" masks to "08/21", not "08/21/": appending one
+ *   would make backspace a no-op, because the mask would immediately put it back.
+ * - A separator the reader types themselves closes a two-digit group early, so
+ *   "8/1/2026" still lands on 08/01/2026 instead of being read as 81/20/26.
+ *   Four-wide groups aren't padded — a two-digit year is wrong, not abbreviated.
+ * - Digits past the last group are dropped rather than shuffling the year.
+ */
+export function maskJumpDate(text: string, format: JournalDateFormat): string {
+  const { sizes, separator } = JUMP_MASK_SHAPES[format];
+  const groups: string[] = [];
+  let current = "";
+  let index = 0;
+
+  function flush(pad: boolean) {
+    groups.push(pad && sizes[index] === 2 ? current.padStart(2, "0") : current);
+    current = "";
+    index += 1;
+  }
+
+  for (const char of text) {
+    if (index >= sizes.length) break;
+    if (char >= "0" && char <= "9") {
+      current += char;
+      if (current.length === sizes[index]) flush(false);
+    } else if (JUMP_SEPARATOR_CHARS.includes(char) && current !== "") {
+      flush(true);
+    }
+  }
+  if (current !== "") groups.push(current);
+
+  return groups.join(separator);
+}
+
 /** "Wednesday, August 12, 2026" — the selected-day panel's heading. */
 export function formatCalendarDayHeading(date: string): string {
   const { year, month, day } = parseIsoParts(date, "formatCalendarDayHeading");

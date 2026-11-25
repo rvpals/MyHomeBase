@@ -21,13 +21,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/modal";
-import { JournalViewer } from "@/components/journal-viewer";
 import type { DataGridColumn } from "@/components/data-grid";
 import {
   formatMonthDayHeading,
   ON_THIS_DAY_EXCERPT_WORDS,
   monthDayOf,
   type JournalEntry,
+  type JournalTaxonomyCombo,
   type OnThisDayRow,
 } from "@/lib/journal";
 import type { BulkRefreshScope } from "./journal-bulk-actions";
@@ -37,8 +37,8 @@ import {
   JournalEntriesGrid,
   type JournalEntryFormOptions,
 } from "./journal-entries-grid";
+import { JournalEntryFullViewer } from "./journal-entry-full-viewer";
 import { onThisDayEntriesAction } from "./journal-on-this-day-actions";
-import { journalEntriesFilterHref } from "./journal-shared";
 
 /** "This year" / "1 year ago" / "7 years ago" — the first column's cell. */
 function yearsAgoLabel(yearsAgo: number): string {
@@ -54,6 +54,10 @@ export interface JournalOnThisDayDialogProps {
   tagIcons: Record<string, string>;
   /** What the grid's Bulk edit, Bulk overwrite and Merge dialogs need. */
   formOptions: JournalEntryFormOptions;
+  /** Saved taxonomy combos, for the opened entry's edit form. */
+  taxonomyCombos: JournalTaxonomyCombo[];
+  /** Whether this reader has the Expense module — the opened entry's $ button. */
+  canSeeExpense: boolean;
   onClose: () => void;
 }
 
@@ -62,6 +66,8 @@ export function JournalOnThisDayDialog({
   categoryIcons,
   tagIcons,
   formOptions,
+  taxonomyCombos,
+  canSeeExpense,
   onClose,
 }: JournalOnThisDayDialogProps) {
   const [rows, setRows] = useState<OnThisDayRow[]>([]);
@@ -242,26 +248,29 @@ export function JournalOnThisDayDialog({
       </Modal>
 
       {openEntry && (
-        // A second panel over the first. Only the topmost answers Escape — see
-        // MODAL_STACK in src/components/modal.tsx — so closing this one returns
+        // The full entry over the list — its own panel, which draws its own
+        // Modal. A second panel over the first: only the topmost answers Escape
+        // (MODAL_STACK in src/components/modal.tsx), so closing this one returns
         // the reader to the list rather than dismissing both.
-        <Modal
-          title={openEntry.title.trim() === "" ? "(untitled)" : openEntry.title}
-          description={openEntry.date}
-          size="lg"
+        //
+        // Editable, not read-only. Finding a five-year-old entry is exactly when
+        // you want to fix its tags or finish its sentence, and sending the
+        // reader to /entries/[id] to do it would close the calendar behind this.
+        <JournalEntryFullViewer
+          mode="modal"
+          entry={openEntry}
+          categoryIcons={categoryIcons}
+          tagIcons={tagIcons}
+          categoryOptions={formOptions.categoryOptions}
+          tagOptions={formOptions.tagOptions}
+          taxonomyCombos={taxonomyCombos}
+          locationCategoryOptions={formOptions.locationCategoryOptions}
+          locationTagOptions={formOptions.locationTagOptions}
+          preferences={formOptions.preferences}
+          contentTextures={formOptions.contentTextures}
+          canSeeExpense={canSeeExpense}
           onClose={() => setOpenEntry(undefined)}
-        >
-          {/* Read-only: this is a list you skim, and the entry's own screen is
-              where it is edited. The taxonomy links still work — they leave the
-              calendar, which is a deliberate navigation rather than a lost one. */}
-          <JournalViewer
-            entry={openEntry}
-            categoryIcons={categoryIcons}
-            tagIcons={tagIcons}
-            categoryHref={(name) => journalEntriesFilterHref("category", name)}
-            tagHref={(name) => journalEntriesFilterHref("tag", name)}
-          />
-        </Modal>
+        />
       )}
     </>
   );

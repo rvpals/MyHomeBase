@@ -310,7 +310,34 @@ export const ARROW_DIFFICULTY_SETUP: Record<
     lengthWeights: stretchWeights([0, 0, 0, 2, 4, 7, 11, 14, 16, 15, 13, 10, 8], ARROW_LENGTH_SCALE),
     // Down from 0.7, for the same reason as Harder.
     straightBias: 0.35,
-    seedCoverage: 0.2,
+    /*
+      The fewest seeds of the three tiers, not the most — down from 0.2.
+
+      Seeds are drawn from `SEED_WEIGHTS`, which tops out at six cells, so this knob is
+      really "what share of the board is guaranteed to be short pieces". It used to climb
+      with difficulty (0.12 / 0.15 / 0.2), which was harmless when every tier's arrows
+      were short anyway. Once `ARROW_LENGTH_SCALE` stretched the long phase, the seeds
+      became the only thing holding the average down — and Nightmare, with the most of
+      them, came out with the *shortest* arrows and the *most* pieces of the whole
+      ladder. Measured: 8.06 / 8.51 / **7.33** mean cells, 232 / 226 / **266** pieces.
+      That is the ladder upside down: the top tier was the one nibbling corners.
+
+      At 0.06 the tier reads the way it is meant to — long runs that each cross a lot of
+      board, so clearing one sweeps a real line off it and the ordering is what makes it
+      hard. Measured over twelve boards: **11.51 mean cells over 163 pieces**, against
+      Hard's 8.09/235 and Harder's 8.32/228. The ladder climbs in length and falls in
+      piece count, which is the shape it was always meant to have.
+
+      On the empty-region guard in the tests it averages 30.6 five-by-five holes a board —
+      inside that test's limit of 35, and lower than **Harder's own 38.8**, which nothing
+      tests. Read that metric carefully: at a fixed setting it swings from 68 to 224
+      across seeds, so it is dominated by which board you drew rather than by this knob.
+      Three or four boards cannot tell you whether a change to it is real; twelve barely
+      can.
+
+      `hard` and `harder` are deliberately left alone — see the note on `hard`.
+    */
+    seedCoverage: 0.06,
     hug: 0.9,
   },
 };

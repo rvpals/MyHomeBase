@@ -131,7 +131,7 @@ describe("homeWidgetsToValue", () => {
 
   it("marks hidden cards with a hyphen and leaves visible ones bare", () => {
     expect(homeWidgetsToValue(toggleHomeWidget(defaultHomeWidgets(), "dailyQuote"))).toBe(
-      "carousel,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo,photoAlbums",
+      "carousel,systems,myShortcuts,-dailyQuote,todayInHistory,stockGlance,todo,photoAlbums",
     );
   });
 
@@ -170,10 +170,11 @@ describe("reorderHomeWidget", () => {
 describe("moveHomeWidget", () => {
   it("moves a card up and down by one place", () => {
     const moved = moveHomeWidget(defaultHomeWidgets(), "dailyQuote", "up");
-    // `dailyQuote` is third in the catalogue, so moving it up swaps it with
-    // `myShortcuts` — not with `carousel`, which is two places above.
-    expect(moved.map((widget) => widget.id).slice(0, 3)).toEqual([
+    // `dailyQuote` is fourth in the catalogue, so moving it up swaps it with
+    // `myShortcuts` — not with `carousel`, which is three places above.
+    expect(moved.map((widget) => widget.id).slice(0, 4)).toEqual([
       "carousel",
+      "systems",
       "dailyQuote",
       "myShortcuts",
     ]);
@@ -191,8 +192,8 @@ describe("moveHomeWidget", () => {
   it("carries visibility with the card it moves", () => {
     const hidden = toggleHomeWidget(defaultHomeWidgets(), "dailyQuote");
     const moved = moveHomeWidget(hidden, "dailyQuote", "up");
-    // Third in the catalogue, so moving up lands it at index 1, not index 0.
-    expect(moved[1]).toEqual({ id: "dailyQuote", visible: false });
+    // Fourth in the catalogue, so moving up lands it at index 2, not index 0.
+    expect(moved[2]).toEqual({ id: "dailyQuote", visible: false });
   });
 
   it("returns the list unchanged for an id that is not in it", () => {
@@ -223,6 +224,7 @@ describe("visibleHomeWidgets", () => {
     );
     expect(visibleHomeWidgets(widgets)).toEqual([
       "carousel",
+      "systems",
       "myShortcuts",
       "stockGlance",
       "todayInHistory",

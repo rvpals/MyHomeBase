@@ -1,5 +1,33 @@
 # Change History
 
+## 2026-11-25 — Journal: one full entry viewer everywhere; Jump-to-date mask, "Today in history" in the day list; Arrows Nightmare retuned
+
+**No migrations, no dependency changes, no paid or outside service.**
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted,
+tested or opened in a browser, including the new and edited tests.
+
+- **`JournalEntryFullViewer`** (route-local, replaces `entries/[id]/entry-screen.tsx`, moved
+  to `[slug]/journal-entry-full-viewer.tsx`; `journal-photos-card.tsx` moved with it). One
+  component for a whole entry — viewer, full toolbar (Edit, Clone, Lock, Encrypt, Print, maps,
+  clips, photos, Delete) and edit form — in `mode="page"` or `mode="modal"`.
+- **Opened from Review Data, Duplicate entries and Today in history, an entry is now fully
+  actionable**, not read-only or a cut-down editor. An `onSaved` callback re-groups each
+  list after an edit, since a changed date/title can move an entry out of it. Recycled
+  entries keep the read-only `JournalViewer`. The Review, Duplicates and Calendar panels are
+  now `async`/extended to supply `canSeeExpense` and taxonomy combos.
+- **Calendar → Jump to date** masks typed digits into the chosen format (`11252026` →
+  `11/25/2026`) via new `maskJumpDate` in `src/lib/journal/calendar.ts`, with tests.
+- **Calendar day list** gets an icon-only **Today in history** button beside the others;
+  the button row wraps on a narrow phone.
+- **Games → Arrows:** Nightmare `seedCoverage` 0.2 → 0.06 so the tiers climb in arrow length
+  (measured ~11.5 cells over ~163 pieces). Tests' floors/samples adjusted (twelve seeds,
+  hard > 150 arrows, Nightmare holes < 45).
+- Test fixes: Home dashboard order now includes `systems`; duplicates test asserts by id.
+- `components.md` registers `JournalEntryFullViewer` and a second route-local ⚑ entry; stale
+  `entry-screen.tsx` links repointed.
+
+
 ## 2026-11-24 (later) — Today in history: own column set with body excerpt and "Years ago"; Music albums: black vinyl, name on the sleeve
 
 **No migrations, no dependency changes, no paid or outside service.**

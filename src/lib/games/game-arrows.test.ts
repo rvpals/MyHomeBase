@@ -328,10 +328,23 @@ describe("generatePuzzle", () => {
   });
 
   it("deals a board long enough to be a sitting", () => {
-    // The board is meant to be a long sitting — ~359 arrows at 50x50. A tuning change
-    // that quietly shrinks it (as an earlier 7x7 did, to eleven arrows) fails here.
+    /*
+      A floor against the board collapsing, not a target.
+
+      It read `> 250` against a measured ~359 arrows, both from before
+      `ARROW_LENGTH_SCALE` stretched every tier's lengths threefold. That change traded
+      pieces for length on a board whose area did not grow: Hard now deals ~235 arrows of
+      ~8 cells where it used to deal ~359 of ~4.8. The sitting is the same size in cells
+      — `keeps every tier dense and worth a sitting` below asserts the coverage — so the
+      old count was measuring the tuning rather than the thing this test is named for.
+
+      150 still catches the regime this exists for: an earlier 7x7 board dealt eleven
+      arrows. Deliberately well clear of the measured minimum rather than snug to it,
+      because the count moves whenever the length weights are touched, and a floor that
+      has to be edited after every tuning change is a floor nobody trusts.
+    */
     for (let seed = 1; seed <= 3; seed += 1) {
-      expect(generatePuzzle("hard", seededRandom(seed)).board.arrows.length).toBeGreaterThan(250);
+      expect(generatePuzzle("hard", seededRandom(seed)).board.arrows.length).toBeGreaterThan(150);
     }
   });
 
@@ -626,16 +639,36 @@ describe("generatePuzzle difficulty ladder", () => {
       return patches;
     };
 
-    // Averaged over a few boards: generation is random, so one loose board is fine and
-    // only the typical case is meaningful.
-    const seeds = [1, 2, 3, 4];
+    /*
+      Twelve boards, not four.
+
+      This metric is far noisier than it looks: at one fixed setting it was measured
+      swinging between 68 and 224 on single boards. Four of them is not a sample, it is
+      four draws from that spread — seeds 1-4 happen to be kind to Harder (10.25) and
+      harsh to Nightmare (46.75), while the twelve-board averages are 38.8 and 30.6, the
+      other way round. The old four-seed average is why this read as a tuning signal when
+      it was mostly luck.
+    */
+    const seeds = Array.from({ length: 12 }, (_, index) => index + 1);
     const average = (difficulty: (typeof ARROW_DIFFICULTIES)[number]) =>
       seeds.reduce((sum, seed) => sum + emptyPatches(difficulty, seed), 0) / seeds.length;
 
-    // Generous against the measured ~20, so ordinary tuning drift does not fail this —
-    // it is here to catch a return to the 42-and-climbing regime.
-    expect(average("nightmare")).toBeLessThan(35);
-  }, 60000);
+    /*
+      45, against a measured 30.6 for Nightmare over these twelve boards.
+
+      Raised from 35 deliberately, and the trade is worth naming: Nightmare's arrows were
+      lengthened (see `seedCoverage` in ARROW_DIFFICULTY_SETUP) so the ladder climbs in
+      length the way it is meant to, and on this generator a longer arrow walls off more
+      ground than it covers. Holes and long pieces cannot both be minimised here — the
+      tier sits deliberately on the long side of that curve now.
+
+      Still a real guard: it catches the 42-and-climbing ramp-to-the-cap regime this was
+      written for, which measured far above this even on a kind sample. Worth knowing
+      that **Harder is at 38.8 and nothing asserts anything about it**, so this limit is
+      not out of line with what the game already ships.
+    */
+    expect(average("nightmare")).toBeLessThan(45);
+  }, 120000);
 
   it("keeps every tier dense and worth a sitting", () => {
     // The higher tiers settle at fewer pieces because each is longer, so the piece count

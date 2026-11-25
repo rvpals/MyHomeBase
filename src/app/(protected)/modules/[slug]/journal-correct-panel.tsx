@@ -17,6 +17,7 @@ import {
   listEntries,
   listRecycledEntries,
   listTags,
+  listTaxonomyCombos,
   resolveJournalPreferences,
 } from "@/lib/journal";
 // Clips is read here, in the presentation layer, so `src/lib/journal` never has to
@@ -31,10 +32,18 @@ import { getModuleBySlug } from "@/lib/modules";
 // categories/tags below.
 import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { deps } from "@/lib/wiring";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { userHasModuleAccess } from "@/lib/user";
 import { JournalCorrectView, type JournalCorrectViewMode } from "./journal-correct-view";
 import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 
-export function JournalCorrectPanel({ show = "both" }: { show?: JournalCorrectViewMode } = {}) {
+// `async` because deciding whether the opened entry offers the $ button means
+// reading the session cookie, which `next/headers` only exposes as a promise —
+// the same reason JournalCalendarPanel is async.
+export async function JournalCorrectPanel({
+  show = "both",
+}: { show?: JournalCorrectViewMode } = {}) {
   // The whole journal, not a page of it: two entries duplicating each other in
   // 2019 are exactly what this screen exists to find, and any limit here would
   // hide them. Each row carries its entry with the body blanked (see
@@ -72,8 +81,21 @@ export function JournalCorrectPanel({ show = "both" }: { show?: JournalCorrectVi
     journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
   );
 
+  // A separate grant from the journal one the route already checked — plenty of
+  // readers have one module and not the other.
+  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
+  const expenseModule = getModuleBySlug(deps.moduleRepo, "expense");
+  const canSeeExpense =
+    currentUser !== undefined &&
+    expenseModule !== undefined &&
+    userHasModuleAccess(currentUser, expenseModule.id, deps.userRepo);
+
   return (
     <JournalCorrectView
+      canSeeExpense={canSeeExpense}
+      // For the opened entry's edit form — the same read the entry page makes.
+      taxonomyCombos={listTaxonomyCombos(deps.journalRepo)}
       duplicateGroups={duplicateGroups}
       recycledEntries={recycledEntries}
       show={show}

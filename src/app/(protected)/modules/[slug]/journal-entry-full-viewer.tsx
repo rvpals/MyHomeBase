@@ -6,13 +6,16 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { EncryptionPrompt } from "@/components/encryption-prompt";
 import { JournalViewer } from "@/components/journal-viewer";
+import { Modal } from "@/components/modal";
 import type { DashboardTextureItem } from "@/lib/dashboard-texture";
-import type {
-  EntryLocation,
-  JournalEntry,
-  JournalEntryNeighbors,
-  JournalPreferences,
-  JournalTaxonomyCombo,
+import {
+  ENCRYPTED_TITLE_PLACEHOLDER,
+  formatCalendarDayHeading,
+  type EntryLocation,
+  type JournalEntry,
+  type JournalEntryNeighbors,
+  type JournalPreferences,
+  type JournalTaxonomyCombo,
 } from "@/lib/journal";
 import {
   decryptJournalEntryAction,
@@ -20,14 +23,14 @@ import {
   encryptJournalEntryAction,
   removeJournalEntryEncryptionAction,
   setEntryLockAction,
-} from "../../journal-actions";
-import { journalEntriesFilterHref } from "../../journal-shared";
+} from "./journal-actions";
+import { journalEntriesFilterHref } from "./journal-shared";
 // Clips, read here because `JournalViewer` is a shared component and may not
 // fetch. `src/lib/journal` still knows nothing about clips — see migration 0155.
-import { listClipsForEntryAction } from "../../clips-actions";
-import { EntryClipsDialog } from "../../clips-entry-clips-dialog";
-import { JournalDayExpenses } from "../../journal-day-expenses";
-import { JournalEntryEditor } from "../../journal-entry-editor";
+import { listClipsForEntryAction } from "./clips-actions";
+import { EntryClipsDialog } from "./clips-entry-clips-dialog";
+import { JournalDayExpenses } from "./journal-day-expenses";
+import { JournalEntryEditor } from "./journal-entry-editor";
 import { JournalPhotosCard } from "./journal-photos-card";
 
 const JOURNAL_MODULE_PATH = "/modules/journal";
@@ -83,11 +86,35 @@ function googleMapsUrl(location: EntryLocation): string {
  */
 type MapView = { kind: "one"; location: EntryLocation } | { kind: "all" };
 
-// Route-local adapter: wires the reusable JournalViewer's events to the
-// journal server actions and handles navigation after a delete.
-export function JournalEntryScreen({
+/**
+ * **The** full journal entry — the viewer, its whole toolbar, and the edit form
+ * behind it. Shared by every screen that opens one.
+ *
+ * Wires `JournalViewer`'s events to the journal's server actions: Edit, Clone,
+ * Lock, Encrypt / Remove encryption, Print, the maps, the clips dialog, the
+ * photos card and Delete. `JournalViewer` itself stays a registered shared
+ * component and stays read-only — it renders an entry and raises events, and a
+ * screen that only needs to *show* one (a recycled entry, which has no live row
+ * to edit) still uses it directly.
+ *
+ * It exists as one component because three screens had begun growing their own.
+ * Data Management → Review Data had a hand-written viewer/editor toggle with no
+ * encryption, lock, clone, delete, maps, clips or photos; the Duplicates card
+ * and the Calendar's Today in history dialog were read-only with no way to fix
+ * the entry you had just gone looking for. **If you are about to add a button
+ * for one caller only, add a prop, not a second adapter.**
+ *
+ * Route-local, and deliberately not in `src/components/`: it imports the server
+ * actions in ./journal-actions and ./clips-actions, which the components
+ * registry forbids. Same shape and same reason as journal-entries-grid.tsx —
+ * see "The route-local entries" in components.md.
+ */
+export function JournalEntryFullViewer({
+  mode = "page",
+  onClose,
+  onSaved,
   entry,
-  neighbors,
+  neighbors = {},
   categoryIcons,
   tagIcons,
   categoryOptions,
@@ -99,12 +126,45 @@ export function JournalEntryScreen({
   preferences,
   contentTextures = [],
 }: {
+  /**
+   * How this viewer is being shown.
+   *
+   * `"page"` is the entry's own route: it renders bare and the page around it
+   * supplies the layout. `"modal"` wraps itself in a `Modal` over whatever
+   * screen opened it — the Duplicates card, Review Data, the Calendar's Today in
+   * history dialog — so the reader keeps the list they were working through.
+   *
+   * Three things differ, and nothing else does. See `isModal` below for each.
+   */
+  mode?: "page" | "modal";
+  /** Required by `mode="modal"`: dismiss the dialog. Ignored on a page. */
+  onClose?: () => void;
+  /**
+   * An edit was saved. Replaces this component's own `router.refresh()`.
+   *
+   * It exists because a modal caller's list is usually **client state**, which a
+   * server refresh does not touch: Review Data holds its groups from a client
+   * action, the Duplicates card seeds its rows from props once, and the Today in
+   * history dialog fetched its own. An edit can change an entry's date and move
+   * it between groups — or out of the list — so each of those has to re-ask its
+   * own question rather than trust a re-render.
+   *
+   * The caller is handed the id and owns everything after: re-reading its rows,
+   * swapping the entry shown, or closing. Leave it off and a plain
+   * `router.refresh()` happens, which is right for the entry's own page.
+   */
+  onSaved?: (entryId: number) => void;
   /** The Journal's preferences — the editor's content font, handwriting and weather units. */
   preferences: JournalPreferences;
   /** The app texture library, so the editor's Content background resolves. */
   contentTextures?: DashboardTextureItem[];
   entry: JournalEntry;
-  neighbors: JournalEntryNeighbors;
+  /**
+   * The older/newer entries, for the Previous and Next links. Defaults to none,
+   * which is what `mode="modal"` always wants — those links leave for another
+   * entry's route, which would close the dialog and abandon the list behind it.
+   */
+  neighbors?: JournalEntryNeighbors;
   categoryIcons?: Record<string, string>;
   tagIcons?: Record<string, string>;
   /** Every known category name — the edit form's picker offers these. */
@@ -134,6 +194,19 @@ export function JournalEntryScreen({
   canSeeExpense?: boolean;
 }) {
   const router = useRouter();
+  /**
+   * The whole of what `mode` changes:
+   *
+   *  1. the wrapper — a `Modal` instead of a bare column;
+   *  2. Delete — close and refresh the screen behind, instead of navigating to
+   *     the module home, which there is no way back from inside a dialog;
+   *  3. the edit form takes `inDialog`, dropping its own card frame since the
+   *     dialog already supplies one.
+   *
+   * Previous/Next fall out of `neighbors` defaulting to none rather than being
+   * branched on here — a caller could in principle pass them on a page only.
+   */
+  const isModal = mode === "modal";
   const [isBusy, setIsBusy] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [mapView, setMapView] = useState<MapView | undefined>(undefined);
@@ -311,8 +384,18 @@ export function JournalEntryScreen({
         setError(result.error);
         return;
       }
-      // The entry no longer exists, so return to the module rather than
-      // re-rendering a deleted record.
+      // The entry no longer exists, so it must not stay on screen.
+      //
+      // In a dialog that means closing and re-reading the screen behind, which
+      // is the list the reader came from and which now has one row fewer.
+      // Pushing to the module home from here would throw away that list — and
+      // on the Calendar, the month they were reading — to show them a home
+      // screen they did not ask for.
+      if (isModal) {
+        onClose?.();
+        router.refresh();
+        return;
+      }
       router.push(JOURNAL_MODULE_PATH);
     } finally {
       setIsBusy(false);
@@ -332,7 +415,7 @@ export function JournalEntryScreen({
   // the month view, so a link from any entry opens exactly its own month.
   const calendarHref = `${JOURNAL_MODULE_PATH}/calendar?anchor=${entry.date}&date=${entry.date}`;
 
-  return (
+  const body = (
     <div className="flex flex-col gap-4">
       {/* No "Back to My Journal" link: the page renders inside `JournalShell`
           now, so the module rail and the section panel are the way back. */}
@@ -389,6 +472,8 @@ export function JournalEntryScreen({
       {entry.isEncrypted && !isUnlocked ? null : isEditing ? (
         <JournalEntryEditor
           mode="edit"
+          // The dialog already draws the card frame, so the form drops its own.
+          inDialog={isModal}
           entry={shownEntry}
           encryptionPassword={password}
           categoryOptions={categoryOptions}
@@ -401,7 +486,13 @@ export function JournalEntryScreen({
           onClose={() => setIsEditing(false)}
           onSaved={() => {
             setIsEditing(false);
-            router.refresh(); // pull the saved entry back from the server
+            // The caller re-reads its own list when it has one; otherwise pull
+            // the saved entry back from the server. See the prop's note.
+            if (onSaved) {
+              onSaved(entry.id);
+              return;
+            }
+            router.refresh();
           }}
         />
       ) : (
@@ -591,5 +682,36 @@ export function JournalEntryScreen({
         <JournalDayExpenses date={entry.date} onClose={() => setIsExpensesOpen(false)} />
       )}
     </div>
+  );
+
+  if (!isModal) return body;
+
+  return (
+    <Modal
+      // The entry's own title names the dialog. An encrypted one has none to
+      // show, and an untitled one would leave the dialog with no accessible
+      // name at all, so both fall back — the same placeholder the grids use.
+      title={
+        shownEntry.isEncrypted
+          ? ENCRYPTED_TITLE_PLACEHOLDER
+          : shownEntry.title.trim() === ""
+            ? "Journal entry"
+            : shownEntry.title
+      }
+      description={formatCalendarDayHeading(entry.date)}
+      // Wide: this is the whole entry — toolbar, body, locations, photos — and
+      // the edit form behind it, which is a two-column layout of its own.
+      // `className` is merged last onto the panel, the sanctioned way to take a
+      // shape no size offers. Below 1024px the panel is full-width anyway.
+      size="lg"
+      className="max-w-[min(80rem,95vw)]"
+      // While a write is in flight the dialog refuses Escape, the ✕ and an
+      // overlay click, so a half-saved edit cannot be dismissed out from under
+      // itself.
+      isBusy={isBusy}
+      onClose={() => onClose?.()}
+    >
+      {body}
+    </Modal>
   );
 }

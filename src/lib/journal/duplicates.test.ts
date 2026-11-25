@@ -265,7 +265,11 @@ describe("toDuplicateRows", () => {
       ]),
     );
 
-    expect(rows[0]).toMatchObject({
+    // By id, not by position: within a group the members are ordered by time
+    // then id, and an entry with no time sorts *first* — so the timed entry here
+    // is rows[1]. What this test is about is which fields survive the trip, not
+    // the order, and asserting both in one place is what made it assert neither.
+    expect(rows.find((row) => row.id === 1)).toMatchObject({
       id: 1,
       date: "2026-03-01",
       time: "08:30",

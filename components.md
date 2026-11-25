@@ -39,19 +39,21 @@ pattern instead of inventing one.
   `max-lg:`", or "has a compact mode", or "unchanged, it's small already". A component
   that only works wide isn't finished. See `design.md` → *Phone and desktop*.
 
-## The one route-local entry (⚑)
+## The route-local entries (⚑)
 
-Every component below lives in `src/components/` and obeys the rules above — **except**
-[`JournalEntriesGrid`](#journalentriesgrid), marked ⚑ in the index.
+Every component below lives in `src/components/` and obeys the rules above — **except** two,
+both marked ⚑ in the index: [`JournalEntriesGrid`](#journalentriesgrid) and
+[`JournalEntryFullViewer`](#journalentryfullviewer).
 
-It is listed here anyway because this file is what a session reads before building UI, and
-the thing it prevents — a fourth hand-written copy of "a grid of journal entries" — is
-exactly the mistake this registry exists to stop. It cannot move into `src/components/`:
-it calls the journal's server actions, which breaks the first rule above. So it stays in
-the route folder beside them, and this entry is a signpost to it, not a promotion.
+They are listed here anyway because this file is what a session reads before building UI,
+and the thing they prevent — another hand-written copy of "a grid of journal entries" or
+"an entry with its toolbar" — is exactly the mistake this registry exists to stop. Neither
+can move into `src/components/`: both call the journal's server actions, which breaks the
+first rule above. So they stay in the route folder beside them, and these entries are
+signposts, not promotions.
 
 **Don't take it as a precedent.** The next shared-but-impure component gets a pointer
-like this one, not a quiet exemption — and if something *can* satisfy the rules, it
+like these, not a quiet exemption — and if something *can* satisfy the rules, it
 belongs in `src/components/` as usual.
 
 > Imports use the `@/` path alias (`@/* -> src/*`, configured in `tsconfig.json`).
@@ -71,6 +73,7 @@ belongs in `src/components/` as usual.
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`ToastProvider` / `toast-notify`](#toast) | **Transient feedback after a save, delete or failure** — a themed Sonner toast | [src/components/toast-provider.tsx](src/components/toast-provider.tsx), [src/components/toast-notify.ts](src/components/toast-notify.ts) | yes |
 | [`BulkConfirm`](#bulkconfirm) | **Confirming a bulk action on a ticked selection** — count, caveat, Cancel/confirm | [src/components/bulk-confirm.tsx](src/components/bulk-confirm.tsx) | yes |
+| [`JournalEntryFullViewer`](#journalentryfullviewer) ⚑ | **A whole journal entry with its toolbar**, and the edit form behind it — as a page or as a modal. **Route-local** (see above) | [journal-entry-full-viewer.tsx](<src/app/(protected)/modules/[slug]/journal-entry-full-viewer.tsx>) | yes |
 | [`JournalEntriesGrid`](#journalentriesgrid) ⚑ | **Any list of journal entries** — the shared columns, tick-boxes, seven bulk actions and their dialogs. **Route-local** (see below) | [journal-entries-grid.tsx](<src/app/(protected)/modules/[slug]/journal-entries-grid.tsx>) | yes |
 | [`DayExpensesDialog`](#dayexpensesdialog) | **What was spent around one date**, across every card — the Journal's `$` buttons and Expense's `?date=` landing | [src/components/day-expenses-dialog.tsx](src/components/day-expenses-dialog.tsx) | yes |
 | [`FullscreenStage`](#fullscreenstage) | **A real fullscreen display** — chromeless black stage via the Fullscreen API | [src/components/fullscreen-stage.tsx](src/components/fullscreen-stage.tsx) | yes |
@@ -984,6 +987,76 @@ mis-read, and a full dialog for it would be heavier than the decision warrants.
 **Below 1024px:** nothing of its own. `Modal`'s default `md` is `w-full max-w-lg`, which
 fits a 390px screen, and the footer's two buttons sit in `Modal`'s own action row.
 
+## JournalEntryFullViewer
+
+⚑ **Route-local** — see [The route-local entries](#the-route-local-entries-).
+
+**A whole journal entry: the viewer, its entire toolbar, and the edit form behind it.**
+Wires [`JournalViewer`](#journalviewer)'s events to the journal's server actions — Edit,
+Clone, Lock, Encrypt / Remove encryption, Print, the maps, the clips dialog, the photos
+card and Delete — and owns the unlock state for an encrypted entry.
+
+**Reach for it whenever a screen opens a journal entry.** It exists because three screens
+had started growing their own: Review Data had a hand-written viewer/editor toggle with no
+encryption, lock, clone, delete, maps, clips or photos, and the Duplicates card and the
+Calendar's Today in history dialog were read-only — so the entry you had just gone looking
+for was the one entry you could not fix.
+
+- **Source:** [journal-entry-full-viewer.tsx](<src/app/(protected)/modules/[slug]/journal-entry-full-viewer.tsx>)
+- **Import:** `import { JournalEntryFullViewer } from "./journal-entry-full-viewer";` (route-local, so a relative import)
+- **Client component:** yes
+- **Below 1024px:** inherits [`JournalViewer`](#journalviewer) and [`Modal`](#modal); in
+  `modal` mode the panel is full-width and nothing drags. Nothing extra to do.
+
+### The two modes
+
+| | `mode="page"` | `mode="modal"` |
+|---|---|---|
+| Wrapper | none — the route supplies layout | its own [`Modal`](#modal), titled from the entry |
+| Previous / Next | links, from `neighbors` | not drawn (`neighbors` defaults to none) |
+| Delete | navigates to the module home | `onClose()` + `router.refresh()` |
+| Edit form | inline | takes `inDialog` |
+
+Everything else is identical, which is the point: an entry is read and written the same way
+wherever it was opened from.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `mode?` | `"page" \| "modal"` | Default `"page"`. |
+| `entry` | `JournalEntry` | The entry, whole. The modal callers fetch it on click — their list rows carry a blanked body. |
+| `onClose?` | `() => void` | Required by `mode="modal"`; ignored on a page. |
+| `onSaved?` | `(entryId: number) => void` | **An edit was saved — replaces the component's own `router.refresh()`.** Pass it whenever the caller's list is client state. See the caveat below. |
+| `neighbors?` | `JournalEntryNeighbors` | Previous/Next links. Omit in modal mode. |
+| `categoryOptions`, `tagOptions` | `string[]` | The edit form's pickers. |
+| `taxonomyCombos?` | `JournalTaxonomyCombo[]` | The edit form's "Prefill Category/Tags Combo" button. |
+| `locationCategoryOptions?`, `locationTagOptions?` | `string[]` | The edit form's location picker. |
+| `preferences` | `JournalPreferences` | Content font, handwriting size, weather units. |
+| `contentTextures?` | `DashboardTextureItem[]` | So the Content background resolves. |
+| `categoryIcons?`, `tagIcons?` | `Record<string, string>` | Chip icons. |
+| `canSeeExpense?` | `boolean` | Draws the `$` button. The real guard is `requireModuleAccess` inside the action. |
+
+**`onSaved` is the one that bites.** An edit can change an entry's **date or title**, which
+moves it between groups or out of a list entirely — and every modal caller holds its rows in
+client state, which `router.refresh()` never reaches. Review Data re-groups, the Duplicates
+card re-reads both cards, and Today in history re-asks its month-day question. Leave it off
+and you get a plain `router.refresh()`, which is right only for the entry's own page.
+
+**Used by:** the entry's own route
+([entries/[id]/page.tsx](<src/app/(protected)/modules/[slug]/entries/[id]/page.tsx>), `mode="page"`),
+Data Management → Review Data
+([journal-review-view.tsx](<src/app/(protected)/modules/[slug]/journal-review-view.tsx>)),
+Data Management → Duplicate entries
+([journal-correct-view.tsx](<src/app/(protected)/modules/[slug]/journal-correct-view.tsx>)),
+and the Calendar's Today in history dialog
+([journal-on-this-day-dialog.tsx](<src/app/(protected)/modules/[slug]/journal-on-this-day-dialog.tsx>)).
+
+**A recycled entry does not use it.** An entry in the bin has no live row, so Edit, Lock and
+Encrypt would all fail against it — the Recycle Bin card keeps plain
+[`JournalViewer`](#journalviewer). That is the split between the two: `JournalViewer`
+renders an entry, this renders an entry you can *act on*.
+
+---
+
 ## JournalEntriesGrid
 
 ⚑ **Route-local** — the one entry in this registry that does not live in `src/components/`.
@@ -1117,7 +1190,7 @@ a route-local wrapper that runs `expensesOnDateAction` and hands the result down
 Transactions screen builds the view from rows it already holds, so it costs no second read.
 
 **Used by:** the Journal entry viewer
-[entry-screen.tsx](src/app/(protected)/modules/[slug]/entries/[id]/entry-screen.tsx), the
+[journal-entry-full-viewer.tsx](<src/app/(protected)/modules/[slug]/journal-entry-full-viewer.tsx>), the
 Journal calendar's day panel
 [journal-calendar-view.tsx](src/app/(protected)/modules/[slug]/journal-calendar-view.tsx),
 and the Expense Transactions screen
@@ -4788,7 +4861,7 @@ print/export view share it.
 />
 ```
 
-**Used by:** [/modules/journal/entries/[id]](src/app/(protected)/modules/[slug]/entries/[id]/entry-screen.tsx).
+**Used by:** [/modules/journal/entries/[id]](<src/app/(protected)/modules/[slug]/journal-entry-full-viewer.tsx>).
 
 **Notes:** blank fields are hidden, so an entry only shows what it recorded. Edit and Delete
 are disabled while `entry.isLocked` because the `updateEntry`/`deleteEntry` use-cases reject
@@ -4830,7 +4903,7 @@ the styling can't drift apart.
 **Pure presentation.** It collects a password and raises it. It never decrypts, never calls
 an action, and never keeps the password after the submit — the screen above owns that,
 because that screen is also what decides how long an unlock lasts. In the journal, that is
-[entry-screen.tsx](src/app/(protected)/modules/[slug]/entries/[id]/entry-screen.tsx), which
+[journal-entry-full-viewer.tsx](<src/app/(protected)/modules/[slug]/journal-entry-full-viewer.tsx>), which
 holds the password in React state only and loses it on navigation.
 
 - **Source:** [src/components/encryption-prompt.tsx](src/components/encryption-prompt.tsx)

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { SlotIcon } from "@/components/slot-icon";
 import { getIconSlot } from "@/lib/icons";
-import { JournalPhotosHost } from "../../journal-photos-host";
+import { JournalPhotosHost } from "./journal-photos-host";
 
 // Resolved once at module scope; the registry is static, so this is not I/O.
 const PHOTOS_SLOT = getIconSlot("journal_card_entry_photos")!;

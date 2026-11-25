@@ -6,14 +6,12 @@ import { Button } from "@/components/button";
 import { BusyOverlay } from "@/components/busy-overlay";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { JournalViewer } from "@/components/journal-viewer";
 import { Modal } from "@/components/modal";
 import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
 import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import { getIconSlot } from "@/lib/icons";
 import {
-  ENCRYPTED_TITLE_PLACEHOLDER,
   countSameDateEntries,
   toSameDateRows,
 } from "@/lib/journal";
@@ -25,8 +23,8 @@ import type {
   SameDateGroup,
   SameDateRow,
 } from "@/lib/journal";
-import { JournalEntryEditor } from "./journal-entry-editor";
 import { buildJournalMergeDraftAction } from "./journal-bulk-actions";
+import { JournalEntryFullViewer } from "./journal-entry-full-viewer";
 import {
   JournalMergeDialogs,
   type PendingMerge,
@@ -38,12 +36,17 @@ import {
   lockJournalSameDateEntriesAction,
   recycleJournalSameDateEntriesAction,
 } from "./journal-review-actions";
-import { journalEntriesFilterHref } from "./journal-shared";
 
 const SAME_DATE_SLOT = getIconSlot("journal_card_same_date_entries")!;
 
 export interface JournalReviewViewProps {
   groups: SameDateGroup[];
+  /**
+   * Whether this reader has the Expense module, for the opened entry's $ button.
+   * The guard that matters is inside the action; this only decides whether the
+   * control is drawn.
+   */
+  canSeeExpense?: boolean;
   categoryIcons: Record<string, string>;
   tagIcons: Record<string, string>;
   /** Everything below is for the merge dialog's entry form. */
@@ -88,14 +91,12 @@ export function JournalReviewView({
   prefillTemplates,
   locationCategoryOptions,
   locationTagOptions,
+  canSeeExpense = false,
 }: JournalReviewViewProps) {
   const router = useRouter();
   const [groups, setGroups] = useState(initialGroups);
 
   const [openEntry, setOpenEntry] = useState<JournalEntry | undefined>(undefined);
-  // Whether the open entry's modal is showing the reader or the editor. Reset
-  // every time a different entry is opened, so a modal never opens mid-edit.
-  const [isEditing, setIsEditing] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | undefined>(undefined);
   const [pendingLock, setPendingLock] = useState<PendingLock | undefined>(undefined);
   const [merge, setMerge] = useState<PendingMerge | undefined>(undefined);
@@ -164,7 +165,6 @@ export function JournalReviewView({
         setError(result.error ?? "Failed to open that entry.");
         return;
       }
-      setIsEditing(false);
       setOpenEntry(result.entry);
     } finally {
       setIsBusy(false);
@@ -282,7 +282,6 @@ export function JournalReviewView({
       } else {
         setOpenEntry(undefined);
       }
-      setIsEditing(false);
       setNotice("Saved your changes to that entry.");
       // The Entries list and the module chrome are stale now.
       router.refresh();
@@ -714,53 +713,31 @@ export function JournalReviewView({
       </CollapsibleCard>
 
       {openEntry && (
-        <Modal
-          title={
-            openEntry.isEncrypted
-              ? ENCRYPTED_TITLE_PLACEHOLDER
-              : openEntry.title.trim() === ""
-                ? "Journal entry"
-                : openEntry.title
-          }
-          description={isEditing ? "Editing this entry." : undefined}
-          size="lg"
-          isBusy={isBusy}
-          onClose={() => {
-            setOpenEntry(undefined);
-            setIsEditing(false);
-          }}
-        >
-          {/* Read or edit, in the same modal. Both halves are the components the
-              single-entry screen uses, so an entry is read and written the same
-              way whether you reached it from here or from /entries/[id] — the
-              viewer's own Edit button is what switches between them, and it
-              disables itself on a locked entry (updateEntry would reject one). */}
-          {isEditing ? (
-            <JournalEntryEditor
-              mode="edit"
-              inDialog
-              entry={openEntry}
-              categoryOptions={categoryOptions}
-              tagOptions={tagOptions}
-              taxonomyCombos={taxonomyCombos}
-              preferences={preferences}
-              contentTextures={contentTextures}
-              locationCategoryOptions={locationCategoryOptions}
-              locationTagOptions={locationTagOptions}
-              onClose={() => setIsEditing(false)}
-              onSaved={() => void reloadAfterEdit(openEntry.id)}
-            />
-          ) : (
-            <JournalViewer
-              entry={openEntry}
-              categoryIcons={categoryIcons}
-              tagIcons={tagIcons}
-              categoryHref={(name) => journalEntriesFilterHref("category", name)}
-              tagHref={(name) => journalEntriesFilterHref("tag", name)}
-              onEdit={() => setIsEditing(true)}
-            />
-          )}
-        </Modal>
+        /* The shared full viewer, in its own dialog. This screen used to hand-roll
+           a viewer/edit toggle here — the same two components, but with none of
+           the entry screen's encryption, lock, clone, delete, maps, clips or
+           photos, so an entry opened from Review Data was quietly less capable
+           than the same entry opened from /entries/[id]. It is one component now.
+
+           `onSaved` rather than the viewer's own refresh: these groups come from
+           a client action, and an edit that changes a date moves the entry to
+           another group or out of the list entirely. */
+        <JournalEntryFullViewer
+          mode="modal"
+          entry={openEntry}
+          categoryIcons={categoryIcons}
+          tagIcons={tagIcons}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          taxonomyCombos={taxonomyCombos}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+          preferences={preferences}
+          contentTextures={contentTextures}
+          canSeeExpense={canSeeExpense}
+          onSaved={(entryId) => void reloadAfterEdit(entryId)}
+          onClose={() => setOpenEntry(undefined)}
+        />
       )}
 
       <JournalMergeDialogs

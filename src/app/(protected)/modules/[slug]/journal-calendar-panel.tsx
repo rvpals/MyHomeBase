@@ -17,6 +17,7 @@ import {
   listEnabledPrefillTemplates,
   listEntriesInDateRange,
   listTags,
+  listTaxonomyCombos,
   resolveJournalPreferences,
   type JournalCalendarScope,
 } from "@/lib/journal";
@@ -117,6 +118,9 @@ export async function JournalCalendarPanel({
       categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
       tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
       canSeeExpense={canSeeExpense}
+      // For the edit form inside the Today in history dialog, which opens a full,
+      // editable entry. The same read the entry page makes.
+      taxonomyCombos={listTaxonomyCombos(deps.journalRepo)}
       categoryColors={categoryColorMap(categories)}
       mergeFormOptions={{
         categoryOptions: categories.map((category) => category.name),

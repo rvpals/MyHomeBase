@@ -17,11 +17,13 @@ import {
   isJournalCalendarScope,
   isJournalDateFormat,
   journalCalendarRange,
+  maskJumpDate,
   parseJumpDate,
   shiftCalendarAnchor,
   startOfMonth,
   startOfWeek,
   type CalendarEntryLike,
+  type JournalDateFormat,
 } from "./calendar";
 
 const TODAY = "2026-08-21";
@@ -521,6 +523,85 @@ describe("formatJumpDate", () => {
   it("round-trips through parseJumpDate in every format", () => {
     for (const format of ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"] as const) {
       expect(parseJumpDate(formatJumpDate("2026-03-09", format), format)).toEqual({
+        ok: true,
+        date: "2026-03-09",
+      });
+    }
+  });
+});
+
+describe("maskJumpDate", () => {
+  it("separates a run of digits as the selected format groups them", () => {
+    expect(maskJumpDate("11252026", "MM/DD/YYYY")).toBe("11/25/2026");
+    expect(maskJumpDate("25112026", "DD/MM/YYYY")).toBe("25/11/2026");
+    expect(maskJumpDate("20261125", "YYYY-MM-DD")).toBe("2026-11-25");
+  });
+
+  it("grows a separator at a time as the reader types", () => {
+    const typed = ["", "0", "08", "082", "0821", "08212", "082120", "0821202", "08212026"];
+    expect(typed.map((text) => maskJumpDate(text, "MM/DD/YYYY"))).toEqual([
+      "",
+      "0",
+      "08",
+      "08/2",
+      "08/21",
+      "08/21/2",
+      "08/21/20",
+      "08/21/202",
+      "08/21/2026",
+    ]);
+  });
+
+  it("leaves no trailing separator, so backspace always removes something", () => {
+    // "08/21/" would be a trap: the mask would put the slash straight back.
+    expect(maskJumpDate("08", "MM/DD/YYYY")).toBe("08");
+    expect(maskJumpDate("0821", "MM/DD/YYYY")).toBe("08/21");
+    expect(maskJumpDate("2026", "YYYY-MM-DD")).toBe("2026");
+  });
+
+  it("is idempotent, so re-masking its own output changes nothing", () => {
+    for (const format of ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"] as const) {
+      const once = maskJumpDate("08212026", format);
+      expect(maskJumpDate(once, format)).toBe(once);
+    }
+  });
+
+  it("lets a typed separator close a short month or day", () => {
+    // Everything parseJumpDate accepted by hand still lands on the same day.
+    expect(maskJumpDate("8/1/2026", "MM/DD/YYYY")).toBe("08/01/2026");
+    expect(maskJumpDate("1.2.2026", "DD/MM/YYYY")).toBe("01/02/2026");
+    expect(maskJumpDate("2026-8-1", "YYYY-MM-DD")).toBe("2026-08-01");
+  });
+
+  it("does not pad a four-wide group — a two-digit year is wrong, not short", () => {
+    expect(maskJumpDate("26-11-25", "YYYY-MM-DD")).toBe("26-11-25");
+    expect(parseJumpDate(maskJumpDate("26-11-25", "YYYY-MM-DD"), "YYYY-MM-DD").ok).toBe(false);
+  });
+
+  it("drops digits past the last group instead of shuffling the year", () => {
+    expect(maskJumpDate("082120269999", "MM/DD/YYYY")).toBe("08/21/2026");
+    expect(maskJumpDate("202611259", "YYYY-MM-DD")).toBe("2026-11-25");
+  });
+
+  it("ignores characters that are neither digits nor separators", () => {
+    expect(maskJumpDate("aa", "MM/DD/YYYY")).toBe("");
+    expect(maskJumpDate("08 21 2026", "MM/DD/YYYY")).toBe("08/21/2026");
+    expect(maskJumpDate("", "MM/DD/YYYY")).toBe("");
+  });
+
+  it("ignores a separator typed where no group is open", () => {
+    expect(maskJumpDate("//", "MM/DD/YYYY")).toBe("");
+    expect(maskJumpDate("08//21", "MM/DD/YYYY")).toBe("08/21");
+  });
+
+  it("feeds parseJumpDate directly in every format", () => {
+    const digits: Record<JournalDateFormat, string> = {
+      "MM/DD/YYYY": "03092026",
+      "DD/MM/YYYY": "09032026",
+      "YYYY-MM-DD": "20260309",
+    };
+    for (const format of ["MM/DD/YYYY", "DD/MM/YYYY", "YYYY-MM-DD"] as const) {
+      expect(parseJumpDate(maskJumpDate(digits[format], format), format)).toEqual({
         ok: true,
         date: "2026-03-09",
       });

@@ -15,7 +15,7 @@ import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { getModuleBySlug } from "@/lib/modules";
 import { userHasModuleAccess } from "@/lib/user";
 import { deps } from "@/lib/wiring";
-import { JournalEntryScreen } from "./entry-screen";
+import { JournalEntryFullViewer } from "../../journal-entry-full-viewer";
 import { JournalShell } from "../../journal-shell";
 import { journalTaxonomyIconUrlsByName } from "../../journal-shared";
 import { PAGE_CONTAINER } from "../../../../page-container";
@@ -80,7 +80,8 @@ export default async function JournalEntryPage({
     // rendered straight into `.app-main` with no rail, no panel and no header.
     <JournalShell>
       <div className={PAGE_CONTAINER}>
-        <JournalEntryScreen
+        <JournalEntryFullViewer
+          mode="page"
           entry={entry}
           neighbors={getEntryNeighbors(deps.journalRepo, entryId)}
           categoryIcons={categoryIcons}

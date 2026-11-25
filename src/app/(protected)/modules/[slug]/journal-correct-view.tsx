@@ -22,14 +22,17 @@ import type {
   JournalEntry,
   JournalPreferences,
   JournalPrefillTemplate,
+  JournalTaxonomyCombo,
   RecycledJournalEntry,
 } from "@/lib/journal";
 import {
   deleteRecycledForeverAction,
   emptyRecycleBinAction,
   getJournalEntryAction,
+  loadJournalCorrectDataAction,
   restoreJournalEntriesAction,
 } from "./journal-correct-actions";
+import { JournalEntryFullViewer } from "./journal-entry-full-viewer";
 import { JournalEntriesGrid } from "./journal-entries-grid";
 import { journalEntriesFilterHref } from "./journal-shared";
 
@@ -82,6 +85,10 @@ export interface JournalCorrectViewProps {
   preferences: JournalPreferences;
   contentTextures?: DashboardTextureItem[];
   prefillTemplates: JournalPrefillTemplate[];
+  /** Saved taxonomy combos, for the opened entry's edit form. */
+  taxonomyCombos?: JournalTaxonomyCombo[];
+  /** Whether this reader has the Expense module — the opened entry's $ button. */
+  canSeeExpense?: boolean;
 }
 
 /**
@@ -128,6 +135,8 @@ export function JournalCorrectView({
   preferences,
   contentTextures,
   prefillTemplates,
+  taxonomyCombos = [],
+  canSeeExpense = false,
 }: JournalCorrectViewProps) {
   const router = useRouter();
   // Rows, not groups. Both writers produce rows: the bulk grid hands back
@@ -192,6 +201,26 @@ export function JournalCorrectView({
    * than shipped with the list — the card can hold hundreds of rows. The bin's
    * rows are complete already and open with no round trip.
    */
+  /**
+   * Re-reads both cards after an edit saved inside the full viewer.
+   *
+   * `router.refresh()` is not enough: `duplicateRows` is client state seeded
+   * from props once, so a server re-render never reaches it. An edit can also
+   * change the date or title that made two entries a pair, which should drop
+   * both rows — only a re-group can know that.
+   */
+  async function refreshDuplicates() {
+    const result = await loadJournalCorrectDataAction();
+    if (!result.ok) {
+      setError(result.error ?? "Saved, but the list could not be re-read.");
+      return;
+    }
+    if (result.duplicateGroups) setDuplicateRows(toDuplicateRows(result.duplicateGroups));
+    if (result.recycledEntries) setRecycled(result.recycledEntries);
+    // The entry count in the module chrome and the Entries list are stale too.
+    router.refresh();
+  }
+
   async function openLiveEntry(entryId: number) {
     setIsBusy(true);
     setError(undefined);
@@ -408,19 +437,50 @@ export function JournalCorrectView({
         </CollapsibleCard>
       )}
 
-      {openEntry && (
+      {/* A **live** entry opens in the shared full viewer: editable, with the
+          whole toolbar. Finding a duplicate is exactly when you want to fix one
+          of the pair rather than only look at it.
+
+          A **recycled** one does not. It has no live row — Edit, Lock and
+          Encrypt would all fail against it — so it keeps the read-only
+          `JournalViewer` below. That is why that component stays registered and
+          separate: "render an entry" and "render an entry you can act on" are
+          two jobs, and the bin only has the first. */}
+      {openEntry && !openEntry.isRecycled && (
+        <JournalEntryFullViewer
+          mode="modal"
+          entry={openEntry.entry}
+          categoryIcons={categoryIcons}
+          tagIcons={tagIcons}
+          categoryOptions={categoryOptions}
+          tagOptions={tagOptions}
+          taxonomyCombos={taxonomyCombos}
+          locationCategoryOptions={locationCategoryOptions}
+          locationTagOptions={locationTagOptions}
+          preferences={preferences}
+          contentTextures={contentTextures}
+          canSeeExpense={canSeeExpense}
+          // These rows are client state seeded from props once, so a server
+          // refresh would not touch them — and an edit can break the date+title
+          // match that made the pair duplicates, which should drop both rows.
+          onSaved={() => void refreshDuplicates()}
+          onClose={() => setOpenEntry(undefined)}
+        />
+      )}
+
+      {openEntry?.isRecycled && (
         <Modal
           // The deleted marker goes in the title because that is the one line
           // always visible in the modal — an entry read out of the bin must not
           // look like a live one.
-          title={`${openEntry.isRecycled ? "[DELETED] " : ""}${
+          title={`[DELETED] ${
             openEntry.entry.isEncrypted
               ? ENCRYPTED_TITLE_PLACEHOLDER
               : openEntry.entry.title.trim() === ""
                 ? "Journal entry"
                 : openEntry.entry.title
           }`}
-          description={openEntry.isRecycled ? "This entry is in the recycle bin." : undefined}
+          description="This entry is in the recycle bin."
           size="lg"
           onClose={() => setOpenEntry(undefined)}
         >

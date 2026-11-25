@@ -21,12 +21,18 @@ import { listLocationCategories, listLocationTags } from "@/lib/sys-locations";
 import { listModuleSettingsFor } from "@/lib/module-settings";
 import { getModuleBySlug } from "@/lib/modules";
 import { deps } from "@/lib/wiring";
+import { cookies } from "next/headers";
+import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
+import { userHasModuleAccess } from "@/lib/user";
 import { JournalReviewView } from "./journal-review-view";
 import { journalTaxonomyIconUrlsByName } from "./journal-shared";
 
 const JOURNAL_MODULE_SLUG = "journal";
 
-export function JournalReviewPanel() {
+// `async` because deciding whether the opened entry offers the $ button means
+// reading the session cookie, which `next/headers` only exposes as a promise —
+// the same reason JournalCalendarPanel is async.
+export async function JournalReviewPanel() {
   // The whole journal, not a page of it: four entries sharing a day in 2019 are
   // exactly what this screen exists to find, and any limit here would hide them.
   // The excerpt is cut to 100 words inside findSameDateGroups and only grouped
@@ -44,9 +50,20 @@ export function JournalReviewPanel() {
     journalModule ? listModuleSettingsFor(deps.moduleSettingsRepo, journalModule.id) : [],
   );
 
+  // A separate grant from the journal one the route already checked — plenty of
+  // readers have one module and not the other.
+  const sessionId = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
+  const currentUser = getCurrentUser(sessionId, deps.sessionRepo, deps.userRepo);
+  const expenseModule = getModuleBySlug(deps.moduleRepo, "expense");
+  const canSeeExpense =
+    currentUser !== undefined &&
+    expenseModule !== undefined &&
+    userHasModuleAccess(currentUser, expenseModule.id, deps.userRepo);
+
   return (
     <JournalReviewView
       groups={groups}
+      canSeeExpense={canSeeExpense}
       categoryIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("category", categories))}
       tagIcons={Object.fromEntries(journalTaxonomyIconUrlsByName("tag", tags))}
       categoryOptions={categories.map((category) => category.name)}

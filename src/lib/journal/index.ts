@@ -149,6 +149,7 @@ export {
   shiftCalendarAnchor,
   parseJumpDate,
   formatJumpDate,
+  maskJumpDate,
   formatCalendarDayHeading,
   formatMonthDayHeading,
   startOfWeek,

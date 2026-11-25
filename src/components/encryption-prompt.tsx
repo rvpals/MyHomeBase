@@ -5,7 +5,7 @@
 // Pure presentation: it collects a password and raises it. It never decrypts,
 // never calls an action, and never holds the password after the submit — the
 // screen above owns that, because it is also what decides how long an unlock
-// lasts (`entry-screen.tsx` drops it on navigation).
+// lasts (`journal-entry-full-viewer.tsx` drops it on navigation).
 //
 // Renders **inline or as a dialog**, same fields and same validation either way
 // (`asModal`). The two presentations share one component rather than being two

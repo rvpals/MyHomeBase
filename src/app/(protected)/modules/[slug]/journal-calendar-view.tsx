@@ -44,6 +44,7 @@ import {
   formatCalendarDayHeading,
   formatJumpDate,
   isJournalDateFormat,
+  maskJumpDate,
   parseJumpDate,
   shiftCalendarAnchor,
   startOfMonth,
@@ -54,6 +55,7 @@ import {
   type AdjacentEntryDirection,
   type JournalDateFormat,
   type JournalEntry,
+  type JournalTaxonomyCombo,
 } from "@/lib/journal";
 import { BulkConfirm } from "@/components/bulk-confirm";
 import { adjacentEntryDateAction, recycleJournalEntryAction } from "./journal-actions";
@@ -112,6 +114,12 @@ export interface JournalCalendarViewProps {
   categoryColors?: CalendarCategoryColors;
   /** What the Merge bulk action's entry form needs, read on the server. */
   mergeFormOptions: MergeFormOptions;
+  /**
+   * Saved taxonomy combos, for the edit form inside the Today in history
+   * dialog. Not used by the calendar itself — threaded through because that
+   * dialog opens a full, editable entry.
+   */
+  taxonomyCombos?: JournalTaxonomyCombo[];
 }
 
 /**
@@ -132,6 +140,7 @@ export function JournalCalendarView({
   canSeeExpense = false,
   categoryColors,
   mergeFormOptions,
+  taxonomyCombos = [],
 }: JournalCalendarViewProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -414,9 +423,11 @@ export function JournalCalendarView({
             // The dialog belongs to the open day, so closing the day closes it
             // too — otherwise it would hang over a calendar with nothing selected.
             setExpensesDate(undefined);
+            setHistoryDate(undefined);
             navigate({ date: null });
           }}
           onOpenExpenses={canSeeExpense ? () => setExpensesDate(selectedDate) : undefined}
+          onOpenHistory={() => setHistoryDate(selectedDate)}
         />
       ) : null}
 
@@ -445,6 +456,8 @@ export function JournalCalendarView({
           categoryIcons={categoryIcons}
           tagIcons={tagIcons}
           formOptions={mergeFormOptions}
+          taxonomyCombos={taxonomyCombos}
+          canSeeExpense={canSeeExpense}
           onClose={() => setHistoryDate(undefined)}
         />
       ) : null}
@@ -836,7 +849,11 @@ function JumpControl({
               placeholder={format}
               aria-describedby="journal-jump-error"
               onChange={(event) => {
-                setText(event.target.value);
+                // Separators are inserted as the digits land, so a numeric keypad
+                // is enough: 11252026 becomes 11/25/2026, in whichever order the
+                // format beside the box says. The mask is idempotent, so editing
+                // already-separated text is a no-op rather than a second pass.
+                setText(maskJumpDate(event.target.value, format));
                 setError(undefined);
               }}
               onKeyDown={(event) => {
@@ -1394,6 +1411,7 @@ function DayEntriesPanel({
   onOpenEntry,
   onClose,
   onOpenExpenses,
+  onOpenHistory,
   mergeFormOptions,
 }: {
   date: string;
@@ -1405,6 +1423,8 @@ function DayEntriesPanel({
   onClose: () => void;
   /** Omit to hide the $ button — a reader without the Expense module. */
   onOpenExpenses?: () => void;
+  /** Raises "In history on …" for this day's month and day, across every year. */
+  onOpenHistory: () => void;
 }) {
   const router = useRouter();
   /** The row whose Delete was pressed, if the confirmation is open. */
@@ -1532,7 +1552,10 @@ function DayEntriesPanel({
                 : `${entries.length} entries`}
           </p>
         </div>
-        <div className="flex gap-2">
+        {/* flex-wrap so the fourth button drops to its own line on a narrow
+            phone instead of overflowing; on a desktop there is room and the row
+            never wraps. */}
+        <div className="flex flex-wrap gap-2">
           {/* The New Entry section, seeded with the day being viewed — `?date=`
               is the same param this calendar reads for the open day, and the
               section hands it to the form as its starting date. Pointing at
@@ -1559,6 +1582,21 @@ function DayEntriesPanel({
               <SlotIcon slot={DAY_EXPENSES_SLOT} className="h-4 w-4" />
             </Button>
           )}
+          {/* The same question the calendar cells ask — what else did I write on
+              this month and day, in any year — asked from the open day's list,
+              where the reader already is. Icon-only beside the $ for the reason
+              that one is, and a bare TreeIcon rather than a slot because it is a
+              row action, not a place (coding-guide.md) — the same call the cell
+              button it duplicates makes. */}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onOpenHistory}
+            title="Today in history — this date in every year"
+            ariaLabel="Today in history — this date in every year"
+          >
+            <TreeIcon name="history" className="h-4 w-4" />
+          </Button>
           <Button variant="secondary" size="sm" onClick={onClose} ariaLabel="Close this day">
             Close
           </Button>
