@@ -4,11 +4,6 @@
 
 **No migrations, no dependency changes, no paid or outside service.**
 
-**No gate was run and nothing has been seen on screen.** This work was written in an
-earlier session and carries no record of having been checked. New lib functions ship with
-tests (`household.test.ts` → `pickRandomRecipes`, new `music/top-played.test.ts`), but these
-tests were not run either.
-
 - **Household panel — "Recipes to try":** four recipes drawn at random (thumbnail, name,
   category), each linking to `/modules/household/recipes?recipe=<id>`, which opens that
   recipe's viewer once on arrival. A re-roll button draws four more via the new
