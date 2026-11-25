@@ -129,18 +129,48 @@ describe("findDuplicateGroups", () => {
     expect(groups.map((group) => group.date)).toEqual(["2026-06-05", "2026-01-05"]);
   });
 
-  it("carries the excerpt, lock and pin state onto each member", () => {
+  it("carries the whole entry onto each member, so the grid can show entry columns", () => {
     const groups = findDuplicateGroups([
-      entry({ id: 1, date: "2026-03-01", title: "T", content: "one two three", isLocked: true }),
+      entry({
+        id: 1,
+        date: "2026-03-01",
+        title: "T",
+        content: "one two three",
+        isLocked: true,
+        categories: ["TRIP"],
+        tags: ["beach", "summer"],
+        placeName: "Brighton",
+      }),
       entry({ id: 2, date: "2026-03-01", title: "T", content: "", isPinned: true }),
     ]);
 
     expect(groups[0].entries[0]).toMatchObject({
       id: 1,
-      excerpt: "one two three",
       isLocked: true,
+      categories: ["TRIP"],
+      tags: ["beach", "summer"],
+      placeName: "Brighton",
     });
-    expect(groups[0].entries[1]).toMatchObject({ id: 2, excerpt: "", isPinned: true });
+    expect(groups[0].entries[1]).toMatchObject({ id: 2, isPinned: true });
+  });
+
+  it("blanks the body rather than shipping it, on every member", () => {
+    const groups = findDuplicateGroups([
+      entry({ id: 1, date: "2026-03-01", title: "T", content: "a long body of writing" }),
+      entry({ id: 2, date: "2026-03-01", title: "T", content: "another long body" }),
+    ]);
+
+    expect(groups[0].entries.map((item) => item.content)).toEqual(["", ""]);
+  });
+
+  it("does not mutate the entries it was handed", () => {
+    const first = entry({ id: 1, date: "2026-03-01", title: "T", content: "kept" });
+    const second = entry({ id: 2, date: "2026-03-01", title: "T", content: "also kept" });
+
+    findDuplicateGroups([first, second]);
+
+    expect(first.content).toBe("kept");
+    expect(second.content).toBe("also kept");
   });
 
   it("handles an empty input", () => {
@@ -219,15 +249,31 @@ describe("toDuplicateRows", () => {
     expect(new Set(rows.map((row) => row.groupKey)).size).toBe(2);
   });
 
-  it("keeps the excerpt and flags from the underlying entry", () => {
+  it("keeps the entry fields the shared grid columns read", () => {
     const rows = toDuplicateRows(
       findDuplicateGroups([
-        entry({ id: 1, date: "2026-03-01", title: "T", content: "hello there", isLocked: true }),
+        entry({
+          id: 1,
+          date: "2026-03-01",
+          time: "08:30",
+          title: "T",
+          isLocked: true,
+          categories: ["HOUSE"],
+          tags: ["boiler"],
+        }),
         entry({ id: 2, date: "2026-03-01", title: "T" }),
       ]),
     );
 
-    expect(rows[0]).toMatchObject({ id: 1, excerpt: "hello there", isLocked: true });
+    expect(rows[0]).toMatchObject({
+      id: 1,
+      date: "2026-03-01",
+      time: "08:30",
+      title: "T",
+      isLocked: true,
+      categories: ["HOUSE"],
+      tags: ["boiler"],
+    });
   });
 
   it("returns nothing for no groups", () => {

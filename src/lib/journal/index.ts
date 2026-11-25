@@ -420,7 +420,7 @@ export {
   findDuplicateGroups,
   toDuplicateRows,
 } from "./duplicates";
-export type { DuplicateEntry, DuplicateGroup, DuplicateRow } from "./duplicates";
+export type { DuplicateGroup, DuplicateRow } from "./duplicates";
 
 // Same-date grouping for the Review Data section. A different question from the
 // duplicates above — date only, title ignored, untitled entries kept — plus the

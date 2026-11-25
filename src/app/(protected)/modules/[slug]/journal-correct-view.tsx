@@ -10,6 +10,7 @@ import { Modal } from "@/components/modal";
 import { SlotIcon } from "@/components/slot-icon";
 import { TreeIcon } from "@/components/tree-icons";
 import { getIconSlot } from "@/lib/icons";
+import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import {
   ENCRYPTED_TITLE_PLACEHOLDER,
   displayEntryTitle,
@@ -19,15 +20,17 @@ import type {
   DuplicateGroup,
   DuplicateRow,
   JournalEntry,
+  JournalPreferences,
+  JournalPrefillTemplate,
   RecycledJournalEntry,
 } from "@/lib/journal";
 import {
   deleteRecycledForeverAction,
   emptyRecycleBinAction,
   getJournalEntryAction,
-  recycleJournalEntriesAction,
   restoreJournalEntriesAction,
 } from "./journal-correct-actions";
+import { JournalEntriesGrid } from "./journal-entries-grid";
 import { journalEntriesFilterHref } from "./journal-shared";
 
 const DUPLICATES_SLOT = getIconSlot("journal_card_duplicates")!;
@@ -39,13 +42,15 @@ const RECYCLED_SLOT = getIconSlot("journal_card_recycled_entries")!;
  * `"duplicates"` is the Duplicate entries section and `"recycled"` is the Recycle
  * Bin section — one card each. `"both"` renders the pair, which is what the Correct
  * tab under CSV Import did; no call site passes it since that tab was retired, and
- * it is kept because the two-card arrangement is what the shared state machine
- * below is written for, not a mode to be reasoned about separately.
+ * it is kept because the two cards still share this file's state and dialogs.
  *
- * This is a prop rather than three components because the cards share one state
- * machine on purpose (see the component docblock): a delete moves an entry from one
- * to the other, and every action replaces both lists wholesale. Splitting them
- * would mean a second and third copy of all five action handlers.
+ * **If you ever put both cards on one screen again**, note that the two no longer
+ * refresh together: the Duplicates grid's writes go through the shared bulk
+ * actions, which re-read the duplicate rows and nothing else, so a delete there
+ * would leave the bin card below it a list behind. That is harmless while each
+ * card is its own section — nothing stale is on screen — and it is the price of
+ * the Duplicates card offering the same seven actions as the Entries list rather
+ * than a Delete of its own.
  */
 export type JournalCorrectViewMode = "both" | "duplicates" | "recycled";
 
@@ -56,26 +61,58 @@ export interface JournalCorrectViewProps {
   tagIcons: Record<string, string>;
   /** Defaults to `"both"` — both cards, the arrangement this view was written for. */
   show?: JournalCorrectViewMode;
+  /**
+   * Clips attached per entry id, for the Title cell's paperclip. Absent ids have
+   * none — the count query omits them rather than returning zeros.
+   */
+  clipCounts: Record<number, number>;
+  /**
+   * What the duplicates grid's Bulk edit, Bulk overwrite and Merge dialogs need.
+   *
+   * Required even for `show="recycled"`, which never draws that grid: these are
+   * a handful of small lookups, and making them optional would mean either a
+   * non-null assertion here or a second shape for the same props. The read this
+   * screen actually has to be careful about — grouping every entry in the
+   * journal — is the one the panel skips.
+   */
+  categoryOptions: string[];
+  tagOptions: string[];
+  locationCategoryOptions: string[];
+  locationTagOptions: string[];
+  preferences: JournalPreferences;
+  contentTextures?: DashboardTextureItem[];
+  prefillTemplates: JournalPrefillTemplate[];
 }
 
 /**
- * Find duplicate entries and delete the redundant ones, then restore or purge
- * what those deletes produced.
+ * Find duplicate entries and act on them, then restore or purge what those
+ * actions produced.
  *
- * Two call sites, one component (see `show`): the Duplicate entries section renders
- * the first card and the Recycle Bin section the second. They were one screen — the
- * Correct tab under CSV Import — until each got a name of its own in the nav.
+ * Two call sites, one component (see `show`): the Duplicate entries section
+ * renders the first card and the Recycle Bin section the second. They were one
+ * screen — the Correct tab under CSV Import — until each got a name of its own
+ * in the nav.
  *
- * Both lists are `DataGrid`s — the registered result grid, which brings paging,
- * search, per-column filters, selection pruned to the filtered set, CSV export
- * and the below-1024px card layout. The duplicate groups are flattened to rows
- * for it (`toDuplicateRows`), with each row carrying its group's identity and
- * "n of m", so a set of copies still reads as a set in a flat sortable list.
+ * **The Duplicates card is the Entries list's grid**, not a grid of its own:
+ * `JournalEntriesGrid` brings the same Date / Time / Title / Categories / Tags
+ * columns, the same tick-boxes and the same seven bulk actions (Bulk edit, Bulk
+ * overwrite, Lock, Unlock, Encrypt, Merge, Delete) that the List of Entries
+ * offers. The one thing this screen adds is the leading "Duplicate of" column,
+ * which carries each row's group and its "2 of 3" — the grid is flat, sortable
+ * and paginated, so the grouping has to travel on the row (`toDuplicateRows`).
  *
- * Both cards' data is held in one piece of state and replaced wholesale by every
- * action's response. A delete moves an entry from one card to the other, so
- * patching the lists locally would leave the two disagreeing about where it
- * went — the server's answer is the only version that is coherent.
+ * Two consequences worth knowing before you use it:
+ *
+ *   * **Encrypt makes a row vanish.** `findDuplicateGroups` skips encrypted
+ *     entries — their titles are blank, so nothing could tell whether they
+ *     match — so sealing one drops it, and possibly its whole group, from the
+ *     refreshed list. That is the honest result, not a bug.
+ *   * **Delete bins, it does not destroy.** It is the same delete the Entries
+ *     list runs; the entries land in the Recycle Bin section.
+ *
+ * The Recycle Bin card keeps its own plain `DataGrid`: its rows are
+ * `RecycledJournalEntry`, which is not a live entry and cannot be edited,
+ * locked, encrypted or merged.
  */
 export function JournalCorrectView({
   duplicateGroups: initialGroups,
@@ -83,9 +120,21 @@ export function JournalCorrectView({
   categoryIcons,
   tagIcons,
   show = "both",
+  clipCounts,
+  categoryOptions,
+  tagOptions,
+  locationCategoryOptions,
+  locationTagOptions,
+  preferences,
+  contentTextures,
+  prefillTemplates,
 }: JournalCorrectViewProps) {
   const router = useRouter();
-  const [groups, setGroups] = useState(initialGroups);
+  // Rows, not groups. Both writers produce rows: the bulk grid hands back
+  // `DuplicateRow`s straight from the server (`{ tab: "duplicates" }`), and the
+  // bin's actions hand back groups, which are flattened on arrival. One piece of
+  // state so the two can never disagree about what is on screen.
+  const [duplicateRows, setDuplicateRows] = useState(() => toDuplicateRows(initialGroups));
   const [recycled, setRecycled] = useState(initialRecycled);
 
   const [openEntry, setOpenEntry] = useState<
@@ -96,15 +145,13 @@ export function JournalCorrectView({
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [isBusy, setIsBusy] = useState(false);
 
-  const duplicateRows = toDuplicateRows(groups);
-
   /**
-   * Runs an action, adopts the lists it returns, and clears the grid's ticks.
+   * Runs one of the Recycle Bin's actions and adopts the lists it returns.
    *
-   * `clearSelection` is the grid's own callback, held across the confirm dialog
-   * on purpose — components.md's warning is that the ticks must not outlive the
-   * rows they referred to, and after any of these operations those rows have
-   * either gone or moved to the other grid.
+   * `clearSelection` is the bin grid's own callback, held across the confirm
+   * dialog on purpose — components.md's warning is that the ticks must not
+   * outlive the rows they referred to, and after a restore or a purge those rows
+   * are gone.
    */
   async function run(
     action: () => Promise<{
@@ -125,7 +172,7 @@ export function JournalCorrectView({
         setError(result.error ?? "That didn't work.");
         return;
       }
-      if (result.duplicateGroups) setGroups(result.duplicateGroups);
+      if (result.duplicateGroups) setDuplicateRows(toDuplicateRows(result.duplicateGroups));
       if (result.recycledEntries) setRecycled(result.recycledEntries);
       clearSelection?.();
       setConfirm(undefined);
@@ -140,10 +187,10 @@ export function JournalCorrectView({
   /**
    * Opens a live entry in the viewer.
    *
-   * The Duplicates rows only carry a 100-word excerpt, so the full entry is
-   * fetched on click rather than shipped with the list — see
-   * getJournalEntryAction. The bin's rows are complete already and open with no
-   * round trip.
+   * The duplicate rows carry whole entries **minus their body** (see
+   * src/lib/journal/duplicates.ts), so the full entry is fetched on click rather
+   * than shipped with the list — the card can hold hundreds of rows. The bin's
+   * rows are complete already and open with no round trip.
    */
   async function openLiveEntry(entryId: number) {
     setIsBusy(true);
@@ -160,59 +207,27 @@ export function JournalCorrectView({
     }
   }
 
-  const duplicateColumns: DataGridColumn<DuplicateRow>[] = [
-    {
-      key: "group",
-      header: "Duplicate of",
-      // Sorting on this keeps copies of one entry adjacent, which is what makes
-      // a flat grid readable as groups.
-      render: (row) => (
-        <span className="flex items-center gap-1.5 whitespace-nowrap">
-          {row.groupKey}
-          {row.isLocked && (
-            <span
-              title="Locked — unlock it before editing or overwriting"
-              aria-label="Locked"
-              role="img"
-              className="flex shrink-0 items-center text-muted"
-            >
-              <TreeIcon name="lock" className="h-3 w-3" />
-            </span>
-          )}
-          <span className="ml-2 text-xs text-muted">
-            {row.copyIndex} of {row.copyCount}
-          </span>
+  /**
+   * The one column this screen adds in front of the shared entry columns.
+   *
+   * Sorting on it keeps copies of one entry adjacent, which is what makes a flat
+   * grid readable as groups. No lock glyph here — the shared Title column
+   * already marks a locked or encrypted entry, and two locks on one row read as
+   * two different facts.
+   */
+  const groupColumn: DataGridColumn<DuplicateRow> = {
+    key: "group",
+    header: "Duplicate of",
+    render: (row) => (
+      <span className="flex items-center gap-1.5 whitespace-nowrap">
+        {row.groupKey}
+        <span className="ml-2 text-xs text-muted">
+          {row.copyIndex} of {row.copyCount}
         </span>
-      ),
-      value: (row) => row.groupKey,
-    },
-    {
-      key: "time",
-      header: "Time",
-      render: (row) => (
-        <span className="whitespace-nowrap">
-          {row.time || <span className="text-muted">no time</span>}
-        </span>
-      ),
-      value: (row) => row.time,
-    },
-    {
-      key: "excerpt",
-      header: "Content",
-      // Reading the content is how you tell two same-titled entries apart, so
-      // this is the widest column and it is searchable.
-      render: (row) =>
-        row.excerpt === "" ? <span className="italic text-muted">(no content)</span> : row.excerpt,
-      value: (row) => row.excerpt,
-      className: "max-w-xl",
-    },
-    {
-      key: "created",
-      header: "Written",
-      render: (row) => <span className="whitespace-nowrap">{row.createdAt}</span>,
-      value: (row) => row.createdAt,
-    },
-  ];
+      </span>
+    ),
+    value: (row) => row.groupKey,
+  };
 
   const recycledColumns: DataGridColumn<RecycledJournalEntry>[] = [
     {
@@ -270,38 +285,51 @@ export function JournalCorrectView({
           <div className="flex flex-col gap-3">
             <p className="text-xs text-muted">
               Entries sharing a date and a title — including ones written at different times of
-              the same day. Click a row to read the whole entry, tick the copies you don&apos;t
-              want, and Delete moves them to the Recycle Bin section rather than destroying them.
+              the same day. Click a row to read the whole entry, then tick the copies you want to
+              act on: the buttons are the same ones the List of Entries offers. Delete moves
+              entries to the Recycle Bin section rather than destroying them, and Encrypt removes
+              a row from this list, because a sealed entry has no readable title to match on.
             </p>
 
-            <DataGrid
-              columns={duplicateColumns}
+            <JournalEntriesGrid<DuplicateRow>
               rows={duplicateRows}
-              getRowKey={(row) => row.id}
+              // No filter and no cap: duplicate detection is a whole-journal
+              // question, so the server re-groups every entry after each write.
+              scope={() => ({ tab: "duplicates" })}
+              onRowsChanged={(rows, message) => {
+                setDuplicateRows(rows);
+                setNotice(message);
+                setError(undefined);
+              }}
+              onError={setError}
+              onNotice={setNotice}
+              onBusyChange={setIsBusy}
+              // The viewer modal rather than the entry screen: comparing copies
+              // means opening one, closing it and opening the next, and a
+              // navigation would drop the ticks each time.
+              onRowClick={(row) => void openLiveEntry(row.id)}
+              clipCounts={clipCounts}
+              leadingColumns={[groupColumn]}
+              // Bands the zebra stripe by group, so a set of copies reads as a
+              // block. It follows the order on screen, so sorting by another
+              // column correctly goes back to one stripe per row.
+              getRowGroupKey={(row) => row.groupKey}
+              stripeClassName="bg-[color-mix(in_srgb,var(--paper-raised)_88%,var(--ink))]"
               emptyMessage="No duplicate entries found."
               exportFileName="journal-duplicates"
-              storageKey="journal-duplicates-grid"
-              enableSelection
-              onRowClick={(row) => void openLiveEntry(row.id)}
-              // The viewer modal is the record view here: it renders an entry
-              // properly, which the generic record read-out can't.
-              enableRecordView={false}
-              renderSelectionActions={(selectedRows, clearSelection) => (
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={isBusy}
-                  onClick={() =>
-                    setConfirm({
-                      kind: "recycle",
-                      ids: selectedRows.map((row) => row.id),
-                      clearSelection,
-                    })
-                  }
-                >
-                  Delete checked
-                </Button>
-              )}
+              // Its own key, not the Entries list's: this grid has a column the
+              // other doesn't, so sharing one would let a hidden-column set made
+              // here change that screen.
+              storageKey="myhomebase:journal-duplicates-grid"
+              formOptions={{
+                categoryOptions,
+                tagOptions,
+                locationCategoryOptions,
+                locationTagOptions,
+                preferences,
+                contentTextures,
+                prefillTemplates,
+              }}
             />
           </div>
         </CollapsibleCard>
@@ -341,6 +369,8 @@ export function JournalCorrectView({
               storageKey="journal-recycled-grid"
               enableSelection
               onRowClick={(entry) => setOpenEntry({ entry, isRecycled: true })}
+              // The viewer modal is the record view here: it renders an entry
+              // properly, which the generic record read-out can't.
               enableRecordView={false}
               renderSelectionActions={(selectedRows, clearSelection) => (
                 <>
@@ -437,16 +467,6 @@ export function JournalCorrectView({
 
   function runConfirmed(pending: PendingConfirm) {
     switch (pending.kind) {
-      case "recycle":
-        void run(
-          () => recycleJournalEntriesAction(pending.ids),
-          (result) =>
-            `Moved ${result.movedCount} ${
-              result.movedCount === 1 ? "entry" : "entries"
-            } to the recycle bin.`,
-          pending.clearSelection,
-        );
-        return;
       case "restore":
         void run(
           () => restoreJournalEntriesAction(pending.ids),
@@ -479,7 +499,11 @@ export function JournalCorrectView({
 }
 
 /**
- * A pending confirmation.
+ * A pending confirmation for one of the **Recycle Bin's** actions.
+ *
+ * The Duplicates card has no entry here: its dialogs — including its Delete
+ * confirm — belong to `JournalEntriesGrid`, so this covers only what the bin
+ * does on its own.
  *
  * The selection-based kinds carry the ids *and* the grid's `clearSelection`, so
  * the dialog acts on exactly what was ticked when it opened and can drop those
@@ -487,7 +511,6 @@ export function JournalCorrectView({
  * selection, it takes everything.
  */
 type PendingConfirm =
-  | { kind: "recycle"; ids: number[]; clearSelection: () => void }
   | { kind: "restore"; ids: number[]; clearSelection: () => void }
   | { kind: "purge"; ids: number[]; clearSelection: () => void }
   | { kind: "empty"; count: number };
@@ -503,8 +526,6 @@ function plural(count: number): string {
 function confirmTitle(pending: PendingConfirm): string {
   const count = confirmCount(pending);
   switch (pending.kind) {
-    case "recycle":
-      return `Remove the checked ${count} ${plural(count)}?`;
     case "restore":
       return `Restore ${count} ${plural(count)}?`;
     case "purge":
@@ -517,10 +538,6 @@ function confirmTitle(pending: PendingConfirm): string {
 function confirmDescription(pending: PendingConfirm): string {
   const count = confirmCount(pending);
   switch (pending.kind) {
-    case "recycle":
-      return `Are you sure you want to remove the checked ${count} ${plural(
-        count,
-      )}? They move to the Recycle Bin section, so this can be undone.`;
     case "restore":
       return `Are you sure you want to restore ${count} ${plural(
         count,
@@ -539,8 +556,6 @@ function confirmDescription(pending: PendingConfirm): string {
 function confirmActionLabel(pending: PendingConfirm): string {
   const count = confirmCount(pending);
   switch (pending.kind) {
-    case "recycle":
-      return `Remove ${count}`;
     case "restore":
       return `Restore ${count}`;
     case "purge":

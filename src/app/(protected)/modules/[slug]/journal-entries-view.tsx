@@ -28,6 +28,12 @@
 // own storage key or its own action bar, that is the trap — add a scope, not a
 // second component.**
 //
+// The grid itself is no longer here: the columns, the tick-boxes, the seven bulk
+// actions and every dialog behind them live in journal-entries-grid.tsx, shared
+// with Data Management → Duplicate entries. What is left in this file is the
+// part that really is this screen's — the four tabs, the Filtering card, the
+// "Show SQL" re-run, and which rows each tab asks the server for.
+//
 // Which entries belong to which tab is decided on the server (see
 // journal-entries-panel.tsx), re-decided on every filter change by
 // `findJournalEntriesAction`, and re-decided again after every bulk write by
@@ -44,8 +50,8 @@
 //
 // A fifth tab, **Search Results**, appears only with `?search=`. It is still its
 // own component (`SearchTab`) because its rows come from a term rather than from
-// a filter, but it reads the same `COLUMNS`, shares the same grid storage key
-// and offers the same bulk actions.
+// a filter, but it renders the same `JournalEntriesGrid`, shares the same grid
+// storage key and so offers the same columns and the same bulk actions.
 //
 // Route-local. The filter tree, its SQL compilation and its English description
 // all live in src/lib/journal/filters.ts — this file only presents them.
@@ -55,22 +61,17 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Comments } from "@/components/comments";
-import { BulkConfirm } from "@/components/bulk-confirm";
-import { BusyOverlay } from "@/components/busy-overlay";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
-import { EncryptionPrompt } from "@/components/encryption-prompt";
 import { SlotIcon } from "@/components/slot-icon";
 import { Tabs } from "@/components/tabs";
 import { getIconSlot } from "@/lib/icons";
 import type { DashboardTextureItem } from "@/lib/dashboard-texture";
 import type { JournalPreferences, JournalPrefillTemplate } from "@/lib/journal";
 import {
-  ENCRYPTED_TITLE_PLACEHOLDER,
   // The threshold is read from lib rather than written as "10" in the copy, so
   // the sentence can't drift from the condition the SQL actually applies.
   SUBSTANTIAL_MIN_WORDS,
   describeFilter,
-  displayEntryTitle,
   emptyFilter,
   type JournalBodyScope,
   type JournalEntry,
@@ -86,19 +87,11 @@ import {
   saveJournalFilterAction,
   searchJournalEntriesAction,
 } from "./journal-actions";
-import {
-  bulkEncryptJournalEntriesAction,
-  bulkLockJournalEntriesAction,
-  deleteJournalEntriesAction,
-  type BulkRefreshScope,
-} from "./journal-bulk-actions";
-import { JournalMergeDialogs, useJournalMerge } from "./journal-merge-flow";
-// Clips on a journal screen. The dialog lives in the Clips file group because
-// Clips owns the concept — the Journal only has to know how to open it, and
-// `src/lib/journal` still knows nothing about clips.
-import { EntryClipsDialog } from "./clips-entry-clips-dialog";
-import { JournalEntriesBulkEdit } from "./journal-entries-bulk-edit";
-import { JournalEntriesBulkOverwrite } from "./journal-entries-bulk-overwrite";
+import type { BulkRefreshScope } from "./journal-bulk-actions";
+// The grid itself — columns, tick-boxes, the seven bulk actions and every dialog
+// behind them, shared with Data Management → Duplicate entries. Adding a button
+// or a column for one screen goes in there, not here.
+import { JournalEntriesGrid } from "./journal-entries-grid";
 import { JournalFilterBuilder } from "./journal-filter-builder";
 
 // Resolved once at module scope; the registry is static, so this is not I/O.
@@ -107,111 +100,6 @@ const FILTERS_SLOT = getIconSlot("journal_card_entry_filters")!;
 // uploaded override, so the slot moved to the tab rather than being retired —
 // see "Ids are permanent" in coding-guide.md.
 const LOG_SLOT = getIconSlot("journal_section_log")!;
-// Migration 0131. The lock badge on an encrypted row's Title cell.
-const ENCRYPTED_SLOT = getIconSlot("journal_entry_encrypted")!;
-// Migration 0155. The paperclip on a row whose entry has clips attached. Owned by
-// the Clips module's slot group, because it marks a clip wherever it appears.
-const CLIP_SLOT = getIconSlot("clips_linked_badge")!;
-
-/**
- * The shared columns, with a paperclip appended to the Title cell of any entry
- * carrying clips.
- *
- * A wrapper rather than a column in `COLUMNS` because the counts arrive as a prop
- * and the arrays are module-scope constants. Only the Title column is replaced, so
- * the two sets cannot drift — a new column added below is picked up here for free.
- */
-function withClipBadge(
-  columns: DataGridColumn<JournalEntry>[],
-  clipCounts: Record<number, number>,
-  onOpenClips: (entryId: number) => void,
-): DataGridColumn<JournalEntry>[] {
-  return columns.map((column) =>
-    column.key === "title"
-      ? {
-          ...column,
-          render: (entry: JournalEntry) => {
-            const count = clipCounts[entry.id] ?? 0;
-            return (
-              <span className="inline-flex items-center gap-1.5">
-                {column.render?.(entry)}
-                {count > 0 && (
-                  <button
-                    type="button"
-                    // `stopPropagation` because the row has its own click (it opens
-                    // the entry): without it the paperclip would open the entry
-                    // behind the dialog it just raised.
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onOpenClips(entry.id);
-                    }}
-                    className="inline-flex items-center gap-0.5 text-muted hover:text-ink"
-                    title={`${count} clip${count === 1 ? "" : "s"} attached — open`}
-                    aria-label={`Open the ${count} clip${count === 1 ? "" : "s"} on this entry`}
-                  >
-                    <SlotIcon slot={CLIP_SLOT} className="h-3.5 w-3.5" />
-                    {count > 1 && <span className="text-xs">{count}</span>}
-                  </button>
-                )}
-              </span>
-            );
-          },
-        }
-      : column,
-  );
-}
-
-/**
- * The one column set, shared by all four tabs and by Search Results.
- *
- * Deliberately not per-tab. Two of them used to have their own — the Substantial
- * tab swapped Place for a Body Length column, the Log tab had a merged "When"
- * plus Source and Note — and the result read as four different screens over the
- * same table. A column that earns its place on one tab earns it on all of them,
- * so add it here; `DataGrid` already lets a reader hide per grid what they don't
- * want.
- */
-const COLUMNS: DataGridColumn<JournalEntry>[] = [
-  { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
-  { key: "time", header: "Time", value: (entry) => entry.time, render: (entry) => entry.time },
-  {
-    key: "title",
-    header: "Title",
-    // An encrypted entry's title column is blank (migration 0131), so both the
-    // sort value and the cell use the placeholder — otherwise every encrypted
-    // row would sort together at the top under an empty string and read as a
-    // set of untitled entries.
-    value: (entry) => displayEntryTitle(entry.title, entry.isEncrypted),
-    render: (entry) =>
-      entry.isEncrypted ? (
-        <span className="inline-flex items-center gap-1.5 text-muted">
-          <SlotIcon slot={ENCRYPTED_SLOT} className="h-3.5 w-3.5" />
-          {ENCRYPTED_TITLE_PLACEHOLDER}
-        </span>
-      ) : entry.isLocked ? (
-        // A locked entry gets the lock in front of its title. Reuses the encrypted
-        // entry's lock slot rather than a new id — one glyph for "can't be edited".
-        <span className="inline-flex items-center gap-1.5">
-          <SlotIcon slot={ENCRYPTED_SLOT} className="h-3.5 w-3.5 shrink-0 text-muted" />
-          {entry.title}
-        </span>
-      ) : (
-        entry.title
-      ),
-  },
-  {
-    key: "categories",
-    header: "Categories",
-    value: (entry) => entry.categories.join(", "),
-    render: (entry) => entry.categories.join(", "),
-  },
-  {
-    key: "tags",
-    header: "Tags",
-    value: (entry) => entry.tags.join(", "),
-    render: (entry) => entry.tags.join(", "),
-  },
-];
 
 /** One row of a "Show SQL" re-run's arbitrary result set. */
 interface SqlResultRow {
@@ -641,49 +529,10 @@ function EntriesTab({
   const [error, setError] = useState<string | undefined>(queryError);
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [editing, setEditing] = useState<SavedJournalFilter | undefined>(undefined);
-  // Which entry's clips the paperclip opened, or undefined when none. Migration
-  // 0155 — the dialog lists them and opens the one the reader picks.
-  const [clipsForEntry, setClipsForEntry] = useState<number | undefined>(undefined);
   // Dropped as soon as the reader picks something else — the caller's query
   // describes the rows they were handed, not whatever is on screen now.
   const [showAppliedQuery, setShowAppliedQuery] = useState(Boolean(appliedQuery));
-  // The bulk actions on the ticked rows. `clearSelection` is handed in by
-  // `DataGrid` — selection lives there, and this is the only way to drop it
-  // after the rows it referred to have changed.
-  const [bulkEdit, setBulkEdit] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void } | undefined
-  >();
-  // The overwrite dialog is its own state rather than a flag on `bulkEdit`: the
-  // two are different dialogs over the same action, and a shared slot would let
-  // a stale `mode` decide which one a reader is looking at.
-  const [bulkOverwrite, setBulkOverwrite] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void } | undefined
-  >();
-  const [confirmDelete, setConfirmDelete] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void } | undefined
-  >();
-  // `isLocked` is the target state, not a toggle — Lock and Unlock are two
-  // buttons so a mixed selection has a defined result. See bulk-lock.ts.
-  const [confirmLock, setConfirmLock] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void; isLocked: boolean } | undefined
-  >();
-  // The password is held only for the duration of the request and never stored
-  // — `EncryptionPrompt` clears its own fields on submit, and nothing here
-  // keeps a copy. See bulk-encrypt.ts on why there is no recovery path.
-  const [confirmEncrypt, setConfirmEncrypt] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void } | undefined
-  >();
-  const [encryptError, setEncryptError] = useState<string | undefined>(undefined);
-  const [isBulkBusy, setIsBulkBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  // The Merge bulk action. See journal-merge-flow.tsx.
-  const merging = useJournalMerge({
-    scope: currentScope,
-    applyRows: (nextEntries, message) => applyBulkResult(nextEntries, message, () => undefined),
-    setError,
-    setNotice,
-    setBusy: setIsBulkBusy,
-  });
 
   /**
    * The adjective this tab's copy calls its rows by — "log entries",
@@ -877,8 +726,14 @@ function EntriesTab({
     }),
   );
 
-  /** Shared by both bulk actions: swap in the server's rows, say what happened. */
-  function applyBulkResult(nextEntries: JournalEntry[], message: string, clearSelection: () => void) {
+  /**
+   * The grid's `onRowsChanged`: swap in the server's rows and say what happened.
+   *
+   * Only this tab's own concerns are here. Clearing the ticks, closing the
+   * dialogs and re-rendering the rest of the module all happen inside
+   * `JournalEntriesGrid`, which is the thing that knows a write just landed.
+   */
+  function applyBulkResult(nextEntries: JournalEntry[], message: string) {
     setEntries(nextEntries);
     // The refresh re-runs `currentScope()`, which is the *selected saved filter*
     // — so for an ad-hoc `appliedQuery` (which currentScope can't reconstruct,
@@ -891,105 +746,18 @@ function EntriesTab({
       setSql((current) =>
         current === undefined
           ? current
-          : `${current}\n\n-- NOTE: a bulk action refreshed these rows, and the refresh could\n-- not reconstruct the ad-hoc filter above -- it re-read with NO filter.\n-- The rows on screen came from that unfiltered read, not from this.`,
+          : `${current}
+
+-- NOTE: a bulk action refreshed these rows, and the refresh could
+-- not reconstruct the ad-hoc filter above -- it re-read with NO filter.
+-- The rows on screen came from that unfiltered read, not from this.`,
       );
     }
     setNotice(message);
     setError(undefined);
-    clearSelection();
-    setBulkEdit(undefined);
-    setBulkOverwrite(undefined);
-    setConfirmDelete(undefined);
-    setConfirmLock(undefined);
-    setConfirmEncrypt(undefined);
-    // The module's other screens (Today in History, the Calendar) read the same
-    // rows, so they need re-rendering too — the action revalidated the path.
-    router.refresh();
   }
 
-  async function runBulkDelete(rows: JournalEntry[], clearSelection: () => void) {
-    setIsBulkBusy(true);
-    setError(undefined);
-    setNotice("");
-    try {
-      const result = await deleteJournalEntriesAction(
-        rows.map((entry) => entry.id),
-        currentScope(),
-      );
-      if (!result.ok || !result.entries) {
-        setError(result.error ?? "Failed to delete the selected entries.");
-        return;
-      }
-      applyBulkResult(result.entries, result.message ?? "Entries deleted.", clearSelection);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Failed to delete the selected entries.");
-    } finally {
-      setIsBulkBusy(false);
-    }
-  }
-
-  async function runBulkLock(
-    rows: JournalEntry[],
-    isLocked: boolean,
-    clearSelection: () => void,
-  ) {
-    const failed = `Failed to ${isLocked ? "lock" : "unlock"} the selected entries.`;
-    setIsBulkBusy(true);
-    setError(undefined);
-    setNotice("");
-    try {
-      const result = await bulkLockJournalEntriesAction(
-        rows.map((entry) => entry.id),
-        isLocked,
-        currentScope(),
-      );
-      if (!result.ok || !result.entries) {
-        setError(result.error ?? failed);
-        return;
-      }
-      applyBulkResult(result.entries, result.message ?? "Entries updated.", clearSelection);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : failed);
-    } finally {
-      setIsBulkBusy(false);
-    }
-  }
-
-  async function runBulkEncrypt(
-    rows: JournalEntry[],
-    password: string,
-    hint: string,
-    clearSelection: () => void,
-  ) {
-    setIsBulkBusy(true);
-    setEncryptError(undefined);
-    setError(undefined);
-    setNotice("");
-    try {
-      const result = await bulkEncryptJournalEntriesAction(
-        rows.map((entry) => entry.id),
-        password,
-        hint,
-        currentScope(),
-      );
-      if (!result.ok || !result.entries) {
-        // Shown inside the prompt rather than as the page-level error: the
-        // dialog stays open so the password can be retyped, and a message
-        // behind it would be invisible.
-        setEncryptError(result.error ?? "Failed to encrypt the selected entries.");
-        return;
-      }
-      applyBulkResult(result.entries, result.message ?? "Entries encrypted.", clearSelection);
-    } catch (caught) {
-      setEncryptError(
-        caught instanceof Error ? caught.message : "Failed to encrypt the selected entries.",
-      );
-    } finally {
-      setIsBulkBusy(false);
-    }
-  }
-
-  async function handleDelete(filter: SavedJournalFilter) {
+    async function handleDelete(filter: SavedJournalFilter) {
     if (!window.confirm(`Delete the filter "${filter.name}"? Entries are not affected.`)) return;
     const result = await deleteJournalFilterAction(filter.id);
     if (!result.ok) {
@@ -1276,13 +1044,14 @@ function EntriesTab({
             {...sqlProps}
           />
         ) : (
-          <DataGrid
-            // One column set for every tab — see the note on `COLUMNS`.
-            // `withClipBadge` adds the paperclip to the Title cell of any entry
-            // carrying clips.
-            columns={withClipBadge(COLUMNS, clipCounts, setClipsForEntry)}
+          <JournalEntriesGrid
             rows={entries}
-            getRowKey={(entry) => entry.id}
+            scope={currentScope}
+            onRowsChanged={applyBulkResult}
+            onError={setError}
+            onNotice={setNotice}
+            clipCounts={clipCounts}
+            onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
             emptyMessage={
               selected || showAppliedQuery
                 ? `No ${nounPrefix}entries match this filter.`
@@ -1290,237 +1059,24 @@ function EntriesTab({
                   ? "No entries yet."
                   : `No ${nounPrefix}entries.`
             }
-            enableExport
             exportFileName={rowNoun === "" ? "journal-entries" : `journal-${rowNoun}-entries`}
             // One key for every tab, and for Search Results: same columns, same
             // rows, so a width, an order or a hidden column set on one holds on all
             // of them. Three keys is what let the tabs look like three screens.
             storageKey="myhomebase:journal-entries-grid"
-            // The eye column is off on every tab: the row click already opens the entry.
-            enableRecordView={false}
-            onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
-            enableSelection
-            renderSelectionActions={(selectedRows, clearSelection) => (
-              <>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={isBulkBusy}
-                  onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
-                >
-                  Bulk edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={isBulkBusy}
-                  onClick={() => setBulkOverwrite({ rows: selectedRows, clearSelection })}
-                >
-                  Bulk overwrite
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={isBulkBusy}
-                  onClick={() =>
-                    setConfirmLock({ rows: selectedRows, clearSelection, isLocked: true })
-                  }
-                >
-                  Lock
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={isBulkBusy}
-                  onClick={() =>
-                    setConfirmLock({ rows: selectedRows, clearSelection, isLocked: false })
-                  }
-                >
-                  Unlock
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={isBulkBusy}
-                  onClick={() => {
-                    setEncryptError(undefined);
-                    setConfirmEncrypt({ rows: selectedRows, clearSelection });
-                  }}
-                >
-                  Encrypt
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={isBulkBusy || selectedRows.length < 2}
-                  title={
-                    selectedRows.length < 2 ? "Tick two or more entries to merge them" : undefined
-                  }
-                  onClick={() => void merging.start(selectedRows, clearSelection)}
-                >
-                  Merge
-                </Button>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  disabled={isBulkBusy}
-                  onClick={() => setConfirmDelete({ rows: selectedRows, clearSelection })}
-                >
-                  Delete
-                </Button>
-              </>
-            )}
+            formOptions={{
+              categoryOptions,
+              tagOptions,
+              locationCategoryOptions,
+              locationTagOptions,
+              preferences,
+              contentTextures,
+              prefillTemplates,
+            }}
             {...sqlProps}
           />
         )}
       </section>
-
-      <JournalMergeDialogs
-        merge={merging.merge}
-        cleanup={merging.cleanup}
-        formOptions={{
-          categoryOptions,
-          tagOptions,
-          preferences,
-          contentTextures,
-          prefillTemplates,
-          locationCategoryOptions,
-          locationTagOptions,
-        }}
-        isBusy={isBulkBusy}
-        onMergeClose={merging.close}
-        onSavingChange={setIsBulkBusy}
-        onMergeSaved={(saved) => void merging.handleSaved(saved)}
-        onCleanupKeep={merging.keep}
-        onCleanupDelete={(sourceIds) => void merging.runCleanup(sourceIds)}
-      />
-      {bulkEdit && (
-        <JournalEntriesBulkEdit
-          selected={bulkEdit.rows}
-          categoryOptions={categoryOptions}
-          tagOptions={tagOptions}
-          locationCategoryOptions={locationCategoryOptions}
-          locationTagOptions={locationTagOptions}
-          scope={currentScope()}
-          onCancel={() => setBulkEdit(undefined)}
-          onApplied={(nextEntries, message) =>
-            applyBulkResult(nextEntries, message, bulkEdit.clearSelection)
-          }
-        />
-      )}
-
-      {bulkOverwrite && (
-        <JournalEntriesBulkOverwrite
-          selected={bulkOverwrite.rows}
-          categoryOptions={categoryOptions}
-          tagOptions={tagOptions}
-          locationCategoryOptions={locationCategoryOptions}
-          locationTagOptions={locationTagOptions}
-          scope={currentScope()}
-          onCancel={() => setBulkOverwrite(undefined)}
-          onApplied={(nextEntries, message) =>
-            applyBulkResult(nextEntries, message, bulkOverwrite.clearSelection)
-          }
-        />
-      )}
-
-      {confirmDelete && (
-        <BulkConfirm
-          title="Delete these entries?"
-          description="They move to the recycle bin under Data Management, and can be restored from there."
-          count={confirmDelete.rows.length}
-          noun={{ one: "entry", many: "entries" }}
-          caveat={
-            confirmDelete.rows.some((entry) => entry.isLocked) ? (
-              <>
-                Some of these are <span className="text-ink">locked</span>. They move to the bin
-                too, still locked — restoring one brings it back locked.
-              </>
-            ) : undefined
-          }
-          confirmLabel="Delete"
-          isBusy={isBulkBusy}
-          onCancel={() => setConfirmDelete(undefined)}
-          onConfirm={() => void runBulkDelete(confirmDelete.rows, confirmDelete.clearSelection)}
-        />
-      )}
-
-      {confirmLock && (
-        <BulkConfirm
-          title={confirmLock.isLocked ? "Lock these entries?" : "Unlock these entries?"}
-          description={
-            confirmLock.isLocked
-              ? "A locked entry can't be edited or deleted on its own screen until it is unlocked."
-              : "Unlocking makes these entries editable again."
-          }
-          count={confirmLock.rows.length}
-          noun={{ one: "entry", many: "entries" }}
-          caveat={(() => {
-            // Only the rows that won't change are worth a caveat — saying "3 of 40
-            // are already locked" is what stops the result line reading as a
-            // partial failure afterwards.
-            const unchanged = confirmLock.rows.filter(
-              (entry) => entry.isLocked === confirmLock.isLocked,
-            ).length;
-            if (unchanged === 0) return undefined;
-            return (
-              <>
-                {unchanged === 1 ? "1 is" : `${unchanged} are`} already{" "}
-                {confirmLock.isLocked ? "locked" : "unlocked"} and will be left alone.
-              </>
-            );
-          })()}
-          confirmLabel={confirmLock.isLocked ? "Lock" : "Unlock"}
-          tone="primary"
-          isBusy={isBulkBusy}
-          onCancel={() => setConfirmLock(undefined)}
-          onConfirm={() =>
-            void runBulkLock(
-              confirmLock.rows,
-              confirmLock.isLocked,
-              confirmLock.clearSelection,
-            )
-          }
-        />
-      )}
-
-      {confirmEncrypt && (
-        <EncryptionPrompt
-          mode="encrypt"
-          asModal
-          count={confirmEncrypt.rows.length}
-          heading={
-            confirmEncrypt.rows.length === 1
-              ? "Encrypt this entry"
-              : `Encrypt ${confirmEncrypt.rows.length} entries`
-          }
-          actionLabel="Encrypt"
-          error={encryptError}
-          isBusy={isBulkBusy}
-          onCancel={() => {
-            setConfirmEncrypt(undefined);
-            setEncryptError(undefined);
-          }}
-          onSubmit={(password, hint) =>
-            void runBulkEncrypt(
-              confirmEncrypt.rows,
-              password,
-              hint,
-              confirmEncrypt.clearSelection,
-            )
-          }
-        />
-      )}
-
-      {/* A sibling of the dialogs above, not a child — it is z-[60] to Modal's
-          z-50 so the dialog dims along with the page. Encrypting a long
-          selection is the slowest write on this screen, and it is the one that
-          must not be interrupted. */}
-      <BusyOverlay
-        isBusy={isBulkBusy && confirmEncrypt !== undefined}
-        message="Encrypting…"
-        detail="Don't close this window."
-      />
 
       {isBuilderOpen && (
         <JournalFilterBuilder
@@ -1538,15 +1094,6 @@ function EntriesTab({
             setEditing(undefined);
           }}
           onSave={handleSave}
-        />
-      )}
-
-      {/* Migration 0155. Raised by the paperclip on a Title cell: lists that
-          entry's clips, or opens the clip directly when there is only one. */}
-      {clipsForEntry !== undefined && (
-        <EntryClipsDialog
-          entryId={clipsForEntry}
-          onClose={() => setClipsForEntry(undefined)}
         />
       )}
     </div>
@@ -1590,49 +1137,15 @@ function SearchTab({
   const [error, setError] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState("");
 
-  const [clipsForEntry, setClipsForEntry] = useState<number | undefined>(undefined);
-  const [bulkEdit, setBulkEdit] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void } | undefined
-  >();
-  const [bulkOverwrite, setBulkOverwrite] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void } | undefined
-  >();
-  const [confirmDelete, setConfirmDelete] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void } | undefined
-  >();
-  const [confirmLock, setConfirmLock] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void; isLocked: boolean } | undefined
-  >();
-  const [confirmEncrypt, setConfirmEncrypt] = useState<
-    { rows: JournalEntry[]; clearSelection: () => void } | undefined
-  >();
-  const [encryptError, setEncryptError] = useState<string | undefined>(undefined);
-  const [isBulkBusy, setIsBulkBusy] = useState(false);
-
   function currentScope(): BulkRefreshScope {
     return { tab: "search", term };
   }
 
-  // The Merge bulk action. See journal-merge-flow.tsx.
-  const merging = useJournalMerge({
-    scope: currentScope,
-    applyRows: (nextEntries, message) => applyBulkResult(nextEntries, message, () => undefined),
-    setError,
-    setNotice,
-    setBusy: setIsBulkBusy,
-  });
-
-  function applyBulkResult(nextEntries: JournalEntry[], message: string, clearSelection: () => void) {
+  /** The grid's `onRowsChanged`. Everything else a write implies is the grid's. */
+  function applyBulkResult(nextEntries: JournalEntry[], message: string) {
     setEntries(nextEntries);
     setNotice(message);
     setError(undefined);
-    clearSelection();
-    setBulkEdit(undefined);
-    setBulkOverwrite(undefined);
-    setConfirmDelete(undefined);
-    setConfirmLock(undefined);
-    setConfirmEncrypt(undefined);
-    router.refresh();
   }
 
   async function handleSearch(event: FormEvent) {
@@ -1651,85 +1164,6 @@ function SearchTab({
       setEntries(result.entries ?? []);
     } finally {
       setIsSearching(false);
-    }
-  }
-
-  async function runBulkDelete(rows: JournalEntry[], clearSelection: () => void) {
-    setIsBulkBusy(true);
-    setError(undefined);
-    setNotice("");
-    try {
-      const result = await deleteJournalEntriesAction(
-        rows.map((entry) => entry.id),
-        currentScope(),
-      );
-      if (!result.ok || !result.entries) {
-        setError(result.error ?? "Failed to delete the selected entries.");
-        return;
-      }
-      applyBulkResult(result.entries, result.message ?? "Entries deleted.", clearSelection);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Failed to delete the selected entries.");
-    } finally {
-      setIsBulkBusy(false);
-    }
-  }
-
-  async function runBulkLock(
-    rows: JournalEntry[],
-    isLocked: boolean,
-    clearSelection: () => void,
-  ) {
-    const failed = `Failed to ${isLocked ? "lock" : "unlock"} the selected entries.`;
-    setIsBulkBusy(true);
-    setError(undefined);
-    setNotice("");
-    try {
-      const result = await bulkLockJournalEntriesAction(
-        rows.map((entry) => entry.id),
-        isLocked,
-        currentScope(),
-      );
-      if (!result.ok || !result.entries) {
-        setError(result.error ?? failed);
-        return;
-      }
-      applyBulkResult(result.entries, result.message ?? "Entries updated.", clearSelection);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : failed);
-    } finally {
-      setIsBulkBusy(false);
-    }
-  }
-
-  async function runBulkEncrypt(
-    rows: JournalEntry[],
-    password: string,
-    hint: string,
-    clearSelection: () => void,
-  ) {
-    setIsBulkBusy(true);
-    setEncryptError(undefined);
-    setError(undefined);
-    setNotice("");
-    try {
-      const result = await bulkEncryptJournalEntriesAction(
-        rows.map((entry) => entry.id),
-        password,
-        hint,
-        currentScope(),
-      );
-      if (!result.ok || !result.entries) {
-        setEncryptError(result.error ?? "Failed to encrypt the selected entries.");
-        return;
-      }
-      applyBulkResult(result.entries, result.message ?? "Entries encrypted.", clearSelection);
-    } catch (caught) {
-      setEncryptError(
-        caught instanceof Error ? caught.message : "Failed to encrypt the selected entries.",
-      );
-    } finally {
-      setIsBulkBusy(false);
     }
   }
 
@@ -1766,237 +1200,29 @@ function SearchTab({
             </>
           )}
         </p>
-        <DataGrid
-          columns={withClipBadge(COLUMNS, clipCounts, setClipsForEntry)}
+        <JournalEntriesGrid
           rows={entries}
-          getRowKey={(entry) => entry.id}
-          emptyMessage={`No entries match "${term.trim()}".`}
-          enableExport
-          exportFileName="journal-search-entries"
-          storageKey="myhomebase:journal-entries-grid"
-          enableRecordView={false}
+          scope={currentScope}
+          onRowsChanged={applyBulkResult}
+          onError={setError}
+          onNotice={setNotice}
+          clipCounts={clipCounts}
           onRowClick={(entry) => router.push(`/modules/journal/entries/${entry.id}`)}
-          enableSelection
-          renderSelectionActions={(selectedRows, clearSelection) => (
-            <>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() => setBulkEdit({ rows: selectedRows, clearSelection })}
-              >
-                Bulk edit
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() => setBulkOverwrite({ rows: selectedRows, clearSelection })}
-              >
-                Bulk overwrite
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() =>
-                  setConfirmLock({ rows: selectedRows, clearSelection, isLocked: true })
-                }
-              >
-                Lock
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() =>
-                  setConfirmLock({ rows: selectedRows, clearSelection, isLocked: false })
-                }
-              >
-                Unlock
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy}
-                onClick={() => {
-                  setEncryptError(undefined);
-                  setConfirmEncrypt({ rows: selectedRows, clearSelection });
-                }}
-              >
-                Encrypt
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={isBulkBusy || selectedRows.length < 2}
-                title={
-                  selectedRows.length < 2 ? "Tick two or more entries to merge them" : undefined
-                }
-                onClick={() => void merging.start(selectedRows, clearSelection)}
-              >
-                Merge
-              </Button>
-              <Button
-                size="sm"
-                variant="danger"
-                disabled={isBulkBusy}
-                onClick={() => setConfirmDelete({ rows: selectedRows, clearSelection })}
-              >
-                Delete
-              </Button>
-            </>
-          )}
+          emptyMessage={`No entries match "${term.trim()}".`}
+          exportFileName="journal-search-entries"
+          // The same key as the four tabs: same columns, same rows.
+          storageKey="myhomebase:journal-entries-grid"
+          formOptions={{
+            categoryOptions,
+            tagOptions,
+            locationCategoryOptions,
+            locationTagOptions,
+            preferences,
+            contentTextures,
+            prefillTemplates,
+          }}
         />
       </section>
-
-      <JournalMergeDialogs
-        merge={merging.merge}
-        cleanup={merging.cleanup}
-        formOptions={{
-          categoryOptions,
-          tagOptions,
-          preferences,
-          contentTextures,
-          prefillTemplates,
-          locationCategoryOptions,
-          locationTagOptions,
-        }}
-        isBusy={isBulkBusy}
-        onMergeClose={merging.close}
-        onSavingChange={setIsBulkBusy}
-        onMergeSaved={(saved) => void merging.handleSaved(saved)}
-        onCleanupKeep={merging.keep}
-        onCleanupDelete={(sourceIds) => void merging.runCleanup(sourceIds)}
-      />
-
-      {bulkEdit && (
-        <JournalEntriesBulkEdit
-          selected={bulkEdit.rows}
-          categoryOptions={categoryOptions}
-          tagOptions={tagOptions}
-          locationCategoryOptions={locationCategoryOptions}
-          locationTagOptions={locationTagOptions}
-          scope={currentScope()}
-          onCancel={() => setBulkEdit(undefined)}
-          onApplied={(nextEntries, message) =>
-            applyBulkResult(nextEntries, message, bulkEdit.clearSelection)
-          }
-        />
-      )}
-
-      {bulkOverwrite && (
-        <JournalEntriesBulkOverwrite
-          selected={bulkOverwrite.rows}
-          categoryOptions={categoryOptions}
-          tagOptions={tagOptions}
-          locationCategoryOptions={locationCategoryOptions}
-          locationTagOptions={locationTagOptions}
-          scope={currentScope()}
-          onCancel={() => setBulkOverwrite(undefined)}
-          onApplied={(nextEntries, message) =>
-            applyBulkResult(nextEntries, message, bulkOverwrite.clearSelection)
-          }
-        />
-      )}
-
-      {confirmDelete && (
-        <BulkConfirm
-          title="Delete these entries?"
-          description="They move to the recycle bin under Data Management, and can be restored from there."
-          count={confirmDelete.rows.length}
-          noun={{ one: "entry", many: "entries" }}
-          caveat={
-            confirmDelete.rows.some((entry) => entry.isLocked) ? (
-              <>
-                Some of these are <span className="text-ink">locked</span>. They move to the bin
-                too, still locked — restoring one brings it back locked.
-              </>
-            ) : undefined
-          }
-          confirmLabel="Delete"
-          isBusy={isBulkBusy}
-          onCancel={() => setConfirmDelete(undefined)}
-          onConfirm={() => void runBulkDelete(confirmDelete.rows, confirmDelete.clearSelection)}
-        />
-      )}
-
-      {confirmLock && (
-        <BulkConfirm
-          title={confirmLock.isLocked ? "Lock these entries?" : "Unlock these entries?"}
-          description={
-            confirmLock.isLocked
-              ? "A locked entry can't be edited or deleted on its own screen until it is unlocked."
-              : "Unlocking makes these entries editable again."
-          }
-          count={confirmLock.rows.length}
-          noun={{ one: "entry", many: "entries" }}
-          caveat={(() => {
-            const unchanged = confirmLock.rows.filter(
-              (entry) => entry.isLocked === confirmLock.isLocked,
-            ).length;
-            if (unchanged === 0) return undefined;
-            return (
-              <>
-                {unchanged === 1 ? "1 is" : `${unchanged} are`} already{" "}
-                {confirmLock.isLocked ? "locked" : "unlocked"} and will be left alone.
-              </>
-            );
-          })()}
-          confirmLabel={confirmLock.isLocked ? "Lock" : "Unlock"}
-          tone="primary"
-          isBusy={isBulkBusy}
-          onCancel={() => setConfirmLock(undefined)}
-          onConfirm={() =>
-            void runBulkLock(
-              confirmLock.rows,
-              confirmLock.isLocked,
-              confirmLock.clearSelection,
-            )
-          }
-        />
-      )}
-
-      {confirmEncrypt && (
-        <EncryptionPrompt
-          mode="encrypt"
-          asModal
-          count={confirmEncrypt.rows.length}
-          heading={
-            confirmEncrypt.rows.length === 1
-              ? "Encrypt this entry"
-              : `Encrypt ${confirmEncrypt.rows.length} entries`
-          }
-          actionLabel="Encrypt"
-          error={encryptError}
-          isBusy={isBulkBusy}
-          onCancel={() => {
-            setConfirmEncrypt(undefined);
-            setEncryptError(undefined);
-          }}
-          onSubmit={(password, hint) =>
-            void runBulkEncrypt(
-              confirmEncrypt.rows,
-              password,
-              hint,
-              confirmEncrypt.clearSelection,
-            )
-          }
-        />
-      )}
-
-      <BusyOverlay
-        isBusy={isBulkBusy && confirmEncrypt !== undefined}
-        message="Encrypting…"
-        detail="Don't close this window."
-      />
-
-      {clipsForEntry !== undefined && (
-        <EntryClipsDialog
-          entryId={clipsForEntry}
-          onClose={() => setClipsForEntry(undefined)}
-        />
-      )}
     </div>
   );
 }

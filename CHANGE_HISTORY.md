@@ -1,5 +1,32 @@
 # Change History
 
+## 2026-11-24 — Journal: one `JournalEntriesGrid` for every list of entries; Duplicates card gets the full action bar
+
+**No migrations, no dependency changes, no paid or outside service.**
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted,
+tested or opened in a browser, including the test changes. This entry was written from
+reading the diff — the refactor itself was done in an earlier session and nobody has looked
+at it this session.
+
+- **New route-local `JournalEntriesGrid`** (`journal-entries-grid.tsx`, registered in
+  `components.md` as the one ⚑ route-local entry). It owns the shared Date / Time / Title /
+  Categories / Tags columns, the locked/encrypted/clip badges, tick-boxes, the seven bulk
+  actions (Bulk edit, Bulk overwrite, Lock, Unlock, Encrypt, Merge, Delete) and every dialog
+  behind them. The Entries tabs and Search Results (`journal-entries-view.tsx`, ~900 lines
+  lighter) and Data Management → Duplicate entries all render it now.
+- **Duplicate entries now has the same seven actions as the Entries list**, not a Delete of
+  its own. `recycleJournalEntriesAction` is gone; the card deletes through the shared bulk
+  actions under a new `{ tab: "duplicates" }` refresh scope. One behaviour change: a delete
+  there refreshes the duplicate rows and not the bin list, which is invisible while the two
+  cards are separate sections.
+- **`DuplicateGroup` members are whole `JournalEntry` objects with `content` blanked** (the
+  trimmed `DuplicateEntry` shape and its 100-word excerpt are gone from the card), so the
+  grid can show the shared columns. `DuplicateRow`/`toDuplicateRows` carry the group
+  identity. `excerptWords` stays, for Review Data.
+- Tests: `duplicates.test.ts` updated for the new shape.
+- Not in this entry: the Calendar work, which is its own commit.
+
 ## 2026-11-24 — Photo thumbnails: server-side resize becomes a switch; resize gate raised to four
 
 **One migration, `0185_photo_thumbnail_resize_setting` (one `sys_app_settings` row,

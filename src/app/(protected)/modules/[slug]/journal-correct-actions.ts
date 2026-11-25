@@ -9,7 +9,6 @@ import {
   getEntry,
   listEntries,
   listRecycledEntries,
-  recycleEntries,
   restoreRecycledEntries,
 } from "@/lib/journal";
 import type { DuplicateGroup, JournalEntry, RecycledJournalEntry } from "@/lib/journal";
@@ -33,10 +32,10 @@ function toErrorResult(error: unknown, fallback: string): ActionResult {
 /**
  * Both cards' contents in one round trip.
  *
- * A single action rather than one per card because every mutation here changes
- * both lists at once — recycling a duplicate removes it from the Duplicates
- * card and adds it to the bin — so the views must never be refreshed
- * independently or they will disagree about where an entry is.
+ * A single result rather than one per card because the bin's own writes still
+ * change both lists at once — restoring an entry puts it back where it can
+ * duplicate another — so the two must never be refreshed independently or they
+ * will disagree about where an entry is.
  */
 export interface CorrectDataResult extends ActionResult {
   duplicateGroups?: DuplicateGroup[];
@@ -52,29 +51,12 @@ export async function loadJournalCorrectDataAction(): Promise<CorrectDataResult>
   }
 }
 
-export interface RecycleEntriesResult extends CorrectDataResult {
-  movedCount?: number;
-  skippedCount?: number;
-}
-
-/**
- * Moves the ticked entries into the recycle bin.
- *
- * Returns the refreshed lists alongside the counts, so the view re-renders from
- * server truth rather than patching its own state — the entries it just deleted
- * are gone from one card and present in the other, and a locally-applied guess
- * would be one of the two lists out of date.
- */
-export async function recycleJournalEntriesAction(ids: number[]): Promise<RecycleEntriesResult> {
-  await requireModuleAccess(ACCESS_MODULE_SLUG);
-  try {
-    const { movedCount, skippedCount } = recycleEntries(deps.journalRepo, ids);
-    revalidatePath(JOURNAL_MODULE_PATH);
-    return { ok: true, movedCount, skippedCount, ...readCorrectData() };
-  } catch (error) {
-    return toErrorResult(error, "Failed to delete the selected entries.");
-  }
-}
+// The Duplicates card's Delete used to live here, as `recycleJournalEntriesAction`.
+// That card now runs the **same seven bulk actions as the List of Entries**
+// (journal-entries-grid.tsx), so its Delete is `deleteJournalEntriesAction` in
+// journal-bulk-actions.ts, re-reading with `{ tab: "duplicates" }`. The one
+// behaviour that changed: a delete there refreshes the duplicate rows and not
+// the bin list, which is invisible while the two cards are separate sections.
 
 export interface RestoreEntriesResult extends CorrectDataResult {
   restoredCount?: number;
@@ -141,7 +123,7 @@ export async function countRecycledEntriesAction(): Promise<RecycleBinCountResul
  *
  * `listEntries` with no limit is deliberate: duplicate detection is a whole-
  * journal question, and a page of the newest N entries would miss the pair
- * sitting in 2019. The excerpt is cut to 100 words in the library before this
+ * sitting in 2019. Each row's body is blanked in the library before this
  * crosses to the client, so what travels is bounded even though what is read
  * is not.
  */
@@ -162,10 +144,11 @@ export interface JournalEntryResult extends ActionResult {
 /**
  * One full entry, for the viewer modal.
  *
- * The Duplicates list carries a 100-word excerpt rather than whole entries — the
- * card can hold hundreds of rows, and shipping every entry's full content to
- * open one of them would be the bulk of the payload for none of the benefit. So
- * the modal fetches the entry it is about to show.
+ * The Duplicates rows carry whole entries with the **body blanked** (see
+ * src/lib/journal/duplicates.ts) — the card can hold hundreds of rows, and
+ * shipping every entry's content to open one of them would be the bulk of the
+ * payload for none of the benefit. So the modal fetches the entry it is about
+ * to show.
  */
 export async function getJournalEntryAction(id: number): Promise<JournalEntryResult> {
   await requireModuleAccess(ACCESS_MODULE_SLUG);

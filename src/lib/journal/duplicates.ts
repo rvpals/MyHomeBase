@@ -12,31 +12,47 @@
 
 import type { JournalEntry } from "./types";
 
-/** How many words of an entry's content the list shows. */
+/**
+ * The default cut for `excerptWords` below.
+ *
+ * The Duplicates grid no longer shows an excerpt — its rows carry whole entries
+ * with `content` blanked — so this is now only the default for `excerptWords`,
+ * which the Review Data screen calls with its own narrower limit. Kept at 100
+ * rather than retired because the constant is exported and the name is the
+ * documented default.
+ */
 export const DUPLICATE_EXCERPT_WORDS = 100;
 
-/** One entry inside a duplicate group, trimmed to what the list renders. */
-export interface DuplicateEntry {
-  id: number;
-  date: string;
-  time: string;
-  title: string;
-  /** First `DUPLICATE_EXCERPT_WORDS` words of the content, "…"-suffixed if cut. */
-  excerpt: string;
-  isLocked: boolean;
-  isPinned: boolean;
-  createdAt: string;
-}
-
-/** Entries sharing one date+title. Always 2 or more members. */
+/**
+ * Entries sharing one date+title. Always 2 or more members.
+ *
+ * The members are **whole `JournalEntry` objects with `content` blanked**, not a
+ * trimmed shape of their own. That is what lets the Duplicate entries section
+ * show the same columns as the List of Entries — Date, Time, Title, Categories,
+ * Tags — and run the same bulk actions over them: both read a `JournalEntry`,
+ * and a reduced shape would have meant a second column set and a second action
+ * bar. That is exactly how the Log tab drifted from the Entries grid before it
+ * was folded back in — see the docblock at the top of journal-entries-view.tsx.
+ *
+ * `content` is the one field dropped. Duplicate detection is a whole-journal
+ * question (see `findDuplicateGroups`), so this list is unbounded — shipping
+ * every body would be the bulk of the payload, and no column renders it. The
+ * grid's row click fetches the whole entry instead (`getJournalEntryAction`).
+ * It is blanked rather than silently truncated, so nothing can mistake it for
+ * the entry's real text; re-adding a content column means putting an excerpt
+ * field back on the row, not reading `content`.
+ */
 export interface DuplicateGroup {
   date: string;
   title: string;
-  entries: DuplicateEntry[];
+  entries: JournalEntry[];
 }
 
 /**
  * Cuts `content` to its first `maxWords` words.
+ *
+ * Used by the Review Data screen (src/lib/journal/same-date.ts), which does show
+ * an excerpt. The Duplicates grid does not.
  *
  * Splits on any whitespace run so newlines and tabs count as separators — a
  * journal entry is mostly prose with hard line breaks, and splitting on " "
@@ -106,16 +122,10 @@ export function findDuplicateGroups(entries: JournalEntry[]): DuplicateGroup[] {
       // The first member's title, not the lowercased key: the list should show
       // the text as the user typed it, not a normalized version of it.
       title: ordered[0].title.trim(),
-      entries: ordered.map((entry) => ({
-        id: entry.id,
-        date: entry.date,
-        time: entry.time,
-        title: entry.title,
-        excerpt: excerptWords(entry.content),
-        isLocked: entry.isLocked,
-        isPinned: entry.isPinned,
-        createdAt: entry.createdAt,
-      })),
+      // The whole entry, minus its body — see the note on `DuplicateGroup`.
+      // Spread rather than field-by-field so a column added to the shared entry
+      // grid works here without a second edit in this file.
+      entries: ordered.map((entry) => ({ ...entry, content: "" })),
     });
   }
 
@@ -133,6 +143,11 @@ export function countDuplicateEntries(groups: DuplicateGroup[]): number {
  * One row of the Duplicates grid: a member entry with its group's identity
  * denormalized onto it.
  *
+ * A `JournalEntry` **plus** four fields rather than a shape of its own, so the
+ * row feeds the same column set and the same bulk actions as the List of
+ * Entries — see the note on `DuplicateGroup` for why that matters. `content` is
+ * blank on every row.
+ *
  * The grid is a flat, sortable, paginated list rather than nested boxes, so the
  * grouping has to travel on the row itself. `groupKey` is what keeps the
  * grouping legible after the user sorts by another column — every row of one
@@ -142,7 +157,7 @@ export function countDuplicateEntries(groups: DuplicateGroup[]): number {
  * `copyIndex` / `copyCount` say "2 of 3", which is what you actually need when
  * deciding which copy to keep and which to tick.
  */
-export interface DuplicateRow extends DuplicateEntry {
+export interface DuplicateRow extends JournalEntry {
   groupKey: string;
   groupTitle: string;
   copyIndex: number;

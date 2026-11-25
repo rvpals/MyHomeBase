@@ -27,12 +27,15 @@ import {
   describeBulkEditResult,
   describeBulkEncryptResult,
   describeBulkLockResult,
+  findDuplicateGroups,
   findEntries,
   getEntry,
+  listEntries,
   mergeEntryDraft,
   recycleEntries,
   searchEntries,
   splitMergeSources,
+  toDuplicateRows,
   withLockedCondition,
   withLogCondition,
   type BulkEntryEditInput,
@@ -69,13 +72,21 @@ const ENTRIES_LIMIT = 500;
  * Each tab is its own arm rather than a set of flags on `"main"`: the arms are
  * what `refresh()` below reads to decide which conditions to re-apply, and a
  * tab that forgets to name itself would be handed back another tab's rows.
+ *
+ * `"duplicates"` is Data Management → Duplicate entries, which has no filter at
+ * all: it re-asks the whole-journal question "which entries share a date and a
+ * title". It is the one arm that hands back a **subtype** of `JournalEntry` —
+ * `DuplicateRow`, which carries its group's identity — so a write that breaks a
+ * duplicate pair really does drop both rows from the list. See the note on
+ * `adopt` in journal-entries-grid.tsx, which is where that is relied on.
  */
 export type BulkRefreshScope =
   | { tab: "main"; filter: JournalFilter }
   | { tab: "unlocked"; filter: JournalFilter }
   | { tab: "substantial"; filter: JournalFilter }
   | { tab: "log"; filter: JournalFilter }
-  | { tab: "search"; term: string };
+  | { tab: "search"; term: string }
+  | { tab: "duplicates" };
 
 export interface BulkActionResult {
   ok: boolean;
@@ -92,6 +103,14 @@ function toErrorResult(error: unknown, fallback: string): BulkActionResult {
 
 function refresh(scope: BulkRefreshScope): JournalEntry[] {
   if (scope.tab === "search") return searchEntries(deps.journalRepo, scope.term, ENTRIES_LIMIT);
+  // The Duplicates card, re-grouped from scratch. Deliberately not capped at
+  // ENTRIES_LIMIT and deliberately not narrowed: two entries duplicating each
+  // other in 2019 are exactly what that screen exists to find, and a page of the
+  // newest N would hide them. What crosses the wire is still bounded — the rows
+  // carry whole entries with `content` blanked. See src/lib/journal/duplicates.ts.
+  if (scope.tab === "duplicates") {
+    return toDuplicateRows(findDuplicateGroups(listEntries(deps.journalRepo)));
+  }
   // One read for the other four tabs, with each tab's own condition re-applied
   // rather than assumed unchanged. Lock on the Unlocked tab, an edit that
   // shortens a body on the Substantial tab, and an edit that drops the Log

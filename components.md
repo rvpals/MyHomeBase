@@ -39,6 +39,21 @@ pattern instead of inventing one.
   `max-lg:`", or "has a compact mode", or "unchanged, it's small already". A component
   that only works wide isn't finished. See `design.md` → *Phone and desktop*.
 
+## The one route-local entry (⚑)
+
+Every component below lives in `src/components/` and obeys the rules above — **except**
+[`JournalEntriesGrid`](#journalentriesgrid), marked ⚑ in the index.
+
+It is listed here anyway because this file is what a session reads before building UI, and
+the thing it prevents — a fourth hand-written copy of "a grid of journal entries" — is
+exactly the mistake this registry exists to stop. It cannot move into `src/components/`:
+it calls the journal's server actions, which breaks the first rule above. So it stays in
+the route folder beside them, and this entry is a signpost to it, not a promotion.
+
+**Don't take it as a precedent.** The next shared-but-impure component gets a pointer
+like this one, not a quiet exemption — and if something *can* satisfy the rules, it
+belongs in `src/components/` as usual.
+
 > Imports use the `@/` path alias (`@/* -> src/*`, configured in `tsconfig.json`).
 
 ---
@@ -56,6 +71,7 @@ pattern instead of inventing one.
 | [`Modal`](#modal) | **Any dialog** — overlay, panel, Esc/focus handling | [src/components/modal.tsx](src/components/modal.tsx) | yes |
 | [`ToastProvider` / `toast-notify`](#toast) | **Transient feedback after a save, delete or failure** — a themed Sonner toast | [src/components/toast-provider.tsx](src/components/toast-provider.tsx), [src/components/toast-notify.ts](src/components/toast-notify.ts) | yes |
 | [`BulkConfirm`](#bulkconfirm) | **Confirming a bulk action on a ticked selection** — count, caveat, Cancel/confirm | [src/components/bulk-confirm.tsx](src/components/bulk-confirm.tsx) | yes |
+| [`JournalEntriesGrid`](#journalentriesgrid) ⚑ | **Any list of journal entries** — the shared columns, tick-boxes, seven bulk actions and their dialogs. **Route-local** (see below) | [journal-entries-grid.tsx](<src/app/(protected)/modules/[slug]/journal-entries-grid.tsx>) | yes |
 | [`DayExpensesDialog`](#dayexpensesdialog) | **What was spent around one date**, across every card — the Journal's `$` buttons and Expense's `?date=` landing | [src/components/day-expenses-dialog.tsx](src/components/day-expenses-dialog.tsx) | yes |
 | [`FullscreenStage`](#fullscreenstage) | **A real fullscreen display** — chromeless black stage via the Fullscreen API | [src/components/fullscreen-stage.tsx](src/components/fullscreen-stage.tsx) | yes |
 | [`FloatingLayer`](#floatinglayer) | **A component that floats over the page** — puck in a corner, window card when opened | [src/components/floating-layer.tsx](src/components/floating-layer.tsx) | yes |
@@ -946,10 +962,10 @@ when the dialog needs fields rather than a yes/no.
 )}
 ```
 
-**Used by:** the MyJournal Entries screen
-[journal-entries-view.tsx](<src/app/(protected)/modules/[slug]/journal-entries-view.tsx>),
-for all three of its selection actions — Delete (`danger`) and the Lock/Unlock pair
-(`primary`, sharing one piece of state that carries the target lock as a boolean).
+**Used by:** [`JournalEntriesGrid`](#journalentriesgrid), for all three of its selection
+actions — Delete (`danger`) and the Lock/Unlock pair (`primary`, sharing one piece of
+state that carries the target lock as a boolean) — which puts it on every journal screen
+that lists entries.
 
 **The count is the point.** A bulk action's real hazard isn't that the reader didn't mean
 to press the button, it's that they've lost track of what's ticked — so a dialog that only
@@ -967,6 +983,91 @@ mis-read, and a full dialog for it would be heavier than the decision warrants.
 
 **Below 1024px:** nothing of its own. `Modal`'s default `md` is `w-full max-w-lg`, which
 fits a 390px screen, and the footer's two buttons sit in `Modal`'s own action row.
+
+## JournalEntriesGrid
+
+⚑ **Route-local** — the one entry in this registry that does not live in `src/components/`.
+See [The one route-local entry](#the-one-route-local-entry-) for why.
+
+**Any list of journal entries, anywhere in the Journal.** Brings the whole screen's worth
+of behaviour: the shared Date / Time / Title / Categories / Tags columns, the encrypted and
+locked badges, the clips paperclip, tick-boxes, and the seven bulk actions — Bulk edit,
+Bulk overwrite, Lock, Unlock, Encrypt, Merge, Delete — with every dialog behind them.
+
+**Reach for it whenever a journal screen shows more than one entry.** It is not a styling
+choice: it is what stops a new screen growing its own columns and its own half-set of
+actions, which is how the Log tab, the Search tab and the Duplicates card drifted apart
+before they were folded back together.
+
+- **Source:** [journal-entries-grid.tsx](<src/app/(protected)/modules/[slug]/journal-entries-grid.tsx>)
+- **Import:** `import { JournalEntriesGrid } from "./journal-entries-grid";` (route-local, so a relative import)
+- **Client component:** yes
+- **Below 1024px:** responsive through [`DataGrid`](#datagrid), which swaps to its card
+  layout; the action bar wraps. Nothing extra to do.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `rows` | `Row[]`, `Row extends JournalEntry` | The rows on screen. The caller owns them; the grid never filters. |
+| `scope` | `() => BulkRefreshScope` | How the server re-reads this screen after a write. **A function**, so it is read at call time against current state. It also decides the row subtype that comes back — see the caveat below. |
+| `onRowsChanged` | `(rows: Row[], message: string) => void` | The refreshed rows plus a one-line description. Adopt them wholesale; don't patch. |
+| `onError` | `(message?: string) => void` | A failed action's message, or `undefined` to clear. |
+| `onNotice` | `(message: string) => void` | Something happened that changed no rows (today: declining the Merge flow's offer to bin the originals). |
+| `onBusyChange?` | `(busy: boolean) => void` | Raised around every write, for the caller's own disabled states. |
+| `onRowClick` | `(row: Row) => void` | What a click does. The Entries list navigates to the entry screen; the Duplicates card raises a read-only viewer so the ticks survive. |
+| `clipCounts` | `Record<number, number>` | Clips per entry id, for the paperclip. Ids with none are simply absent. |
+| `leadingColumns?` | `DataGridColumn<Row>[]` | Columns placed **in front of** the shared set, for a screen with a genuine extra dimension. Not a way to re-cut the shared ones. |
+| `storageKey` | `string` | The grid's persisted layout. Screens with the same columns share one key; a screen with `leadingColumns` needs its own. |
+| `exportFileName`, `emptyMessage` | `string` | Forwarded to `DataGrid`. |
+| `getRowGroupKey?`, `stripeClassName?` | — | Zebra banding by group. Forwarded to `DataGrid`. |
+| `formOptions` | `JournalEntryFormOptions` | What the Bulk edit, Bulk overwrite and Merge dialogs need: category/tag options, the location taxonomies, preferences, textures, prefill templates. |
+| `sql?`, `onRunSql?` | — | Admin-only "Show SQL". Both or neither. |
+| `extraSelectionActions?` | `(rows, clearSelection) => ReactNode` | Buttons appended after Delete, for a screen with an action of its own. |
+
+```tsx
+<JournalEntriesGrid<DuplicateRow>
+  rows={duplicateRows}
+  scope={() => ({ tab: "duplicates" })}
+  onRowsChanged={(rows, message) => { setDuplicateRows(rows); setNotice(message); }}
+  onError={setError}
+  onNotice={setNotice}
+  onRowClick={(row) => void openLiveEntry(row.id)}
+  clipCounts={clipCounts}
+  leadingColumns={[groupColumn]}
+  storageKey="myhomebase:journal-duplicates-grid"
+  exportFileName="journal-duplicates"
+  emptyMessage="No duplicate entries found."
+  formOptions={{ categoryOptions, tagOptions, locationCategoryOptions, locationTagOptions, preferences, contentTextures, prefillTemplates }}
+/>
+```
+
+**Used by:** the Entries section's four tabs and its Search Results tab
+([journal-entries-view.tsx](<src/app/(protected)/modules/[slug]/journal-entries-view.tsx>)),
+Data Management → Duplicate entries
+([journal-correct-view.tsx](<src/app/(protected)/modules/[slug]/journal-correct-view.tsx>)).
+
+### Adding another journal screen to it
+
+1. **Add an arm to `BulkRefreshScope`** in
+   [journal-bulk-actions.ts](<src/app/(protected)/modules/[slug]/journal-bulk-actions.ts>)
+   naming your screen, and teach `refresh()` how to re-read its rows. This is the step
+   that matters: a screen that borrows another arm gets handed back the *other* screen's
+   rows after every write.
+2. **Pass `scope` as a function** returning that arm.
+3. **Supply `formOptions`** — copy the reads from
+   [journal-correct-panel.tsx](<src/app/(protected)/modules/[slug]/journal-correct-panel.tsx>),
+   which is the smaller of the two examples.
+4. **Pick a `storageKey`.** Reuse `myhomebase:journal-entries-grid` only if your columns
+   are exactly the shared set; add `leadingColumns` and you need your own key, or hiding a
+   column on one screen silently changes the other.
+
+**The row subtype is asserted, not proved.** `scope` and the `Row` type argument have to
+agree: `{ tab: "duplicates" }` hands back `DuplicateRow`s, every other arm hands back plain
+`JournalEntry`s, and the grid casts once (see `adopt` in the source). TypeScript will not
+catch a mismatch — it shows up as a blank `leadingColumns` cell. Keep the two together.
+
+**Not for other modules.** The rows are `JournalEntry`, the writes are the journal's server
+actions, and the refresh is `BulkRefreshScope`. A Documents or Expense grid shares none of
+that; it needs [`DataGrid`](#datagrid) directly, not this.
 
 ## DayExpensesDialog
 
