@@ -1,5 +1,26 @@
 # Change History
 
+## 2026-11-25 (evening) — Build: fix missing better-sqlite3 binding under npm 12; `install_dependencies_for_nas.bat`
+
+**No migrations, no paid or outside service.** Dependency bumps: `next` ^16.4.6,
+`react-dom` ^19.2.4, `vitest` ^5.1.2.
+
+**No gate was run.** The full build was not re-run after the fix. What was checked: after
+the rebuild, `better-sqlite3` loads and opens an in-memory database on Node 26.13.1.
+`install_dependencies_for_nas.bat` itself has not been run.
+
+- **Cause of `REBUILD_ONLY.bat` failing at "Collecting page data"** with `Could not locate
+  the bindings file ... better_sqlite3.node`: npm 12 blocks dependency install scripts that
+  `package.json` → `allowScripts` doesn't list, so `better-sqlite3` never built its binding.
+  Fixed by approving it (`"better-sqlite3@12.9.0": true`) and running `npm rebuild better-sqlite3`.
+- **New `install_dependencies_for_nas.bat`:** runs `npm install`, approves the install scripts
+  for `better-sqlite3`, `esbuild` and `unrs-resolver`, denies `tesseract.js`'s donation-only
+  script, rebuilds them, and checks that `better-sqlite3`, `esbuild`, `sharp` and
+  `@napi-rs/canvas` all load. The approvals are pinned to the installed version, so re-run
+  it after upgrading any of these packages. The arm64 NAS binaries are still fetched by
+  `publish-nas.mjs`.
+- Docs: `INSTRUCTION_SETUP_SYNOLOGY.md` Part 4 notes running the new script first.
+
 ## 2026-11-25 (later) — Investments: T-Bill section with a Stats card and gain-over-time chart; T-Bill CSV import
 
 **Migration 0186** (`inv_tbill_purchases`) — it has never been applied to a real database, so

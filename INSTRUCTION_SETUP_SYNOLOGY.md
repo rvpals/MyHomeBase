@@ -231,6 +231,13 @@ column); a NAS left on UTC shifts dates by a day around midnight.
 
 ## Part 4 — Build the package (Windows)
 
+> **First, after any `npm install` or package upgrade: run `install_dependencies_for_nas.bat`.**
+> npm 12+ blocks dependency install scripts unless `package.json` → `allowScripts` lists
+> them, and `better-sqlite3` builds its Windows binding in one. Without it the build dies
+> at *Collecting page data* with `Could not locate the bindings file ... better_sqlite3.node`.
+> The script approves the native packages' scripts, rebuilds them and checks each one loads.
+> Approvals are pinned to the installed version, so re-run it after an upgrade.
+
 ```powershell
 cd E:\Code\Claude_Project\MyHomeBase
 npm run publish:nas
