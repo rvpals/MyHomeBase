@@ -18,6 +18,7 @@
 // text and a composed class name is never emitted.
 
 import Link from "next/link";
+import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { ModuleIcon } from "@/components/module-icons";
 import { Progress3D } from "@/components/progress-3d";
@@ -70,9 +71,43 @@ export interface HomeSystemPanelModule {
  * would be three sets of fields with two always blank.
  */
 export type HomeSystemActivity =
-  | { kind: "money"; gainLossCents: number; changePct: number }
+  | {
+      kind: "money";
+      gainLossCents: number;
+      changePct: number;
+      /** Today's biggest risers and fallers by dollar impact, already ranked and capped. */
+      gainers: HomeSystemMover[];
+      losers: HomeSystemMover[];
+    }
   | { kind: "todo"; lists: number; open: number; completed: number; total: number }
-  | { kind: "journal"; entries: { id: number; date: string; title: string }[] };
+  | { kind: "journal"; entries: { id: number; date: string; title: string }[] }
+  | {
+      kind: "classroom";
+      classes: {
+        id: number;
+        name: string;
+        enrolledCount: number;
+        meetsToday: boolean;
+        /** Opens the home screen already on this class, ready for attendance. */
+        href: string;
+      }[];
+    };
+
+/** A button across the top of a panel — the one or two things the system is opened for. */
+export interface HomeSystemAction {
+  label: string;
+  href: string;
+  /** The panel's lead action takes the primary variant; the rest are secondary. */
+  primary?: boolean;
+}
+
+/** One ticker's move today, as the Money panel lists it. */
+export interface HomeSystemMover {
+  ticker: string;
+  name: string;
+  gainLossCents: number;
+  changePct: number;
+}
 
 export interface HomeSystemPanel {
   id: HomeSystemId;
@@ -81,6 +116,7 @@ export interface HomeSystemPanel {
   tint: TintColor | "";
   modules: HomeSystemPanelModule[];
   activity?: HomeSystemActivity;
+  actions?: HomeSystemAction[];
 }
 
 /**
@@ -129,6 +165,10 @@ function chipFor(
       className: "text-muted",
     };
   }
+  if (activity.kind === "classroom") {
+    const today = activity.classes.filter((item) => item.meetsToday).length;
+    return today > 0 ? { text: `${today} today`, className: "text-muted" } : undefined;
+  }
   return {
     text:
       activity.entries.length === 1 ? "1 recent entry" : `${activity.entries.length} recent entries`,
@@ -136,14 +176,47 @@ function chipFor(
   };
 }
 
+/** One ranked list of movers, with an honest line when there are none (a red day has no gainers). */
+function MoverList({ title, movers }: { title: string; movers: HomeSystemMover[] }) {
+  return (
+    <div className="min-w-0">
+      <h4 className="mb-1 text-xs font-semibold tracking-wide text-muted uppercase">{title}</h4>
+      {movers.length === 0 ? (
+        <p className="text-xs text-muted">None today.</p>
+      ) : (
+        <ul className="space-y-0.5 text-sm">
+          {movers.map((mover) => (
+            <li key={mover.ticker} className="flex items-baseline justify-between gap-2" title={mover.name}>
+              <span className="truncate font-semibold">{mover.ticker}</span>
+              <span className={`shrink-0 ${gainClass(mover.gainLossCents)}`}>
+                {signed(mover.gainLossCents)}{" "}
+                <span className="text-xs">({signedPct(mover.changePct)})</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ActivityStrip({ activity }: { activity: HomeSystemActivity }) {
   if (activity.kind === "money") {
     return (
       <div className="mt-3 border-t border-line pt-3 text-sm">
-        <span className="text-muted">Today&rsquo;s move</span>{" "}
-        <span className={gainClass(activity.gainLossCents)}>
-          {signed(activity.gainLossCents)} ({signedPct(activity.changePct)})
-        </span>
+        <div>
+          <span className="text-muted">Today&rsquo;s move</span>{" "}
+          <span className={gainClass(activity.gainLossCents)}>
+            {signed(activity.gainLossCents)} ({signedPct(activity.changePct)})
+          </span>
+        </div>
+        {/* Stacked, not side by side: a row is a ticker plus a signed dollar figure and a
+            percentage, which needs most of a panel's 18-24rem width, and the panel has
+            vertical room to spare -- that is why the lists are here. */}
+        <div className="mt-3 space-y-3">
+          <MoverList title="Top gainers" movers={activity.gainers} />
+          <MoverList title="Top losers" movers={activity.losers} />
+        </div>
       </div>
     );
   }
@@ -163,6 +236,32 @@ function ActivityStrip({ activity }: { activity: HomeSystemActivity }) {
           max={activity.total}
           size="sm"
         />
+      </div>
+    );
+  }
+
+  if (activity.kind === "classroom") {
+    return (
+      <div className="mt-3 border-t border-line pt-3">
+        <h4 className="mb-1 text-xs font-semibold tracking-wide text-muted uppercase">
+          Take attendance for
+        </h4>
+        <ul className="space-y-1 text-sm">
+          {activity.classes.map((item) => (
+            <li key={item.id}>
+              <Link
+                href={item.href}
+                className="flex items-baseline justify-between gap-2 rounded px-1 py-0.5 hover:bg-paper-raised"
+              >
+                <span className="truncate font-semibold">{item.name}</span>
+                <span className="shrink-0 text-xs text-muted">
+                  {item.meetsToday && <span className="mr-2 text-brass-dark">Today</span>}
+                  {item.enrolledCount} {item.enrolledCount === 1 ? "student" : "students"}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }
@@ -200,6 +299,21 @@ function SystemPanel({ panel }: { panel: HomeSystemPanel }) {
         </div>
         {chip && <StatusChip text={chip.text} className={chip.className} />}
       </header>
+
+      {panel.actions && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {panel.actions.map((action) => (
+            <Button
+              key={action.href}
+              href={action.href}
+              size="sm"
+              variant={action.primary ? "primary" : "secondary"}
+            >
+              {action.label}
+            </Button>
+          ))}
+        </div>
+      )}
 
       <ul className="mt-3 space-y-1">
         {panel.modules.map((appModule) => (

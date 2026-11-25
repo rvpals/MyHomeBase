@@ -1,5 +1,25 @@
 # Change History
 
+## 2026-11-24 — Systems card: Classroom buttons and classes, Money gainers/losers; new cards no longer land last
+
+**No migrations, no dependency changes, no paid or outside service.**
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted,
+tested or opened in a browser, including the tests written with it.
+
+- **Classroom panel:** **Take attendance** (primary) and **Report** buttons, and a bottom list
+  of three classes, each linking to `/modules/classroom?classId=<id>`. "Top 3" is an assumption:
+  classes meeting today first, then the rest by name — nothing records which class is used
+  most. New `pickTopClasses` in `src/lib/attendance` (7 tests).
+- **Money panel:** top 5 gainers and top 5 losers by dollar impact, ranked by the same
+  `topGainers`/`topLosers` Daily Glance uses; an empty list reads "None today."
+- **Fix — Systems appeared last for anyone who had dragged a home card.**
+  `applyPersonalOrder` appended any card the saved order did not name; it now places it before
+  its nearest later catalogue neighbour (appending only when none exists), the way
+  `resolveHomeWidgets` does. A deliberate reorder is untouched. One old test asserted the
+  append behaviour and was rewritten; three were added.
+- Not in this entry: the unrelated photo-thumbnail work in the same tree ships separately.
+
 ## 2026-11-24 — Home screen: Systems card (modules grouped by system)
 
 **No migrations, no dependency changes, no paid or outside service.** Adding a home card

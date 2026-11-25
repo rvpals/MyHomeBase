@@ -147,14 +147,14 @@ export function applyHiddenWidgets(
  * - **A card in the personal order that isn't visible today** — skipped. A reader who
  *   drags with positions in hand shouldn't get a hole on a day the market card has
  *   nothing to say, and an admin hiding a card must not resurrect it.
- * - **A visible card the personal order doesn't name** — appended. This is the case a
- *   newly-shipped card lands in, and appending is right *here* even though
- *   `resolveHomeWidgets` deliberately anchors to a catalogue neighbour instead: that
- *   function is reconciling against the catalogue, which has an authoritative position
- *   to anchor to. This one is reconciling against a hand-made arrangement, where the
- *   catalogue's opinion about position was already overridden — inserting a new card
- *   into the middle of someone's deliberate layout is more surprising than putting it
- *   at the end where they will see it and can drag it.
+ * - **A visible card the personal order doesn't name** — placed immediately before its
+ *   nearest *later* catalogue neighbour that is already placed, or appended when nothing
+ *   later is. This is the case a newly-shipped card lands in, and it used to be
+ *   appended unconditionally: a card shipped at the top of the catalogue (Systems, after
+ *   the carousel) then appeared last for everyone who had ever dragged a card, which
+ *   is the opposite of where it was put. It now anchors the way `resolveHomeWidgets`
+ *   does. A deliberate reorder is still untouched — only the *missing* card is
+ *   positioned, and only relative to cards the reader has already arranged.
  */
 export function applyPersonalOrder(
   visible: HomeWidgetId[],
@@ -166,9 +166,22 @@ export function applyPersonalOrder(
   const ordered = order.filter((id) => visibleSet.has(id));
 
   const placed = new Set(ordered);
-  const appended = visible.filter((id) => !placed.has(id));
+  const result = [...ordered];
 
-  return [...ordered, ...appended];
+  // Catalogue order, so a run of missing cards lands in the order they shipped and
+  // each can anchor to one inserted just before it.
+  const missing = HOME_WIDGET_IDS.filter((id) => visibleSet.has(id) && !placed.has(id));
+  for (const id of missing) {
+    const successor = HOME_WIDGET_IDS.slice(HOME_WIDGET_IDS.indexOf(id) + 1).find((candidate) =>
+      placed.has(candidate),
+    );
+    const at = successor ? result.indexOf(successor) : -1;
+    if (at === -1) result.push(id);
+    else result.splice(at, 0, id);
+    placed.add(id);
+  }
+
+  return result;
 }
 
 /**

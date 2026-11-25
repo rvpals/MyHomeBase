@@ -117,13 +117,44 @@ describe("applyPersonalOrder", () => {
     ).toEqual(["todayInHistory", "carousel", "dailyQuote"]);
   });
 
-  it("appends a visible card the personal order doesn't name", () => {
-    // The case a newly-shipped card lands in: it goes at the end of a hand-made
-    // layout rather than into the middle of it.
+  it("places a card the personal order doesn't name before its catalogue successor", () => {
+    // The case a newly-shipped card lands in. dailyQuote precedes todayInHistory in
+    // the catalogue, so it goes just before it -- not at the end.
     expect(applyPersonalOrder(visible, ["todayInHistory", "carousel"])).toEqual([
+      "dailyQuote",
       "todayInHistory",
       "carousel",
+    ]);
+  });
+
+  it("lands a card beside the cards it shipped beside, not last", () => {
+    // The regression this exists for: Systems shipped right after the carousel, and a
+    // reader who had dragged cards saw it at the very end.
+    expect(
+      applyPersonalOrder(
+        ["carousel", "systems", "dailyQuote", "todo"],
+        ["carousel", "dailyQuote", "todo"],
+      ),
+    ).toEqual(["carousel", "systems", "dailyQuote", "todo"]);
+  });
+
+  it("anchors only to cards the reader has arranged, keeping their reorder", () => {
+    // The reader put todo and dailyQuote ahead of the carousel; systems follows the
+    // catalogue relative to dailyQuote, and their arrangement is otherwise untouched.
+    expect(
+      applyPersonalOrder(
+        ["carousel", "systems", "dailyQuote", "todo"],
+        ["todo", "dailyQuote", "carousel"],
+      ),
+    ).toEqual(["todo", "systems", "dailyQuote", "carousel"]);
+  });
+
+  it("appends a missing card when nothing later in the catalogue is placed", () => {
+    // photoAlbums is last in the catalogue, so it has no successor to anchor to.
+    expect(applyPersonalOrder(["carousel", "dailyQuote", "photoAlbums"], ["dailyQuote", "carousel"])).toEqual([
       "dailyQuote",
+      "carousel",
+      "photoAlbums",
     ]);
   });
 

@@ -15,6 +15,7 @@ import {
   visibleHomeWidgets,
   type HomeWidgetId,
 } from "@/lib/home-dashboard";
+import { listClasses, pickTopClasses } from "@/lib/attendance";
 import { DEFAULT_HOME_COLUMNS } from "@/lib/home-layout";
 import { groupModulesBySystem, type HomeSystemId } from "@/lib/home-systems";
 import { listRecentEntries, listTodayInHistory } from "@/lib/journal";
@@ -30,6 +31,8 @@ import {
   formatLastRefreshed,
   lastRefreshedAt,
   listPositions,
+  topGainers,
+  topLosers,
 } from "@/lib/stock-positions";
 import { getAccessibleModules, isAdmin } from "@/lib/user";
 import { getUserPreferences, resolveStartupDestination } from "@/lib/user-preferences";
@@ -47,6 +50,7 @@ import { HomeWidgetGrid, type HomeWidgetItem } from "./home-widget-grid";
 import { MyShortcutsWidget } from "./my-shortcuts-widget";
 import { PhotoAlbumsWidget } from "./photo-albums-widget";
 import { getNavTreeData } from "./nav-tree-data";
+import { classroomSectionHref } from "./modules/[slug]/classroom-sections";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
 import { PAGE_CONTAINER } from "./page-container";
 import { MonitorPopup } from "./monitor-popup";
@@ -245,16 +249,46 @@ export default async function Home({
   // those domains yet. A panel with no entry here simply draws no strip.
   const systemActivity: Partial<Record<HomeSystemId, HomeSystemActivity>> = {};
   if (systemDayMove) {
+    // Ranked in lib (`topGainers`/`topLosers`) on the same per-ticker rollup the Daily
+    // Glance card uses, so the two cards can never disagree about who moved. Flat and
+    // opposite-signed tickers are excluded by those functions, so a red day has a short
+    // gainers list rather than a padded one.
+    const tickerMoves = computeTickerDayMoves(positions);
+    const toMover = (move: (typeof tickerMoves)[number]) => ({
+      ticker: move.ticker,
+      name: move.name,
+      gainLossCents: move.gainLossCents,
+      changePct: move.changePct,
+    });
     systemActivity.money = {
       kind: "money",
       gainLossCents: systemDayMove.gainLossCents,
       changePct: systemDayMove.changePct,
+      gainers: topGainers(tickerMoves, 5).map(toMover),
+      losers: topLosers(tickerMoves, 5).map(toMover),
     };
   }
   if (todoBoard) {
     // Summed in `lib`, not here: how much of a board is done is a fact about a TODO
     // board, and a `reduce` in a .tsx is exactly the leak ARCHITECTURE.md forbids.
     systemActivity.household = { kind: "todo", ...summariseBoard(todoBoard) };
+  }
+  // Classroom: three classes to open straight into, today's first. Only for a reader who
+  // can open the module (`modules` is access-filtered), and only when the Systems card
+  // is shown, so it costs nothing otherwise. One indexed read of the class list.
+  const classroomModule = modules.find((appModule) => appModule.slug === "classroom");
+  if (classroomModule && shows("systems")) {
+    const topClasses = pickTopClasses(listClasses(deps.attendanceRepo), todayIsoLocal(), 3);
+    if (topClasses.length > 0) {
+      systemActivity.classroom = {
+        kind: "classroom",
+        classes: topClasses.map((item) => ({
+          ...item,
+          // `?classId=` is what the home and report screens already open on.
+          href: `${classroomSectionHref("main")}?classId=${item.id}`,
+        })),
+      };
+    }
   }
   if (recentEntries.length > 0) {
     systemActivity.journal = {
@@ -283,6 +317,15 @@ export default async function Home({
       href: `/modules/${appModule.slug}`,
     })),
     activity: systemActivity[card.system.id],
+    // Buttons, not rows: these are the two things a teacher opens Classroom to do.
+    // Routes come from the module's own section helper so they can't drift from its nav.
+    actions:
+      card.system.id === "classroom"
+        ? [
+            { label: "Take attendance", href: classroomSectionHref("main"), primary: true },
+            { label: "Report", href: classroomSectionHref("report") },
+          ]
+        : undefined,
   }));
 
   // The cards that will actually appear, in order. Visibility alone isn't enough:

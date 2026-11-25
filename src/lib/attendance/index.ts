@@ -107,6 +107,7 @@ export {
 } from "./attendance";
 export { buildIndividualStudentRecord } from "./student-record";
 export { resolveWeekdayClassId, weekdayOfIsoDate } from "./weekday";
+export { pickTopClasses, type TopClass } from "./top-classes";
 export {
   attendanceDetailReportToCsv,
   attendanceReportCsvFileName,
