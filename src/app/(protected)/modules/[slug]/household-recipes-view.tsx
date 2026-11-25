@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/button";
 import { DataGrid, type DataGridColumn } from "@/components/data-grid";
@@ -196,8 +196,11 @@ export function HouseholdRecipesView({
   search,
   category,
   tag,
+  openRecipeId,
 }: {
   recipes: RecipeSummary[];
+  /** `?recipe=` — open the viewer on this recipe once, on arrival (the home screen links here). */
+  openRecipeId?: number;
   tags: RecipeTagCount[];
   /** Every category in use — feeds both the filter and the editor's picker. */
   categories: RecipeCategoryCount[];
@@ -318,6 +321,17 @@ export function HouseholdRecipesView({
     }
     setDialog({ kind: "view", recipe: result.recipe });
   }
+
+  // Opens `?recipe=` once. The ref, not the dependency list, is what makes it once:
+  // `router.refresh()` after an edit re-renders with the same prop, and re-opening
+  // the viewer the reader just closed would be wrong.
+  const openedFromLink = useRef(false);
+  useEffect(() => {
+    if (openRecipeId === undefined || openedFromLink.current) return;
+    openedFromLink.current = true;
+    void openViewer(openRecipeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on arrival; see above.
+  }, [openRecipeId]);
 
   /** Runs an action, surfaces its error inline, and refreshes on success. */
   async function run(work: () => Promise<{ ok: boolean; error?: string }>, after?: () => void) {

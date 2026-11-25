@@ -16,6 +16,7 @@ import {
   hsaReceiptMetaSchema,
   getRecipe,
   incrementMadeCount,
+  pickRandomRecipes,
   renameHsaCard,
   setHsaCardActive,
   setHsaReceipt,
@@ -30,6 +31,7 @@ import {
   type HsaExpenseInput,
   type Recipe,
   type RecipePictureInput,
+  type RecipeSummary,
   type UpdateRecipeInput,
 } from "@/lib/household";
 import { deps } from "@/lib/wiring";
@@ -77,6 +79,26 @@ export async function getRecipeAction(id: number): Promise<GetRecipeResult> {
     return { ok: true, recipe };
   } catch (error) {
     return toErrorResult(error, "Could not load that recipe.");
+  }
+}
+
+export interface RandomRecipesResult extends ActionResult {
+  recipes?: RecipeSummary[];
+}
+
+/**
+ * Draws a fresh handful of recipes for the home screen's Household panel — its
+ * re-roll button. The count is clamped here rather than validated with a schema:
+ * it is a small display number, and a crafted value should yield a short list,
+ * not an error.
+ */
+export async function drawRandomRecipesAction(count: number): Promise<RandomRecipesResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const safeCount = Math.min(Math.max(Math.trunc(Number(count)) || 0, 0), 12);
+    return { ok: true, recipes: pickRandomRecipes(deps.householdRepo, safeCount) };
+  } catch (error) {
+    return toErrorResult(error, "Could not draw recipes.");
   }
 }
 

@@ -96,6 +96,7 @@ function renderSection(
   documentsContents: boolean,
   documentsKeyword: string | undefined,
   codeLanguage: string | undefined,
+  requestedRecipeId: number | undefined,
 ) {
   if (slug === CLASSROOM_MODULE_SLUG && isClassroomSection(section)) {
     return (
@@ -172,6 +173,7 @@ function renderSection(
         search={recipeSearch}
         category={recipeCategory}
         tag={recipeTag}
+        openRecipeId={requestedRecipeId}
       />
     );
   }
@@ -350,6 +352,9 @@ export default async function ModuleSectionPage({
     // The Code Library's language filter. Its own param rather than reusing
     // `category`: a language is a column on the snippet, not a taxonomy row.
     language?: string | string[];
+    // Which recipe the Household Recipes screen opens its viewer on — set by the
+    // home screen's Household panel. Only the id travels; the viewer re-reads it.
+    recipe?: string | string[];
   }>;
 }) {
   const { slug, section } = await params;
@@ -382,6 +387,7 @@ export default async function ModuleSectionPage({
     contents,
     keyword,
     language,
+    recipe,
   } = await searchParams;
   // A repeated ?filter= yields an array; take the first rather than joining, so a
   // crafted URL can't smuggle a second expression in.
@@ -481,6 +487,12 @@ export default async function ModuleSectionPage({
     Number.isInteger(parsedTreeDocumentId) && parsedTreeDocumentId > 0
       ? parsedTreeDocumentId
       : undefined;
+  // And once more for the recipe to open: a row id, so anything else is simply absent
+  // and the Recipes screen opens on its list as it would with no param.
+  const rawRecipeId = Array.isArray(recipe) ? recipe[0] : recipe;
+  const parsedRecipeId = Number(rawRecipeId);
+  const requestedRecipeId =
+    Number.isInteger(parsedRecipeId) && parsedRecipeId > 0 ? parsedRecipeId : undefined;
 
   // Before the lookup, because this slug no longer resolves to a module row. The
   // section slugs are unchanged, so the path maps one-for-one; only the three
@@ -536,6 +548,7 @@ export default async function ModuleSectionPage({
     documentsContents,
     documentsKeyword,
     codeLanguage,
+    requestedRecipeId,
   );
   if (!body) notFound();
 

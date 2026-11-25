@@ -63,6 +63,20 @@ export function searchLibraryTracks(
 }
 
 /**
+ * The most-played tracks, highest count first, for the home screen's Media panel.
+ *
+ * Only tracks that have been played at least once — a fresh library returns `[]`
+ * rather than three tracks at zero. Unstreamable formats are skipped, since the
+ * panel's one job is to play the song on click. Asks for a few extra rows so a
+ * skipped one doesn't leave the list short.
+ */
+export function listTopPlayedTracks(musicRepo: MusicRepository, count: number): Track[] {
+  if (!Number.isInteger(count) || count <= 0) return [];
+  const { tracks } = musicRepo.listMostPlayed({ limit: count + 5, offset: 0 });
+  return tracks.filter((track) => track.isStreamable).slice(0, count);
+}
+
+/**
  * The immediate sub-folders of a folder, for the scan screen's picker.
  *
  * Returns an empty list rather than throwing when the root is unavailable -- a NAS

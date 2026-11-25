@@ -34,8 +34,11 @@ export async function HouseholdSection({
   search,
   category,
   tag,
+  openRecipeId,
 }: {
   section: HouseholdSectionName;
+  /** `?recipe=` — the Recipes screen opens its viewer on this one. */
+  openRecipeId?: number;
   /** Configuration is admin-only — it sets the receipt folder and lists the server's own folders. */
   isAdmin: boolean;
   /** The recipe list's filters, parsed from search params by the route. */
@@ -98,6 +101,7 @@ export async function HouseholdSection({
               search={search ?? ""}
               category={category ?? ""}
               tag={tag ?? ""}
+              openRecipeId={openRecipeId}
             />
           )}
           {section === "recipes-import" && <HouseholdImportView namedMappings={importMappings} />}

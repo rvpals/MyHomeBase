@@ -46,6 +46,7 @@ export {
   listRecipeCategories,
   listRecipeTags,
   listRecipes,
+  pickRandomRecipes,
   setRecipeImage,
   toLines,
   updateRecipe,

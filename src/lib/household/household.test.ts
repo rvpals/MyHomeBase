@@ -12,6 +12,7 @@ import {
   listRecipeCategories,
   listRecipeTags,
   listRecipes,
+  pickRandomRecipes,
   setRecipeImage,
   toLines,
   updateRecipe,
@@ -234,6 +235,52 @@ describe("createRecipe", () => {
     expect(
       createRecipe(repo, { name: "Stew", sourceUrl: "https://example.com/stew" }).sourceUrl,
     ).toBe("https://example.com/stew");
+  });
+});
+
+describe("pickRandomRecipes", () => {
+  /** A fixed sequence, so the shuffle is deterministic. */
+  const fixedRandom = () => 0;
+
+  it("returns `count` distinct recipes from the book", () => {
+    const repo = new FakeHouseholdRepository();
+    for (const name of ["A", "B", "C", "D", "E", "F"]) createRecipe(repo, aRecipe({ name }));
+
+    const picked = pickRandomRecipes(repo, 4, fixedRandom);
+
+    expect(picked).toHaveLength(4);
+    expect(new Set(picked.map((recipe) => recipe.id)).size).toBe(4);
+  });
+
+  it("follows the random source rather than returning name order", () => {
+    const repo = new FakeHouseholdRepository();
+    for (const name of ["A", "B", "C", "D", "E", "F"]) createRecipe(repo, aRecipe({ name }));
+
+    // `random() = 0` swaps each slot with index 0 on the way down, which rotates the
+    // list — so the first pick is not "A".
+    expect(pickRandomRecipes(repo, 4, fixedRandom).map((recipe) => recipe.name)).not.toEqual([
+      "A",
+      "B",
+      "C",
+      "D",
+    ]);
+  });
+
+  it("returns the whole book when it holds fewer than `count`", () => {
+    const repo = new FakeHouseholdRepository();
+    createRecipe(repo, aRecipe({ name: "Only" }));
+
+    expect(pickRandomRecipes(repo, 4, fixedRandom).map((recipe) => recipe.name)).toEqual(["Only"]);
+    expect(pickRandomRecipes(new FakeHouseholdRepository(), 4, fixedRandom)).toEqual([]);
+  });
+
+  it("returns nothing for a count that is not a positive integer", () => {
+    const repo = new FakeHouseholdRepository();
+    createRecipe(repo, aRecipe({ name: "Only" }));
+
+    expect(pickRandomRecipes(repo, 0, fixedRandom)).toEqual([]);
+    expect(pickRandomRecipes(repo, -1, fixedRandom)).toEqual([]);
+    expect(pickRandomRecipes(repo, 2.5, fixedRandom)).toEqual([]);
   });
 });
 

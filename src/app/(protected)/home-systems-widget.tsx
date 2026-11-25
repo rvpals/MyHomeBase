@@ -27,6 +27,13 @@ import type { HomeSystemId } from "@/lib/home-systems";
 import { getIconSlot } from "@/lib/icons";
 import { formatCents } from "@/lib/shared/money";
 import type { TintColor } from "@/lib/shared/tint";
+import {
+  SystemRandomPhoto,
+  SystemRecipes,
+  SystemTopTracks,
+  type HomeRecipePick,
+  type HomeTopTrack,
+} from "./home-system-blocks";
 
 // Resolved once at module scope; the registry is static, so this is not I/O.
 const SYSTEMS_SLOT = getIconSlot("homescreen_card_systems");
@@ -117,6 +124,16 @@ export interface HomeSystemPanel {
   modules: HomeSystemPanelModule[];
   activity?: HomeSystemActivity;
   actions?: HomeSystemAction[];
+  /**
+   * Extra blocks below the activity strip. Separate fields rather than more
+   * `activity` kinds: a panel can carry several (Household has the TODO bar AND
+   * recipes; Media has songs AND a photo), and each is set only when the reader
+   * can open the module it comes from.
+   */
+  recipes?: HomeRecipePick[];
+  topTracks?: HomeTopTrack[];
+  /** Draw a random archive photo after mount. */
+  randomPhoto?: boolean;
 }
 
 /**
@@ -337,6 +354,11 @@ function SystemPanel({ panel }: { panel: HomeSystemPanel }) {
       </ul>
 
       {panel.activity && <ActivityStrip activity={panel.activity} />}
+      {panel.recipes && panel.recipes.length > 0 && <SystemRecipes initial={panel.recipes} />}
+      {panel.topTracks && panel.topTracks.length > 0 && (
+        <SystemTopTracks tracks={panel.topTracks} />
+      )}
+      {panel.randomPhoto && <SystemRandomPhoto />}
     </section>
   );
 }

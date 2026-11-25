@@ -169,6 +169,12 @@ export function Modal({
   className = "",
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // Whether the current press began on the overlay itself. A `click` fires on the
+  // nearest common ancestor of the press and the release, so a text-selection drag
+  // that starts in an input and is released over the scrim delivers a click whose
+  // target *is* the overlay — `target === currentTarget` alone can't tell that apart
+  // from a real scrim click. Only a press that also started on the scrim dismisses.
+  const pressStartedOnOverlay = useRef(false);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -384,13 +390,19 @@ export function Modal({
         isNonModal ? "pointer-events-none" : "bg-black/60"
       } ${effectiveSize === "full" ? "p-0" : "p-4"}`}
       // A click that starts inside the panel and ends on the overlay (a drag off
-      // a text selection) shouldn't dismiss, so this only fires for the overlay
-      // itself, not for anything bubbling out of the panel.
+      // a text selection) shouldn't dismiss. The browser targets that click at the
+      // overlay (the common ancestor), so the press start is recorded here and both
+      // ends have to be on the overlay itself.
+      onPointerDown={(event) => {
+        pressStartedOnOverlay.current = event.target === event.currentTarget;
+      }}
       onClick={(event) => {
+        const startedOnOverlay = pressStartedOnOverlay.current;
+        pressStartedOnOverlay.current = false;
         // A non-modal panel has no overlay to click, so there is nothing to dismiss
         // on: the reader is expected to keep using the page behind it.
         if (isNonModal) return;
-        if (event.target === event.currentTarget && !isBusy) onClose();
+        if (startedOnOverlay && event.target === event.currentTarget && !isBusy) onClose();
       }}
     >
       <div

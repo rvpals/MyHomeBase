@@ -241,6 +241,7 @@ export {
 export {
   getTrackForStreaming,
   listMusicFolders,
+  listTopPlayedTracks,
   openTrackRange,
   searchLibraryTracks,
   type StreamableTrack,

@@ -1,5 +1,34 @@
 # Change History
 
+## 2026-11-25 (night) — Home Systems card: recipes to try, most-played songs, a random archive photo, a T-Bill shortcut; Modal scrim-dismiss fix
+
+**No migrations, no dependency changes, no paid or outside service.**
+
+**No gate was run and nothing has been seen on screen.** This work was written in an
+earlier session and carries no record of having been checked. New lib functions ship with
+tests (`household.test.ts` → `pickRandomRecipes`, new `music/top-played.test.ts`), but these
+tests were not run either.
+
+- **Household panel — "Recipes to try":** four recipes drawn at random (thumbnail, name,
+  category), each linking to `/modules/household/recipes?recipe=<id>`, which opens that
+  recipe's viewer once on arrival. A re-roll button draws four more via the new
+  `drawRandomRecipesAction` (authorised on Household, count clamped to 0–12).
+- **Media panel — "Most played":** the three most-played streamable tracks; a click plays
+  that track in the shared player with the three as the queue. A fresh library shows nothing
+  rather than three tracks at zero plays.
+- **Media panel — "From the archive":** one random photo thumbnail, drawn *after mount* so the
+  NAS walk never delays the home page, with a re-roll button. It links to Picture Gallery. If
+  the archive is unset or can't be reached, nothing is shown.
+- **Money panel — T-Bill button** to `/modules/investments/t-bill`, for readers who can open
+  Investments.
+- Each block appears only when the reader can open the module the data belongs to.
+- **Lib:** `pickRandomRecipes` (household) and `listTopPlayedTracks` (music). New client file
+  `src/app/(protected)/home-system-blocks.tsx`, whose only caller is `home-systems-widget.tsx`.
+- **Fix — `Modal`:** dragging a text selection from an input and releasing it over the scrim
+  no longer closes the dialog. The overlay now records where the press started and only
+  dismisses when both the press and the release are on the scrim, which is what
+  `components.md` already said it did.
+
 ## 2026-11-25 (evening) — Build: fix missing better-sqlite3 binding under npm 12; `install_dependencies_for_nas.bat`
 
 **No migrations, no paid or outside service.** Dependency bumps: `next` ^16.4.6,

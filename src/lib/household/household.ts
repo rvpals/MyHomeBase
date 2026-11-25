@@ -7,6 +7,7 @@
 
 import { decodeImageUpload, type DecodedImage } from "@/lib/shared/image-upload";
 import type { CarouselImageProcessor } from "@/lib/modules";
+import { shuffle, type RandomSource } from "@/lib/shared/random";
 import type { HouseholdRepository } from "./ports";
 import { resizeRecipePicture } from "./resize-recipe-picture";
 import {
@@ -33,6 +34,22 @@ export function listRecipes(
   query: RecipeQueryInput = {},
 ): RecipeSummary[] {
   return repo.listRecipes(recipeQuerySchema.parse(query));
+}
+
+/**
+ * A handful of recipes drawn at random, for the home screen's Household panel.
+ *
+ * Uniform over every recipe, without repeats; fewer than `count` comes back when
+ * the book holds fewer. Summaries only, so no picture bytes are read. `random` is a
+ * parameter so the draw is testable; callers pass the real thing.
+ */
+export function pickRandomRecipes(
+  repo: HouseholdRepository,
+  count: number,
+  random: RandomSource = Math.random,
+): RecipeSummary[] {
+  if (!Number.isInteger(count) || count <= 0) return [];
+  return shuffle(repo.listRecipes(recipeQuerySchema.parse({})), random).slice(0, count);
 }
 
 /** One whole recipe. `undefined` rather than a throw — a deleted id is ordinary. */

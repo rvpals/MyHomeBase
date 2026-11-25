@@ -18,7 +18,9 @@ import {
 import { listClasses, pickTopClasses } from "@/lib/attendance";
 import { DEFAULT_HOME_COLUMNS } from "@/lib/home-layout";
 import { groupModulesBySystem, type HomeSystemId } from "@/lib/home-systems";
+import { pickRandomRecipes } from "@/lib/household";
 import { listRecentEntries, listTodayInHistory } from "@/lib/journal";
+import { listTopPlayedTracks } from "@/lib/music";
 import { listPendingPopupMessages } from "@/lib/messages";
 import { listModules } from "@/lib/modules";
 import { getSetting, getStartupMessage } from "@/lib/settings";
@@ -52,6 +54,7 @@ import { PhotoAlbumsWidget } from "./photo-albums-widget";
 import { getNavTreeData } from "./nav-tree-data";
 import { classroomSectionHref } from "./modules/[slug]/classroom-sections";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
+import { stockSectionHref } from "./modules/[slug]/stock-sections";
 import { PAGE_CONTAINER } from "./page-container";
 import { MonitorPopup } from "./monitor-popup";
 import { StartupMessage } from "./startup-message";
@@ -301,6 +304,36 @@ export default async function Home({
     };
   }
 
+  // The Household and Media panels' extra blocks. Each is read only when the Systems
+  // card is shown AND the reader can open the module the data belongs to — the same
+  // gate as every strip above. Recipes are summaries (no picture bytes); most-played
+  // is one LIMITed query. The photo is NOT read here: the panel draws it after mount,
+  // so the NAS walk never holds up this page.
+  const householdModule = modules.find((appModule) => appModule.slug === "household");
+  const musicModule = modules.find((appModule) => appModule.slug === "music-library");
+  const homeRecipes =
+    householdModule && shows("systems")
+      ? pickRandomRecipes(deps.householdRepo, 4).map((recipe) => ({
+          id: recipe.id,
+          name: recipe.name,
+          category: recipe.category,
+          hasPicture: recipe.hasPicture,
+          updatedAt: recipe.updatedAt,
+        }))
+      : undefined;
+  const homeTopTracks =
+    musicModule && shows("systems")
+      ? listTopPlayedTracks(deps.musicRepo, 3).map((track) => ({
+          id: track.id,
+          title: track.displayTitle,
+          artist: track.artist,
+          album: track.album,
+          albumId: track.albumId,
+          durationSeconds: track.durationSeconds,
+          playCount: track.playCount,
+        }))
+      : undefined;
+
   // Plain data across the boundary — the card is a client island and cannot be handed
   // the module records themselves. Names and descriptions come from the rows rather
   // than from the system registry, because both are admin-editable at runtime.
@@ -319,13 +352,19 @@ export default async function Home({
     activity: systemActivity[card.system.id],
     // Buttons, not rows: these are the two things a teacher opens Classroom to do.
     // Routes come from the module's own section helper so they can't drift from its nav.
+    // Money gets a T-Bill shortcut, only for a reader who can open Investments.
     actions:
       card.system.id === "classroom"
         ? [
             { label: "Take attendance", href: classroomSectionHref("main"), primary: true },
             { label: "Report", href: classroomSectionHref("report") },
           ]
-        : undefined,
+        : card.system.id === "money" && stockModule
+          ? [{ label: "T-Bill", href: stockSectionHref("t-bill") }]
+          : undefined,
+    recipes: card.system.id === "household" ? homeRecipes : undefined,
+    topTracks: card.system.id === "media" ? homeTopTracks : undefined,
+    randomPhoto: card.system.id === "media" && galleryModule !== undefined,
   }));
 
   // The cards that will actually appear, in order. Visibility alone isn't enough:
