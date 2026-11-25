@@ -707,3 +707,17 @@ export function formatCalendarDayHeading(date: string): string {
   ][dayOfWeek(date)];
   return `${weekday}, ${MONTH_LABELS[month - 1]} ${day}, ${year}`;
 }
+
+/**
+ * "August 12" — the same date with the year dropped.
+ *
+ * For the On This Day dialog, which asks a question about a month and a day
+ * across every year: naming a year in its heading would contradict the list
+ * underneath it. Beside `formatCalendarDayHeading` rather than in
+ * `on-this-day.ts` because `MONTH_LABELS` and `parseIsoParts` live here, and a
+ * second copy of either is how two screens start spelling a month differently.
+ */
+export function formatMonthDayHeading(date: string): string {
+  const { month, day } = parseIsoParts(date, "formatMonthDayHeading");
+  return `${MONTH_LABELS[month - 1]} ${day}`;
+}

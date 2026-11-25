@@ -12,6 +12,7 @@ import {
   endOfMonth,
   formatCalendarDayHeading,
   formatJumpDate,
+  formatMonthDayHeading,
   groupEntriesByDate,
   isJournalCalendarScope,
   isJournalDateFormat,
@@ -531,6 +532,17 @@ describe("formatCalendarDayHeading", () => {
   it("names the weekday, month, day and year", () => {
     expect(formatCalendarDayHeading("2026-08-21")).toBe("Friday, August 21, 2026");
     expect(formatCalendarDayHeading("2026-01-04")).toBe("Sunday, January 4, 2026");
+  });
+});
+
+describe("formatMonthDayHeading", () => {
+  it("names the month and day, with no year — the On This Day dialog's heading", () => {
+    expect(formatMonthDayHeading("2026-08-21")).toBe("August 21");
+    expect(formatMonthDayHeading("2019-01-04")).toBe("January 4");
+  });
+
+  it("rejects a date that isn't real", () => {
+    expect(() => formatMonthDayHeading("2026-02-30")).toThrow(/not a real calendar date/);
   });
 });
 

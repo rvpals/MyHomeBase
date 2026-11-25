@@ -31,6 +31,7 @@ import {
   findEntries,
   getEntry,
   listEntries,
+  listEntriesOnMonthDayKey,
   mergeEntryDraft,
   recycleEntries,
   searchEntries,
@@ -79,6 +80,12 @@ const ENTRIES_LIMIT = 500;
  * `DuplicateRow`, which carries its group's identity — so a write that breaks a
  * duplicate pair really does drop both rows from the list. See the note on
  * `adopt` in journal-entries-grid.tsx, which is where that is relied on.
+ *
+ * `"onThisDay"` is the Calendar cell's **Today in history** dialog, which has no
+ * filter either: it re-asks "every entry on this month and day, in any year".
+ * Keyed by the month-day rather than by the date that was clicked, because the
+ * dialog's question has no year in it — handing back one year's entries after a
+ * write would empty the list of everything the dialog exists to show.
  */
 export type BulkRefreshScope =
   | { tab: "main"; filter: JournalFilter }
@@ -86,7 +93,8 @@ export type BulkRefreshScope =
   | { tab: "substantial"; filter: JournalFilter }
   | { tab: "log"; filter: JournalFilter }
   | { tab: "search"; term: string }
-  | { tab: "duplicates" };
+  | { tab: "duplicates" }
+  | { tab: "onThisDay"; monthDay: string };
 
 export interface BulkActionResult {
   ok: boolean;
@@ -110,6 +118,14 @@ function refresh(scope: BulkRefreshScope): JournalEntry[] {
   // carry whole entries with `content` blanked. See src/lib/journal/duplicates.ts.
   if (scope.tab === "duplicates") {
     return toDuplicateRows(findDuplicateGroups(listEntries(deps.journalRepo)));
+  }
+  // The Calendar cell's Today in history dialog, re-asked from scratch. Like the
+  // Duplicates card above this is uncapped and unnarrowed: the whole point is
+  // the 2011 entry, which a page of the newest N would hide. Bounded in a
+  // different way — one month-day is 1/366th of the journal, and the rows cross
+  // the wire with `content` blanked (src/lib/journal/on-this-day.ts).
+  if (scope.tab === "onThisDay") {
+    return listEntriesOnMonthDayKey(deps.journalRepo, scope.monthDay);
   }
   // One read for the other four tabs, with each tab's own condition re-applied
   // rather than assumed unchanged. Lock on the Unlocked tab, an edit that

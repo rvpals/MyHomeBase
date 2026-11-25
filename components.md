@@ -1043,7 +1043,13 @@ before they were folded back together.
 **Used by:** the Entries section's four tabs and its Search Results tab
 ([journal-entries-view.tsx](<src/app/(protected)/modules/[slug]/journal-entries-view.tsx>)),
 Data Management → Duplicate entries
-([journal-correct-view.tsx](<src/app/(protected)/modules/[slug]/journal-correct-view.tsx>)).
+([journal-correct-view.tsx](<src/app/(protected)/modules/[slug]/journal-correct-view.tsx>)),
+and the Calendar cell's **Today in history** dialog
+([journal-on-this-day-dialog.tsx](<src/app/(protected)/modules/[slug]/journal-on-this-day-dialog.tsx>)),
+which is the first caller to render it **inside a [`Modal`](#modal)** — see the stacking
+note there before doing the same. That dialog is route-local too but is deliberately *not*
+registered here: it has one call site and is not reusable, so it is a screen, not a
+component.
 
 ### Adding another journal screen to it
 
@@ -1235,6 +1241,27 @@ reset behaviour is the shared behaviour above; **maximized-ness** resets on moun
   <TickerBody />
 </Modal>
 ```
+
+### Dialogs stack, and only the top one answers Escape
+
+A dialog may be rendered **inside** another one. The Calendar cell's *Today in history*
+dialog is the first to do it on purpose — it hosts [`JournalEntriesGrid`](#journalentriesgrid),
+which brings seven dialogs of its own — but any screen that puts that grid in a `Modal`
+now has two panels up at once.
+
+`Modal` keeps a module-level stack (`MODAL_STACK`, the same shape as the counted body
+scroll lock beside it). **Only the panel on top acts on Escape, and only it traps Tab.**
+Before that stack existed, one Escape closed *every* open dialog: each listens on
+`document` in the capture phase, and `stopPropagation` does not stop other listeners on
+the same node. A busy panel now swallows the key rather than letting the dialog beneath it
+close mid-write. Membership is by identity, not position — React runs the **outer**
+cleanup first when two unmount together, so popping would drop the wrong one.
+
+`isNonModal` panels (the floating layer) stay out of the stack and answer Escape only when
+no dialog is up at all: a floating clock must not out-rank a dialog opened over it.
+
+Nothing changes at a call site — render the inner `Modal` as a sibling of the outer one's
+children or inside them, either works.
 
 **Notes:** it owns **no** open/closed state — the caller decides whether to render it, so
 guard it with `{isOpen && <Modal …>}`. On mount it focuses the first focusable element in

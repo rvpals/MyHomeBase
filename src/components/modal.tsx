@@ -134,6 +134,26 @@ const sizeClasses: Record<Size, string> = {
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/**
+ * Every modal panel currently mounted, oldest first.
+ *
+ * A module-level stack for the same reason `body-scroll-lock.ts` keeps a
+ * module-level count: dialogs nest. `JournalEntriesGrid` brings seven dialogs of
+ * its own, so any screen that renders it inside a `Modal` — the Calendar's
+ * Today in history dialog is the first — has two panels up at once.
+ *
+ * Without this, **every** open dialog closed on one Escape. The handler below is
+ * registered on `document` in the capture phase, and `stopPropagation` does not
+ * stop other listeners on that same node, so pressing Escape in a nested bulk
+ * edit closed the bulk edit *and* the dialog hosting it. Only the panel on top
+ * answers the key now, and only it traps Tab.
+ *
+ * Membership is by identity, not position: when a dialog and a dialog inside it
+ * unmount together React runs the **outer** cleanup first, so a `pop()` would
+ * remove the wrong token.
+ */
+const MODAL_STACK: symbol[] = [];
+
 export function Modal({
   title,
   titleIcon,
@@ -264,6 +284,42 @@ export function Modal({
     return () => window.removeEventListener("resize", recentre);
   }, [size]);
 
+  /**
+   * This panel's identity in `MODAL_STACK`. A `Symbol` in a ref rather than
+   * `useId`: the push and the pop match on identity, and it has to survive every
+   * re-render while never colliding with another panel's.
+   */
+  const stackToken = useRef<symbol | undefined>(undefined);
+  if (stackToken.current === undefined) stackToken.current = Symbol("modal");
+
+  // Joins the stack while mounted. `isNonModal` panels stay out of it: a
+  // floating accessory is not a dialog you answer, so it must not out-rank a
+  // real dialog opened over it.
+  useEffect(() => {
+    if (isNonModal) return;
+    const token = stackToken.current as symbol;
+    MODAL_STACK.push(token);
+    return () => {
+      const at = MODAL_STACK.lastIndexOf(token);
+      if (at !== -1) MODAL_STACK.splice(at, 1);
+    };
+  }, [isNonModal]);
+
+  /**
+   * Whether this panel is the one a key press belongs to.
+   *
+   * Read at event time, not at mount, because the panel above may have opened
+   * since. A non-modal accessory answers only when no dialog is up at all —
+   * Escape over a dialog belongs to the dialog.
+   */
+  const isTopmost = useCallback(
+    () =>
+      isNonModal
+        ? MODAL_STACK.length === 0
+        : MODAL_STACK[MODAL_STACK.length - 1] === stackToken.current,
+    [isNonModal],
+  );
+
   // Move focus into the panel on open and put it back where it was on close —
   // without this, dismissing a dialog drops the caret at the top of the page.
   useEffect(() => {
@@ -275,8 +331,15 @@ export function Modal({
 
   // Escape closes; Tab cycles within the panel rather than escaping to the page
   // behind, which is still fully rendered underneath.
+  //
+  // Only the panel on top of MODAL_STACK acts. Every mounted dialog listens on
+  // the same node in the same phase, so without that check one Escape closed the
+  // lot — see the note on MODAL_STACK. It also means a busy panel swallows the
+  // key rather than letting the dialog underneath close while a write is in
+  // flight.
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
+      if (!isTopmost()) return;
       if (event.key === "Escape" && !isBusy) {
         event.stopPropagation();
         onClose();
@@ -303,7 +366,7 @@ export function Modal({
 
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose, isBusy, isNonModal]);
+  }, [onClose, isBusy, isNonModal, isTopmost]);
 
   // The page behind must not scroll while a modal is up, or the overlay slides
   // off the viewport on a short screen. A non-modal panel has no overlay and the

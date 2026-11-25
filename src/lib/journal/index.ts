@@ -150,6 +150,7 @@ export {
   parseJumpDate,
   formatJumpDate,
   formatCalendarDayHeading,
+  formatMonthDayHeading,
   startOfWeek,
   startOfMonth,
   endOfMonth,
@@ -442,6 +443,16 @@ export type {
   SameDateGroup,
   SameDateRow,
 } from "./same-date";
+
+// "What else did I write on this month and day, in any year?" — the Calendar's
+// per-cell Today in history button. Deliberately NOT the same question as
+// `listTodayInHistory` above, which the home screen's card asks: this one keeps
+// log entries and keeps the reference year itself.
+export {
+  listEntriesOnMonthDay,
+  listEntriesOnMonthDayKey,
+  monthDayOf,
+} from "./on-this-day";
 
 // The recycle bin behind the Duplicate entries screen's bulk delete (migration 0079).
 export {

@@ -69,6 +69,7 @@ import {
 } from "./journal-merge-flow";
 import { JournalDayExpenses } from "./journal-day-expenses";
 import { JournalPhotosHost } from "./journal-photos-host";
+import { JournalOnThisDayDialog } from "./journal-on-this-day-dialog";
 import { TaxonomyChipRow } from "@/components/taxonomy-icon";
 import { TreeIcon } from "@/components/tree-icons";
 
@@ -147,6 +148,19 @@ export function JournalCalendarView({
    * different day gets a dialog keyed to that day rather than a stale total.
    */
   const [expensesDate, setExpensesDate] = useState<string | undefined>(undefined);
+  /**
+   * Which cell's "Today in history" dialog is open, if any.
+   *
+   * The date rather than a boolean, for the reason `expensesDate` is one: the
+   * dialog must not outlive the cell it was raised from. Only the month and day
+   * are used — the year is along for the ride so the dialog can name the date
+   * the reader actually pressed.
+   *
+   * Independent of `selectedDate` on purpose. The question is about a month and
+   * a day across every year, not about the open day, so pressing it does not
+   * select the cell and closing the day panel does not close it.
+   */
+  const [historyDate, setHistoryDate] = useState<string | undefined>(undefined);
   /**
    * Which direction has already been found to have nothing left, so its button
    * can go dead rather than re-asking on every press. Cleared by any navigation,
@@ -311,6 +325,7 @@ export function JournalCalendarView({
           onSelectDay={selectDay}
           onOpenEntry={openEntry}
           onOpenPhotos={(date) => setPhotoRequest({ kind: "day", date })}
+          onOpenHistory={setHistoryDate}
         />
       ) : null}
 
@@ -342,6 +357,7 @@ export function JournalCalendarView({
                 onSelectDay={() => undefined}
                 onOpenEntry={() => undefined}
                 onOpenPhotos={() => undefined}
+                onOpenHistory={() => undefined}
               />
             ) : null}
             {yearGrid ? (
@@ -412,6 +428,24 @@ export function JournalCalendarView({
           key={expensesDate}
           date={expensesDate}
           onClose={() => setExpensesDate(undefined)}
+        />
+      ) : null}
+
+      {historyDate ? (
+        // Keyed by the date, like the two dialogs around it: pressing another
+        // cell's button while one is open must remount rather than leave the
+        // first date's list sitting under a new heading.
+        //
+        // Not drawn from the Display stage — that grid renders no controls at
+        // all, because a dialog raised there would open *behind* the fullscreened
+        // element and be invisible.
+        <JournalOnThisDayDialog
+          key={historyDate}
+          date={historyDate}
+          categoryIcons={categoryIcons}
+          tagIcons={tagIcons}
+          formOptions={mergeFormOptions}
+          onClose={() => setHistoryDate(undefined)}
         />
       ) : null}
 
@@ -912,6 +946,7 @@ function MonthGrid({
   onSelectDay,
   onOpenEntry,
   onOpenPhotos,
+  onOpenHistory,
 }: {
   weeks: CalendarWeek[];
   cellTitleLimit: number;
@@ -921,6 +956,7 @@ function MonthGrid({
   onSelectDay: (day: CalendarDay) => void;
   onOpenEntry: (id: number) => void;
   onOpenPhotos: (date: string) => void;
+  onOpenHistory: (date: string) => void;
 }) {
   return (
     // Gridlines are back: every cell draws its right and bottom edge and the grid
@@ -958,6 +994,7 @@ function MonthGrid({
               onSelect={() => onSelectDay(day)}
               onOpenEntry={onOpenEntry}
               onOpenPhotos={() => onOpenPhotos(day.date)}
+              onOpenHistory={() => onOpenHistory(day.date)}
             />
           )),
         )}
@@ -984,6 +1021,7 @@ function DayCell({
   onSelect,
   onOpenEntry,
   onOpenPhotos,
+  onOpenHistory,
 }: {
   day: CalendarDay;
   titleLimit: number;
@@ -992,6 +1030,8 @@ function DayCell({
   onSelect: () => void;
   onOpenEntry: (id: number) => void;
   onOpenPhotos: () => void;
+  /** Raises "In history on …" for this cell's month and day, across every year. */
+  onOpenHistory: () => void;
 }) {
   const shown = day.entries.slice(0, titleLimit);
   const hidden = day.entries.length - shown.length;
@@ -1016,8 +1056,8 @@ function DayCell({
           onSelect();
         }
       }}
-      // `group` is what the hover-revealed controls (the + and the photo button)
-      // key off on desktop.
+      // `group` is what the hover-revealed controls (the +, the Today in history
+      // button and the photo button) key off on desktop.
       className={`group flex min-w-0 cursor-pointer flex-col gap-1 border-b border-r border-line p-1.5 text-left transition-colors ${cellHeightClass(
         variant,
         isDisplay,
@@ -1030,26 +1070,55 @@ function DayCell({
       }`}
     >
       <div className="flex items-start justify-between gap-1">
-        <span
-          className={`inline-flex shrink-0 items-center justify-center rounded-full font-display font-light leading-none ${
-            isDisplay ? "h-14 min-w-14 px-2 text-4xl" : "h-9 min-w-9 px-1 text-2xl max-lg:h-7 max-lg:min-w-7 max-lg:text-base"
-          } ${
-            day.isToday
-              ? // Today is a large filled accent circle — the one thing on the grid
-                // that must be findable without reading any numbers.
-                "bg-brass font-normal text-paper"
-              : day.isCurrentPeriod
-                ? "text-ink"
-                : "text-muted opacity-60"
-          }`}
-        >
-          {dayLabel}
+        {/* The day number carries its own entry count, as a badge on the number's
+            shoulder. It used to be a faint `brass-soft` chip over in the controls
+            on the right, where it read as one more piece of cell chrome among the
+            + and the photo button; a count is a property OF the day, so it sits on
+            the day. The wrapper is what the badge positions against — the number
+            itself can't be `relative` without its own circle moving. `inline-flex`
+            rather than the default `inline`, so the wrapper's box is exactly the
+            number's circle: an inline box is sized by line-height, which would put
+            the badge's corner somewhere that moves with the font. */}
+        <span className="relative inline-flex shrink-0">
+          <span
+            className={`inline-flex shrink-0 items-center justify-center rounded-full font-display font-light leading-none ${
+              isDisplay ? "h-14 min-w-14 px-2 text-4xl" : "h-9 min-w-9 px-1 text-2xl max-lg:h-7 max-lg:min-w-7 max-lg:text-base"
+            } ${
+              day.isToday
+                ? // Today is a large filled accent circle — the one thing on the grid
+                  // that must be findable without reading any numbers.
+                  "bg-brass font-normal text-paper"
+                : day.isCurrentPeriod
+                  ? "text-ink"
+                  : "text-muted opacity-60"
+            }`}
+          >
+            {dayLabel}
+          </span>
+          {day.entries.length > 0 ? (
+            // `bg-brass` + `text-paper`, the same pair today's filled circle uses —
+            // proven to carry in all nine themes, which a one-off shade would not
+            // be. The `ring-paper` is what keeps it legible when it lands ON that
+            // circle: without it, today's badge would dissolve into the brass
+            // underneath it. Decorative — the cell's aria-label already counts the
+            // entries in words, so announcing the number again would say it twice.
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none absolute flex items-center justify-center rounded-full bg-brass font-semibold text-paper ring-2 ring-paper ${
+                isDisplay
+                  ? "-right-2 -top-1 h-7 min-w-7 px-1.5 text-base"
+                  : "-right-1 -top-1 h-4 min-w-4 px-1 text-[10px] max-lg:-right-0.5 max-lg:h-3.5 max-lg:min-w-3.5 max-lg:px-0.5 max-lg:text-[9px]"
+              }`}
+            >
+              {day.entries.length}
+            </span>
+          ) : null}
         </span>
         {isDisplay ? null : (
           <span className="flex shrink-0 items-center gap-1">
             {/* Start a new entry already dated to this day. Desktop only, revealed on
-                hover/focus like the photo button: a phone cell has no room for a
-                fourth control, and the open day's panel already has New entry.
+                hover/focus like the two buttons beside it: a phone cell has no room for a
+                third control, and the open day's panel already has New entry.
                 A link, so it opens in a new tab like any other. stopPropagation on
                 both click and key: the cell itself selects the day on click AND
                 swallows Enter, which would otherwise eat the link's activation. */}
@@ -1065,11 +1134,38 @@ function DayCell({
             >
               <TreeIcon name="plus" className="h-3.5 w-3.5" />
             </Link>
-            {day.entries.length > 0 ? (
-              <span className="rounded bg-brass-soft px-1 text-[10px] font-medium text-brass-dark">
-                {day.entries.length}
-              </span>
-            ) : null}
+            {/* "What else did I write on this date, in any year?" — the one control
+                here that is NOT about this cell's own day, so it is on every cell
+                whether or not this year's square has anything in it: an empty
+                November 24 is often exactly when the question is worth asking.
+
+                Shown the way the photo button is, and for the same reasons — hidden
+                until hover or focus on desktop so 42 of them don't compete with the
+                titles, always visible on a phone, which has no hover. It fits
+                because the entry count moved onto the day number above, so the cell
+                still carries the two controls it carried before.
+
+                A row action, not a place, so a bare `TreeIcon` and no icon slot —
+                coding-guide.md keeps row actions out of the registry, the same call
+                the `+` link above it makes. stopPropagation because the cell itself
+                selects the day on click and swallows Enter. */}
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenHistory();
+              }}
+              onKeyDown={(event) => event.stopPropagation()}
+              aria-label={`Today in history for ${day.date}`}
+              title="Today in history — this date in every year"
+              className={`rounded p-0.5 text-muted transition-opacity hover:bg-brass-soft hover:text-brass-dark focus-visible:opacity-100 ${
+                day.isSelected
+                  ? ""
+                  : "lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100"
+              }`}
+            >
+              <TreeIcon name="history" className="h-3.5 w-3.5 max-lg:h-3 max-lg:w-3" />
+            </button>
             {/* On EVERY day, not only days with an entry: the archive is filed by date
                 independently of the journal, so a day with nothing written can still have
                 photographs — which is often exactly why you go looking.

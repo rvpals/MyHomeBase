@@ -1,5 +1,33 @@
 # Change History
 
+## 2026-11-24 — Journal Calendar: entry count badge on the day number; "Today in history" button and dialog
+
+**No migrations, no dependency changes, no paid or outside service.**
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted,
+tested or opened in a browser, including the tests written with it. One `npm run typecheck`
+passed mid-build, before the last several edits, so it proves nothing about this tree.
+
+- **Entry count is now a badge on the day number**, top right like a superscript: a filled
+  `bg-brass` / `text-paper` pill with a `ring-paper` edge (so it stays legible on today's brass
+  circle). Previously a faint `brass-soft` chip in the cell's control row. Also drawn in Display
+  mode, larger. Desktop and phone; the year grid's mini squares are unchanged.
+- **New per-cell "Today in history" button** (history glyph, no icon slot — it is a row action).
+  Hover/focus-revealed on desktop, always visible on a phone, same as the photo button. Opens
+  **"In history on November 24"**: every entry filed on that month and day in **any year**,
+  rendered with `JournalEntriesGrid` (all seven bulk actions work inside it). A row click opens
+  the entry in the viewer over the dialog instead of navigating away. Not drawn on the Display
+  stage, which renders no controls.
+- **Deliberately not the home card's rule:** unlike `listTodayInHistory`, this keeps the
+  clicked date's own year and keeps Log entries, so the same date can show more rows here.
+- **`Modal` stacking fix (`modal.tsx`):** a module-level stack means only the topmost dialog
+  answers Escape and traps Tab. Before, one Escape closed every open dialog — nested dialogs
+  inside the history dialog would have closed it. This touches every dialog in the app and is
+  the riskiest part of the change.
+- New `src/lib/journal/on-this-day.ts` (+ tests), `formatMonthDayHeading` in `calendar.ts`
+  (+ test), `onThisDayEntriesAction`, and a `{ tab: "onThisDay"; monthDay }` arm on
+  `BulkRefreshScope`. `components.md` documents the Modal stacking rule.
+
 ## 2026-11-24 — Journal: one `JournalEntriesGrid` for every list of entries; Duplicates card gets the full action bar
 
 **No migrations, no dependency changes, no paid or outside service.**
