@@ -6,6 +6,7 @@ import { CullCapControl } from "./cull-cap-control";
 import { UploadCapControl } from "./upload-cap-control";
 import { DocumentLimitsControl } from "./document-limits-control";
 import { SystemLogControl } from "./system-log-control";
+import { PhotoResizeControl } from "./photo-resize-control";
 
 export default function ApplicationConfigurationPage() {
   const { applicationName, setApplicationName } = useAdminSettings();
@@ -34,6 +35,7 @@ export default function ApplicationConfigurationPage() {
         <CullCapControl />
         <DocumentLimitsControl />
         <SystemLogControl />
+        <PhotoResizeControl />
       </div>
     </div>
   );

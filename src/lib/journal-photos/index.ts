@@ -99,5 +99,14 @@ export {
   type PhotoThumbnailSource,
 } from "./thumbnail";
 export type { PhotoThumbnailRenderer } from "./ports";
+// The switch for the shrink half of that, in `sys_app_settings` (migrations/0185).
+// Pure resolution: the route reads the rows, this turns them into a boolean.
+export {
+  DEFAULT_RESIZE_ORIGINALS,
+  PHOTO_THUMBNAIL_SETTING_KEYS,
+  photoThumbnailResizeValue,
+  resolvePhotoThumbnailSettings,
+  type PhotoThumbnailSettings,
+} from "./thumbnail-settings";
 export { SharpPhotoThumbnailRenderer } from "./thumbnail-renderer";
 export { readEmbeddedThumbnail, orientationTransform } from "./embedded-thumbnail";

@@ -1,5 +1,28 @@
 # Change History
 
+## 2026-11-24 — Photo thumbnails: server-side resize becomes a switch; resize gate raised to four
+
+**One migration, `0185_photo_thumbnail_resize_setting` (one `sys_app_settings` row,
+`photo_thumbnail_resize`, default `'true'`). Apply it on the NAS.** The code tolerates the row
+being absent (a missing or unparseable value reads as on), so the screen will not fail with
+"no such column" without it — but the switch's description is only stored by the seed.
+No dependency changes, no paid or outside service.
+
+**Not seen on screen, and no gate was run.** Nothing here has been typechecked, linted,
+tested or opened in a browser, including the tests written with it. This entry was written
+from reading the diff and migration — the work itself was done outside this session.
+
+- **New switch:** Administration → Configuration → Application Configuration, below the system
+  log switches. It gates only the middle source in `readPhotoThumbnail` (shrink the original
+  with `sharp`). The camera's embedded EXIF preview is always used when present, so in practice
+  it affects only photos with no embedded preview — about 2 in 700 in this archive. Off, those
+  fall back to the original as-is. Read per request, so it takes effect with no restart.
+- **Resize gate 3 → 4** concurrent builds (`photoThumbnailLimit` in `wiring.ts`), from the
+  Code Tester concurrency experiment. The comment there records that the 3.1x figure is
+  confounded by warm-up and that this gate is rarely binding.
+- New `src/lib/journal-photos/thumbnail-settings.ts` with tests; `thumbnail.test.ts` extended.
+- Not in this entry: the Systems card work, which shipped as its own commit.
+
 ## 2026-11-24 — Systems card: Classroom buttons and classes, Money gainers/losers; new cards no longer land last
 
 **No migrations, no dependency changes, no paid or outside service.**

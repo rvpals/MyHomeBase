@@ -14,17 +14,28 @@ const ORIGINAL = new Uint8Array([0xff, 0xd8, 9, 9, 9, 0xff, 0xd9]);
 
 class FakeStore implements PhotoFileStore {
   photoReads = 0;
+  /** Most reads in flight at once -- only meaningful with `readDelayMs` set. */
+  peakConcurrentReads = 0;
+  private concurrentReads = 0;
   constructor(
     private readonly header: Uint8Array | undefined,
     // `null`, not `undefined`, means "the photo can't be read": passing `undefined`
     // explicitly would trigger the default and hand back ORIGINAL instead.
     private readonly photo: Uint8Array | null = ORIGINAL,
+    /** Makes a read slow enough that overlapping reads genuinely overlap. */
+    private readonly readDelayMs = 0,
   ) {}
   async readHeader(): Promise<Uint8Array | undefined> {
     return this.header;
   }
   async readPhoto(): Promise<{ data: Uint8Array; mimeType: string } | undefined> {
     this.photoReads += 1;
+    if (this.readDelayMs > 0) {
+      this.concurrentReads += 1;
+      this.peakConcurrentReads = Math.max(this.peakConcurrentReads, this.concurrentReads);
+      await new Promise((resolve) => setTimeout(resolve, this.readDelayMs));
+      this.concurrentReads -= 1;
+    }
     return this.photo === null ? undefined : { data: this.photo, mimeType: "image/jpeg" };
   }
   async isRootAvailable(): Promise<boolean> {
@@ -58,8 +69,8 @@ class FakeRenderer implements PhotoThumbnailRenderer {
   }
 }
 
-function deps(store: FakeStore, renderer = new FakeRenderer()) {
-  return { store, renderer, limit: createConcurrencyLimit(3) };
+function deps(store: FakeStore, renderer = new FakeRenderer(), resizeOriginals = true) {
+  return { store, renderer, limit: createConcurrencyLimit(3), resizeOriginals };
 }
 
 describe("readPhotoThumbnail", () => {
@@ -142,11 +153,85 @@ describe("readPhotoThumbnail", () => {
       },
     };
     const store = new FakeStore(undefined);
-    const shared = { store, renderer: slowRenderer, limit: createConcurrencyLimit(2) };
+    const shared = {
+      store,
+      renderer: slowRenderer,
+      limit: createConcurrencyLimit(2),
+      resizeOriginals: true,
+    };
 
     await Promise.all(
       Array.from({ length: 6 }, () => readPhotoThumbnail(shared, { relativePath: PATH })),
     );
     expect(peak).toBe(2);
+  });
+
+  // The `photo_thumbnail_resize` switch (migrations/0185). Only reaches a photo with no
+  // embedded preview; the preview path above is never gated.
+  describe("with resizing switched off", () => {
+    it("serves a preview-less photo as the original, without shrinking it", async () => {
+      const store = new FakeStore(undefined);
+      const renderer = new FakeRenderer();
+      const result = await readPhotoThumbnail(deps(store, renderer, false), {
+        relativePath: PATH,
+      });
+
+      expect(result?.source).toBe("original");
+      expect(renderer.calls).toEqual([]);
+      expect(store.photoReads).toBe(1);
+    });
+
+    it("does not queue that read behind the resize gate", async () => {
+      // A gate of 1 would serialise all six if the off path still went through it.
+      const store = new FakeStore(undefined, ORIGINAL, 5);
+      await Promise.all(
+        Array.from({ length: 6 }, () =>
+          readPhotoThumbnail(
+            {
+              store,
+              renderer: new FakeRenderer(),
+              limit: createConcurrencyLimit(1),
+              resizeOriginals: false,
+            },
+            { relativePath: PATH },
+          ),
+        ),
+      );
+
+      expect(store.photoReads).toBe(6);
+      expect(store.peakConcurrentReads).toBeGreaterThan(1);
+    });
+
+    it("still serves an upright embedded preview, which the switch never gates", async () => {
+      const store = new FakeStore(buildJpegWithPreview());
+      const renderer = new FakeRenderer();
+      const result = await readPhotoThumbnail(deps(store, renderer, false), {
+        relativePath: PATH,
+      });
+
+      expect(result?.source).toBe("embedded");
+      expect(store.photoReads).toBe(0);
+      expect(renderer.calls).toEqual([]);
+    });
+
+    it("still rotates a sideways embedded preview, because sideways is wrong output", async () => {
+      const store = new FakeStore(buildJpegWithPreview({ orientation: 6 }));
+      const renderer = new FakeRenderer();
+      const result = await readPhotoThumbnail(deps(store, renderer, false), {
+        relativePath: PATH,
+      });
+
+      expect(result?.source).toBe("embedded");
+      expect(renderer.calls).toHaveLength(1);
+      expect(renderer.calls[0][1].transform).toBeDefined();
+      expect(store.photoReads).toBe(0);
+    });
+
+    it("reports an unreadable photo as undefined, as it does when on", async () => {
+      const store = new FakeStore(undefined, null);
+      expect(
+        await readPhotoThumbnail(deps(store, new FakeRenderer(), false), { relativePath: PATH }),
+      ).toBeUndefined();
+    });
   });
 });

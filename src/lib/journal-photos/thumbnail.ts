@@ -19,6 +19,10 @@ import type { PhotoFileStore, PhotoThumbnailRenderer } from "./ports";
 //      strip showed before, so a broken native module degrades to the old behaviour
 //      instead of a strip of broken images.
 //
+// Source 2 is OPTIONAL, behind the `photo_thumbnail_resize` app setting (migrations/0185,
+// default on). Off, a preview-less photo goes straight to source 3. Source 1 is never
+// gated: it is 8.7x to 13.3x cheaper than source 2 and is why the strip is quick at all.
+//
 // Nothing is cached or written: every request builds its answer in memory.
 
 /** Pixels on the thumbnail's shorter side: a 64px slot at 2x, with a little to spare. */
@@ -44,6 +48,19 @@ export interface PhotoThumbnailDeps {
    * a 128KB header read is the same cost as the EXIF lookup and needs no queue.
    */
   limit: ConcurrencyLimit;
+  /**
+   * Whether the server may SHRINK an original (source 2 above).
+   *
+   * The `photo_thumbnail_resize` app setting, read per request so the switch takes
+   * effect on the next click with no restart -- see `thumbnail-settings.ts` and
+   * migrations/0185. Off sends source 3, the original as-is, which is exactly what the
+   * strip served before 2026-11-17.
+   *
+   * Never gates source 1: an embedded preview is always used when there is one, and
+   * rotating a sideways 160x120 preview stays on too. Serving a thumbnail on its side is
+   * WRONG OUTPUT, not a cheaper one, and that rotation costs about a millisecond.
+   */
+  resizeOriginals: boolean;
 }
 
 /**
@@ -79,6 +96,14 @@ export async function readPhotoThumbnail(
     } catch {
       // Fall through.
     }
+  }
+
+  // Switched off: skip the shrink AND the gate. The gate exists to cap concurrent
+  // resizes, so queueing a plain read behind it would throttle reads for no reason.
+  if (!deps.resizeOriginals) {
+    const original = await deps.store.readPhoto(relativePath);
+    if (original === undefined) return undefined;
+    return { data: original.data, mimeType: original.mimeType, source: "original" };
   }
 
   return deps.limit(async () => {

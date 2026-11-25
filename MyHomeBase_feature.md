@@ -483,7 +483,7 @@ on a folder on the NAS.
 ## Admin
 
 - **Configuration** — module and application configuration (including the photo-culling
-  ceiling), **Backup Data** (database, attachment and Document Library folders, all required).
+  ceiling and a switch for resizing photos on the server to make strip thumbnails), **Backup Data** (database, attachment and Document Library folders, all required).
 - **Display Settings** — Color Themes, Icons (tabbed), Script Fonts, App Texture,
   Dashboard Widgets, Floating Components, Personal Toolbars (a shortcut can **open in a
   new tab**), Menu Items, Card Frames, Border Weight, Chrome Style, Scratchpad Categories.

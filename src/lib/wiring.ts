@@ -302,13 +302,26 @@ export const deps = {
   /** Shrinks photos to strip thumbnails. Loads `sharp` lazily, on the first thumbnail. */
   photoThumbnailRenderer: new SharpPhotoThumbnailRenderer(),
   /**
-   * At most three thumbnails built from an original at once, ACROSS ALL REQUESTS.
+   * At most four thumbnails built from an original at once, ACROSS ALL REQUESTS.
    *
    * Each one is a full multi-megabyte read over SMB, and Node has only four threads
    * for file reads -- without the cap a strip's burst takes all four and the main
    * photo waits behind it. One shared instance is the whole point, so it lives here.
+   *
+   * WAS THREE until 2026-11-24. Admin -> Code Tester's concurrency experiment measured
+   * four 1024px resizes at once on the NAS at 3.1x the sequential throughput, with the
+   * curve still climbing at four. TWO CAVEATS, both deliberate:
+   *
+   * - That 3.1x is CONFOUNDED. The experiment runs widths 1, 2, 3, 4 in that order, so
+   *   every later batch is warmer than the one before; the curve flattening at three and
+   *   then jumping at four is the tell. Some of the gain is warm-up, not parallelism.
+   * - It barely matters either way. This gate is only entered by a photo with NO embedded
+   *   EXIF preview -- about 2 in 700 in this archive -- so on a normal folder it is never
+   *   the binding constraint. The viewer's own THUMBNAIL_CONCURRENCY (3) caps requests in
+   *   flight per reader and was deliberately left alone: the preview path it mostly
+   *   serves is not CPU-bound, and more requests in flight was the original problem.
    */
-  photoThumbnailLimit: createConcurrencyLimit(3),
+  photoThumbnailLimit: createConcurrencyLimit(4),
   /**
    * Admin → Code Tester's image library probe. One instance for the process, so its
    * "first use" load time is reported once and later runs say it was already loaded.

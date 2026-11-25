@@ -25,6 +25,11 @@ import {
 } from "@/lib/system-log/schema";
 import { systemLogBooleanValue } from "@/lib/system-log/settings";
 import {
+  DEFAULT_RESIZE_ORIGINALS,
+  PHOTO_THUMBNAIL_SETTING_KEYS,
+  photoThumbnailResizeValue,
+} from "@/lib/journal-photos/thumbnail-settings";
+import {
   HOME_WIDGETS_SETTING_KEY,
   defaultHomeWidgets,
   homeWidgetsToValue,
@@ -233,6 +238,19 @@ export const DEFAULT_APP_SETTINGS: Setting[] = [
     value: String(DEFAULT_SYSTEM_LOG_MAX_ROWS),
     description:
       "How many lines the system log keeps. The oldest are deleted once it grows past this.",
+  },
+  {
+    // The server-side photo resize switch — see migrations/0185.
+    //
+    // ON, unlike the system-log switches above: resizing is what ships, and the
+    // switch exists to turn it OFF when the server struggles. "Reset to Default"
+    // should hand back the shipped behaviour, not the escape hatch. Listed here for
+    // the same reason as the backup keys — a reader who resets should get the switch
+    // back, not a table missing it.
+    key: PHOTO_THUMBNAIL_SETTING_KEYS.resizeOriginals,
+    value: photoThumbnailResizeValue(DEFAULT_RESIZE_ORIGINALS),
+    description:
+      "Whether the server shrinks a photo with sharp to make a strip thumbnail. Only affects photos with no embedded EXIF preview; with it off those fall back to the original as-is.",
   },
   {
     // Blank means "nothing to show" — see migrations/0041.
