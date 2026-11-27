@@ -14,10 +14,12 @@ export function ClipsInstructions({ section }: { section: ClipsSection }) {
           that entry survives.
         </p>
         <p>
-          <strong className="text-ink">Two tabs.</strong> Most Recent is the glance —
-          the newest few. All clips is everything. The search box and the category and
-          tag chips sit above both and narrow them together, so a filter also trims
-          what Most Recent shows.
+          <strong className="text-ink">Four tabs.</strong> Most Recent is the glance —
+          the newest few. All clips is everything. Drawing shows clips with a drawing,
+          and Checklist shows clips with tickable lines; a clip with both appears in
+          both. An encrypted clip&rsquo;s drawing stays hidden, so it is not listed
+          under Drawing. The search box and the category and tag chips sit above all
+          four and narrow them together.
         </p>
         <p>
           <strong className="text-ink">Pasting.</strong> Paste an email and its

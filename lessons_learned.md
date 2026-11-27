@@ -12,6 +12,108 @@ Newest first.
 
 ---
 
+## 2026-11-27 — A drag out of a text box closed the dialog
+
+**Date:** 2026-11-27
+**Module:** every module (shared `Modal`)
+**Files:** `src/components/modal.tsx`
+**Severity:** lost work (a half-filled form vanishes with no warning)
+
+**What broke.** In any form dialog, drag-selecting text in a field and letting go
+past the panel's edge, over the dark backdrop, closed the whole dialog. Nothing
+was saved and nothing warned.
+
+**Why it happened.** The backdrop's `onClick` closed the dialog when
+`event.target === event.currentTarget`, and a comment claimed that check stopped
+a drag off a text selection from closing it. It doesn't. The browser fires
+`click` on the **nearest common ancestor** of where the press started and where
+it ended. Press in an input and release on the backdrop, and the common ancestor
+*is* the backdrop, so `target === currentTarget` is true and the dialog closes.
+The check only rules out clicks that start *and* end inside the panel.
+
+**The fix.** The backdrop records on `pointerdown` whether the press began on the
+backdrop itself, and `onClick` closes only when both ends were on the backdrop.
+Escape and a real backdrop click still close.
+
+### The rules
+
+1. **"Click outside to close" must check where the press started, not only where
+   the click landed.** `target === currentTarget` on `click` alone is the classic
+   broken version. Record the target on `pointerdown` (or `mousedown`) and
+   require it too.
+2. **A comment describing a guard is not proof that the guard works.** This one
+   stated the exact case it failed. Test the edge case the comment names.
+3. **Fix it in the shared component.** Every form dialog had the bug because
+   they all use `Modal`; one fix covers them. A hand-rolled overlay that skips
+   `Modal` has to repeat the press-start check itself, which is one more reason
+   not to hand-roll one.
+
+---
+
+## 2026-11-26 — A dropdown's z-index can't leave its card
+
+**Date:** 2026-11-26
+**Module:** Journal → New entry
+**Files:** `src/app/(protected)/modules/[slug]/journal-entry-editor.tsx`,
+`src/components/icon-select.tsx`, `src/components/collapsible-card.tsx`
+**Severity:** a control you can't use (the picker opens, but you can't see or click its items)
+
+**What broke.** On the New Journal entry screen, clicking the **Prefill Template**
+picker opened its list *behind* the Date/Time card underneath, so you couldn't
+see or click any template.
+
+**Why it happened.** `IconSelect` draws its list as `absolute z-30`, and that
+number looks like it should win. But a z-index only counts within the
+element's nearest **stacking context**. Each form section is a separate
+`CollapsibleCard`, and the cards are siblings. When a card becomes a stacking
+context, its children's z-index stays inside it, and the card as a whole is
+layered against its siblings in DOM order. Date/Time comes after Prefill
+Template, so it painted over the whole Prefill card, list included.
+
+What made the cards stacking contexts: the Glass theme puts
+`backdrop-filter` on `.card-raised` (`globals.css`, the
+`[data-color-theme="glass"]` block). `filter`, `transform`, `opacity < 1`,
+`isolation`, `will-change` and a positioned element with a z-index all have
+the same effect. So the bug **depends on the theme**: a dropdown that looks fine
+in one theme can sink in another.
+
+### The fix
+
+Lift the card, not the list. `CollapsibleCard`'s outer `div` now carries:
+
+```tsx
+has-[[role=combobox][aria-expanded=true]]:relative
+has-[[role=combobox][aria-expanded=true]]:z-10
+```
+
+While a picker inside it is open, the card becomes a positioned `z-10` and
+paints above its non-positioned siblings, and the list's `z-30` comes along
+with it. Raising the list's own z-index to `z-50` or
+`z-[9999]` would do **nothing**, because the ceiling is the card.
+
+### The rules
+
+1. **When an overlay hides behind a sibling, look at the ancestors, not at
+   the overlay's z-index.** Walk up from the popup and find the first ancestor
+   that forms a stacking context. That ancestor's z-index is the one that
+   matters. Raising the popup's number is the guess that never works.
+2. **Check every theme before calling a layering bug fixed.** Stacking
+   contexts here come from theme CSS (`backdrop-filter` on Glass), so one
+   theme proves nothing.
+3. **Fix it once in the shared component, not card by card.** The first fix
+   added `relative z-10` to the Prefill card alone, and the Category and Tag
+   pickers in the cards below had the same bug straight away, as did
+   Calendar import and Taxonomy Combos. The fix that lasted is in
+   `CollapsibleCard`: while a `[role=combobox][aria-expanded=true]` inside
+   it is open, the card lifts itself to `relative z-10`. That covers every
+   `TokenPicker` and `IconSelect` in a card, in every module.
+4. **A dropdown inside a `Modal` is a different problem.** The dialog body is
+   `overflow-auto`, so the list gets clipped by the dialog's scroll area
+   instead of being covered by a sibling. Lifting a card can't fix that. If
+   it needs fixing, render the list in a portal.
+
+---
+
 ## 2026-09-29 — An editor wired to a list row
 
 **Date:** 2026-09-29
@@ -210,5 +312,11 @@ Short pointers to things that have already cost real time. Full detail in
   evidence; a mention in a doc, a comment or an import is not. `TreeNav` reads
   like the app's tree navigation and is rendered by nothing but Admin → SQL
   Explorer.
+- **A popup hidden behind the next card is a stacking-context problem, not a
+  z-index one.** Lift the card that holds the popup. The Glass theme's
+  `backdrop-filter` turns every `.card-raised` into a stacking context.
 - **Uncommitted work in the tree is unverified work**, including your own from an
   earlier session. Documented ≠ finished ≠ wired up.
+- **A backdrop click must check where the press started.** A drag from inside a
+  dialog that's released on the backdrop sends `click` to the backdrop.
+  `Modal` handles this now; a hand-rolled overlay doesn't get that for free.

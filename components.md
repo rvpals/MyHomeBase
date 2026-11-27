@@ -1809,6 +1809,15 @@ A titled card whose body expands/collapses. The standard wrapper for a secondary
 </CollapsibleCard>
 ```
 
+**Dropdowns inside a card.** While a `TokenPicker` or `IconSelect` inside the card is
+open, the card lifts itself to `relative z-10`. The trigger is
+`has-[[role=combobox][aria-expanded=true]]`, so it needs no prop. Without this, the
+list's own `z-30` can't get out of the card, and the next card down paints over
+it whenever the card forms a stacking context (the Glass theme's
+`backdrop-filter` does). A new dropdown gets the same lift as long as its input is
+marked `role="combobox"` and `aria-expanded`. This doesn't help a dropdown inside a
+`Modal`: the dialog body's `overflow-auto` is a different problem.
+
 ### Remembered state
 
 An **uncontrolled** card remembers whether the reader left it open, in

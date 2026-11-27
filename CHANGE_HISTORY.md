@@ -1,5 +1,34 @@
 # Change History
 
+## 2026-11-27 — Clips: Drawing and Checklist tabs; CollapsibleCard lifts above its siblings while a dropdown is open
+
+No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or
+outside service.
+
+### Clips — Drawing and Checklist tabs
+- **Two new tabs on the Clips home screen**, after Most Recent and All clips: **Drawing**
+  lists clips that carry a drawing, **Checklist** lists clips with at least one tickable
+  line (ticked or not). A clip with both shows in both. The search box and category/tag
+  chips narrow all four tabs together; an empty tab says "No drawings yet." or "No
+  drawings match those filters."
+- **Encrypted clips:** a sealed clip's drawing is never on the summary, so it is not listed
+  under Drawing. A sealed checklist still counts, since its items are carried regardless.
+- `?tab=drawing` / `?tab=checklist` open straight on the tab; an unknown value falls back
+  to Most Recent.
+- **Lib:** `src/lib/clips/kinds.ts` holds `isDrawingClip` and `isChecklistClip`, exported
+  from `@/lib/clips`, with tests in `kinds.test.ts`.
+- The in-app instructions describe the four tabs.
+
+### Fix — dropdowns hidden behind the next card
+- **`CollapsibleCard`** now lifts itself to `relative z-10` while a `TokenPicker` or
+  `IconSelect` inside it is open (`has-[[role=combobox][aria-expanded=true]]`). Under the
+  Glass theme each card is a stacking context (`backdrop-filter`), so a picker's list was
+  painted over by the card below it: Journal → New entry's Prefill Template, Category and
+  Tag pickers, Calendar import, Taxonomy Combos. One fix in the shared card covers every
+  module; the Prefill card's own one-off `relative z-10` is removed.
+- `components.md` documents the lift; `lessons_learned.md` records this and the earlier
+  `Modal` drag-to-backdrop fix.
+
 ## 2026-11-26 (night) — Photo viewer: Browse the archive tree, zoom and pan
 
 No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or

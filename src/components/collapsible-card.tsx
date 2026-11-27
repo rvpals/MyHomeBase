@@ -167,8 +167,15 @@ export function CollapsibleCard({
     // `card-raised` (globals.css) supplies the lift: an inset top highlight, a
     // hairline ring that deepens `border-line`, and a soft cast shadow. The
     // caller's `className` still comes last, so a card can opt out.
+    //
+    // The `has-[…]` pair lifts the card above its siblings while a dropdown
+    // inside it is open. `TokenPicker` and `IconSelect` mark their input
+    // `role="combobox"` with `aria-expanded`, so CSS alone can tell. Without
+    // the lift, a card that forms a stacking context (the Glass theme's
+    // backdrop-filter does) traps the list's own z-30, and the next card down
+    // paints over it. See lessons_learned.md, 2026-11-26.
     <div
-      className={`card-raised card-raised-hover rounded-xl border border-line bg-paper-raised transition-shadow motion-reduce:transition-none ${className}`}
+      className={`card-raised card-raised-hover rounded-xl border border-line bg-paper-raised transition-shadow motion-reduce:transition-none has-[[role=combobox][aria-expanded=true]]:relative has-[[role=combobox][aria-expanded=true]]:z-10 ${className}`}
     >
       {/* A row rather than one big button, so `headerAction` can hold a real button. */}
       <div className="flex items-center gap-2 px-4 py-3 max-lg:items-start">

@@ -125,6 +125,9 @@ export {
   type ClipItemBoard,
 } from "./board";
 
+// Which home-screen tab (Drawing, Checklist) a clip belongs in. Not exclusive.
+export { isChecklistClip, isDrawingClip } from "./kinds";
+
 // The module's own settings, on `sys_module_settings` — no migration needed to add
 // one. See `settings.ts` for why the excerpt ceiling is pinned to the repository's
 // bounded-prefix read.

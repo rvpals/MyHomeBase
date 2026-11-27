@@ -1,7 +1,7 @@
 "use client";
 
 // The Clips home screen: the count, the shared controls, and the clips themselves
-// under two tabs — the most recent few, and everything.
+// under four tabs — the most recent few, everything, the drawings and the checklists.
 //
 // This is the module's one working screen. It absorbed the old "All Clips" section,
 // which is why the writing, filtering and editing machinery lives here rather than
@@ -23,12 +23,14 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Tabs } from "@/components/tabs";
 import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";
-import type {
-  ClipCardColor,
-  ClipImage,
-  ClipItem,
-  ClipSummary,
-  ClipTaxonomyItem,
+import {
+  isChecklistClip,
+  isDrawingClip,
+  type ClipCardColor,
+  type ClipImage,
+  type ClipItem,
+  type ClipSummary,
+  type ClipTaxonomyItem,
 } from "@/lib/clips";
 import { ClipsBoardView } from "./clips-board-view";
 import { ClipsCard } from "./clips-card";
@@ -65,9 +67,12 @@ const VIEW_MODE_OPTIONS: readonly ViewModeOption<ClipsViewMode>[] = [
  */
 const RECENT_COUNT = 6;
 
-/** The two tabs, as they appear in `?tab=`. */
+/** The four tabs, as they appear in `?tab=`. */
 const RECENT_TAB = "recent";
 const ALL_TAB = "all";
+const DRAWING_TAB = "drawing";
+const CHECKLIST_TAB = "checklist";
+const TAB_KEYS: readonly string[] = [RECENT_TAB, ALL_TAB, DRAWING_TAB, CHECKLIST_TAB];
 
 export interface ClipsMainViewProps {
   clips: ClipSummary[];
@@ -175,6 +180,8 @@ export function ClipsMainView({
   // note rendered inside it.
   const isFiltered = search !== "" || category !== "" || tag !== "";
   const recent = clips.slice(0, RECENT_COUNT);
+  const drawings = clips.filter(isDrawingClip);
+  const checklists = clips.filter(isChecklistClip);
 
   /** Draws one clip, wired for editing in place. Shared by both tabs' boards. */
   function clipHandlers() {
@@ -186,6 +193,18 @@ export function ClipsMainView({
       onToggleItem: (itemId: number, isDone: boolean) => void handleToggleItem(itemId, isDone),
       onRecolour: setRecolouring,
     };
+  }
+
+  /** A kind tab: its matches, or a line saying there are none. */
+  function renderKind(rows: ClipSummary[], noun: string) {
+    if (rows.length === 0) {
+      return (
+        <p className="text-sm text-muted">
+          {isFiltered ? `No ${noun} match those filters.` : `No ${noun} yet.`}
+        </p>
+      );
+    }
+    return renderClips(rows);
   }
 
   function renderClips(rows: ClipSummary[]) {
@@ -293,7 +312,9 @@ export function ClipsMainView({
           the back button for what is a way of looking at one screen, not a
           different screen — the same reasoning the List/Board switch follows. */}
       <Tabs
-        defaultActiveKey={initialTab === ALL_TAB ? ALL_TAB : RECENT_TAB}
+        defaultActiveKey={
+          initialTab !== undefined && TAB_KEYS.includes(initialTab) ? initialTab : RECENT_TAB
+        }
         items={[
           {
             key: RECENT_TAB,
@@ -323,6 +344,16 @@ export function ClipsMainView({
             key: ALL_TAB,
             label: "All clips",
             content: renderClips(clips),
+          },
+          {
+            key: DRAWING_TAB,
+            label: "Drawing",
+            content: renderKind(drawings, "drawings"),
+          },
+          {
+            key: CHECKLIST_TAB,
+            label: "Checklist",
+            content: renderKind(checklists, "checklists"),
           },
         ]}
       />

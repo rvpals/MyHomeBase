@@ -829,11 +829,7 @@ export function JournalEntryEditor(props: JournalEntryEditorProps) {
       {/* New only, and only when a template is enabled. Collapsed: starting
           from a template is the exception and shouldn't push Date down. */}
       {!isEdit && prefillTemplates.length > 0 && (
-        // `relative z-10`: the IconSelect list drops down over the Date/Time card
-        // below. Its own z-30 is trapped inside this card's stacking context (the
-        // Glass theme's backdrop-filter makes one), so the later sibling card
-        // painted over it. Lifting this card lifts the list with it.
-        <CollapsibleCard title="Prefill Template" className="relative z-10">
+        <CollapsibleCard title="Prefill Template">
           <div className="text-sm">
             <span className="mb-1 block font-medium text-ink">Select prefill template</span>
             {/* IconSelect, not a native <select>: a template can carry an icon

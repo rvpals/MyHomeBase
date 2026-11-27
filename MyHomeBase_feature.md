@@ -418,7 +418,9 @@ against three bots), **Pac-Man**, **Bridge**, **Pictionary**, **Word Wizard**,
 Rich-text notes that stand on their own — paste an email, keep a reference, jot something
 down.
 
-- **Home screen** — two tabs, **Most recent** and **All clips**: a filtering card (text,
+- **Home screen** — four tabs, **Most recent**, **All clips**, **Drawing** (clips with a
+  drawing; an encrypted clip's drawing stays hidden, so it isn't listed) and **Checklist**
+  (clips with tickable lines); a clip with both shows in both. A filtering card (text,
   category, tag, carried in the URL so a filtered list survives a refresh), a write/edit
   panel and the clip cards, on a board whose columns are a fixed width so a wider window
   shows more cards. Writing keeps headings,
