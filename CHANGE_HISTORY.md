@@ -1,5 +1,43 @@
 # Change History
 
+## 2026-11-27 — Code Tester: Dependency test card; fix — OCR with a local model folder
+
+No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or
+outside service.
+
+### Code Tester — Dependency test
+- **New card on Admin → Code Tester**, below the resize experiment. One row per fragile
+  dependency — **SQLite (better-sqlite3)**, **Tesseract OCR (tesseract.js)**, **sharp** and
+  **@napi-rs/canvas** — each with its own **Test** button, plus **Test all** and **Copy
+  report**.
+- Each check loads its library the way the app does (lazy import) and gives it a small
+  real job: SQLite writes and reads back rows in an in-memory database, checks JSON and
+  FTS5, and runs WAL on a temp file; Tesseract reads a built-in sample image and checks
+  the words and confidence; sharp creates, resizes and encodes an image; canvas draws,
+  reads a pixel back and encodes a PNG. No app data is touched.
+- **Detail output:** every result shows its timed steps (pass / warning / fail, with the
+  error's code and first line) and facts — package and engine versions, the platform
+  builds installed against this server's platform, the Node ABI, the native binding's
+  path, sharp's libvips and formats, the OCR model's location and the worker's stage
+  timings. A failed or warning row opens its details by itself. The header shows Node,
+  platform, host and memory.
+- **Tesseract with no `MYHOMEBASE_TESSDATA`** is a warning on the dev box and a **failure
+  on the NAS** (Linux), where the CDN download is a hidden first-run network dependency.
+- **CLI:** `npm run cli -- check-dependencies [sqlite|tesseract|sharp|canvas …]` prints the
+  same report and exits 1 when any check fails.
+- **Lib:** `src/lib/code-test/dependency-checks.ts` (use-case, recorder, text report, with
+  tests in `dependency-checks.test.ts`), `dependency-probes.ts` (the four real probes) and
+  `ocr-sample.ts` (the embedded sample PNG).
+
+### Fix — OCR failed whenever `MYHOMEBASE_TESSDATA` was set
+- tesseract.js defaults to `gzip: true` and so looked for `eng.traineddata.gz` in the model
+  folder, but the folder the app vendors (`./tessdata`, shipped by `publish-nas.mjs`) holds
+  the uncompressed `eng.traineddata`. Every OCR therefore failed with `ENOENT … .gz` once
+  the variable was set, as the NAS setup guide says to. Found by the new dependency test.
+- The worker options now live in one place, `ocrWorkerOptions()` in
+  `src/lib/documents/text-engines.ts` (with `gzip: false`), used by Documents' OCR and by
+  the dependency test, so the test checks exactly what OCR runs with.
+
 ## 2026-11-27 — Clips: Drawing and Checklist tabs; CollapsibleCard lifts above its siblings while a dropdown is open
 
 No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or

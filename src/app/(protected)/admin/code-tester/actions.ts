@@ -1,6 +1,13 @@
 "use server";
 
-import { createTimedPhotoReader, runServerResizeSuite } from "@/lib/code-test";
+import {
+  createTimedPhotoReader,
+  dependencyCheckSchema,
+  formatDependencyReport,
+  runDependencyChecks,
+  runServerResizeSuite,
+  type DependencyReport,
+} from "@/lib/code-test";
 import {
   listAllPhotosInFolder,
   listPhotoFoldersForDate,
@@ -29,6 +36,34 @@ export interface CodeTestReportResult {
   ok: boolean;
   error?: string;
   report?: string;
+}
+
+export interface DependencyCheckActionResult {
+  ok: boolean;
+  error?: string;
+  report?: DependencyReport;
+  /** The same report as plain text, for the Copy button -- what the CLI prints. */
+  text?: string;
+}
+
+/**
+ * Runs the dependency checks named in `ids` (empty = all). A failed dependency is a
+ * result inside the report, not `ok: false`; that means only the input was refused.
+ */
+export async function runDependencyCheckAction(ids: string[]): Promise<DependencyCheckActionResult> {
+  await requireAdmin();
+  const parsed = dependencyCheckSchema.safeParse({ ids });
+  if (!parsed.success) return { ok: false, error: "Not a known dependency." };
+
+  try {
+    const report = await runDependencyChecks(
+      { ...deps.codeTestDependencies, now: () => performance.now(), clock: () => new Date() },
+      parsed.data,
+    );
+    return { ok: true, report, text: formatDependencyReport(report) };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The checks didn't run." };
+  }
 }
 
 /** The archive folders for one date -- the picker's first step. Names only, cheap. */

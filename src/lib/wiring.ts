@@ -64,6 +64,7 @@ import { SqliteJournalReportRepository } from "./journal-reports/repository";
 import { NodePhotoFileStore } from "./journal-photos/file-store";
 import { SharpPhotoThumbnailRenderer } from "./journal-photos/thumbnail-renderer";
 import { SharpImageLibProbe } from "./code-test/image-lib-probe";
+import { createDependencyProbes, describeRuntime } from "./code-test/dependency-probes";
 import { createConcurrencyLimit } from "./shared/concurrency";
 import { YahooFinanceClient } from "./market-data/yahoo-finance-client";
 import { SqliteMenuItemOverrideRepository } from "./menu-items/repository";
@@ -328,6 +329,18 @@ export const deps = {
    * "first use" load time is reported once and later runs say it was already loaded.
    */
   codeTestImageLib: new SharpImageLibProbe(),
+  /**
+   * Admin → Code Tester → Dependency test, and `npm run cli -- check-dependencies`.
+   * Building the probes loads nothing; each imports its library when it runs.
+   *
+   * `requireLocalOcrModel` on Linux (the NAS): there a missing local
+   * `eng.traineddata` is a FAIL, because the CDN fallback is a hidden first-run
+   * network dependency. On the dev box it is only a warning.
+   */
+  codeTestDependencies: {
+    probes: createDependencyProbes({ requireLocalOcrModel: process.platform === "linux" }),
+    runtime: describeRuntime,
+  },
   expenseRepo: new SqliteExpenseRepository(db),
   attendanceRepo: new SqliteAttendanceRepository(db),
   // The Classroom module's Exam group (migrations/0145). Shares the module with

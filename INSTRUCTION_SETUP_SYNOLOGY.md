@@ -331,7 +331,10 @@ folder can be excluded.
 model from a CDN the first time someone presses OCR. Like the music root it is read at
 startup, so **restart the app** after adding it. Read the publish output for `!` lines — the
 canvas, core and model steps warn rather than abort, and a missing one means scanned PDFs
-cannot be OCR'd on the NAS (text-layer reads still work). OCR holds ~320 MB while it runs,
+cannot be OCR'd on the NAS (text-layer reads still work). To confirm OCR, SQLite, sharp
+and canvas all load after a publish, run **Admin → Code Tester → Dependency test → Test
+all** (or `npm run cli -- check-dependencies` on the NAS); on Linux a missing local model
+is reported as a failure, not a warning. OCR holds ~320 MB while it runs,
 so leave **Document text indexing → Read scans with OCR** off in Admin → Background Tasks
 unless the NAS has the headroom.
 

@@ -12,7 +12,35 @@ export type {
   ImageMetadata,
   TimedPhotoReader,
 } from "./ports";
-export { serverResizeTestSchema, type ServerResizeTestInput } from "./schema";
+export {
+  dependencyCheckSchema,
+  serverResizeTestSchema,
+  type DependencyCheckInput,
+  type ServerResizeTestInput,
+} from "./schema";
+export {
+  DEPENDENCY_IDS,
+  DEPENDENCY_STATUS_ORDER,
+  describeError,
+  formatDependencyReport,
+  formatMs,
+  listDependencyChecks,
+  runDependencyChecks,
+  runDependencyProbe,
+  worstStatus,
+  type DependencyCheckDeps,
+  type DependencyCheckResult,
+  type DependencyCheckSummary,
+  type DependencyFact,
+  type DependencyId,
+  type DependencyProbe,
+  type DependencyRecorder,
+  type DependencyReport,
+  type DependencyStatus,
+  type DependencyStep,
+  type RuntimeInfo,
+} from "./dependency-checks";
+export { createDependencyProbes, describeRuntime } from "./dependency-probes";
 export {
   MAX_SCAN,
   pickTestPhotos,

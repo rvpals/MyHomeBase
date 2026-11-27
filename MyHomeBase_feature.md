@@ -514,6 +514,14 @@ on a folder on the NAS.
 - **SQL Explorer** — schema browser with prose for every table, tables grouped by
   module, BLOB cells fetched on demand, saved statements, table-name suggestions, a
   Table Usage tab, and a Truncate button behind a row-counting warning.
+- **Code Tester** — experiments run against the live server. **Test Image Serve Resize
+  Load** times server-side photo resizes over a chosen archive folder. **Dependency test**
+  checks that the fragile native/WASM dependencies still load and work here — SQLite
+  (better-sqlite3), Tesseract OCR, sharp and @napi-rs/canvas — each with its own Test
+  button plus Test all. Every result lists its timed steps and the facts that explain a
+  break (platform build installed, Node ABI, where the OCR model is read from), and the
+  whole report copies as text. The same checks run from the terminal as
+  `check-dependencies`, exiting non-zero on a failure.
 - **About** — application and system info, memory meters, database files, environment
   variables, deployment history with build logs, Change History, this feature list, and a
   **Code** tab listing the app's registered reusable components — each with what it is for,

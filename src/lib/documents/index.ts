@@ -216,9 +216,12 @@ export {
 } from "./text-extract";
 
 export {
+  OCR_LANGUAGE,
   OCR_PAGE_LIMIT,
   OCR_RENDER_DPI,
   nodeTextExtractionEngines,
+  ocrModelFolder,
+  ocrWorkerOptions,
 } from "./text-engines";
 
 export {

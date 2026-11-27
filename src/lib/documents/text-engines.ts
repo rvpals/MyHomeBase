@@ -54,7 +54,7 @@ const PDF_RENDER_SCALE = OCR_RENDER_DPI / 72;
  * Adding one is a one-line change here plus vendoring its `.traineddata` — see the
  * note on `langPath` below.
  */
-const OCR_LANGUAGE = "eng";
+export const OCR_LANGUAGE = "eng";
 
 /**
  * Where tesseract.js looks for `eng.traineddata`.
@@ -68,9 +68,27 @@ const OCR_LANGUAGE = "eng";
  *
  * Unset in dev, where a one-off download is harmless.
  */
-function tessdataPath(): string | undefined {
+export function ocrModelFolder(): string | undefined {
   const configured = process.env.MYHOMEBASE_TESSDATA?.trim();
   return configured === "" ? undefined : configured;
+}
+
+/**
+ * The options every tesseract.js worker in the app is created with.
+ *
+ * Shared with Admin -> Code Tester's dependency test, so that test exercises exactly
+ * the configuration OCR runs with rather than a hand-copied one that can drift.
+ *
+ * **`gzip: false` is required whenever `langPath` is set.** tesseract.js defaults to
+ * `gzip: true` and then asks for `<langPath>/eng.traineddata.gz`; the folder this app
+ * vendors (`./tessdata`, shipped by `publish-nas.mjs`) holds the uncompressed
+ * `eng.traineddata`. Without the flag, setting `MYHOMEBASE_TESSDATA` as the NAS guide
+ * says made every OCR fail with `ENOENT ... eng.traineddata.gz` -- found by the
+ * dependency test on 2026-11-27. Unset, the CDN download path is left alone.
+ */
+export function ocrWorkerOptions(): { langPath: string; gzip: false } | undefined {
+  const langPath = ocrModelFolder();
+  return langPath ? { langPath, gzip: false } : undefined;
 }
 
 /**
@@ -163,8 +181,7 @@ async function ocrImage(
 
   if (pages.length === 0) return { text: "", confidence: 0 };
 
-  const langPath = tessdataPath();
-  const worker = await createWorker(OCR_LANGUAGE, undefined, langPath ? { langPath } : undefined);
+  const worker = await createWorker(OCR_LANGUAGE, undefined, ocrWorkerOptions());
   try {
     const texts: string[] = [];
     const confidences: number[] = [];
