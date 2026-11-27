@@ -73,6 +73,9 @@ export function JournalPreferencesView({
   const [reviewBeforeCalendarImport, setReviewBeforeCalendarImport] = useState(
     preferences.reviewBeforeCalendarImport,
   );
+  const [keepSelectionAfterBulkAction, setKeepSelectionAfterBulkAction] = useState(
+    preferences.keepSelectionAfterBulkAction,
+  );
   const [topicMatchBody, setTopicMatchBody] = useState(preferences.topicMatchBody);
   // Held as a string so the field can be emptied while typing — a number-typed
   // state would turn a cleared box into NaN or snap it back to a value the
@@ -159,6 +162,7 @@ export function JournalPreferencesView({
         photoRoot,
         handwritingSize,
         reviewBeforeCalendarImport,
+        keepSelectionAfterBulkAction,
         topicMatchBody,
         // Falls back rather than erroring on a cleared or nonsense box: the
         // library clamps the same way on read, so the two agree.
@@ -300,6 +304,26 @@ export function JournalPreferencesView({
                 shows what the journal already holds on each date it is about to write into. You can
                 then drop any of those dates from the run. Dates with no entry yet import straight
                 through without asking.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {/* Its own group: governs every entry list with tick boxes (Entries, On
+            This Day, Calendar, Review, Correct) — not Calendar Import or Taxonomy. */}
+        <div className="flex flex-col gap-2 border-t border-line pt-4">
+          <span className="block text-sm font-medium text-ink">Bulk actions</span>
+          <label className="flex items-start gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={keepSelectionAfterBulkAction}
+              onChange={(event) => setKeepSelectionAfterBulkAction(event.target.checked)}
+            />
+            <span>
+              Keep check box state after bulk actions
+              <span className="mt-0.5 block text-xs text-muted">
+                Keep the state of check box after bulk action is applied.
               </span>
             </span>
           </label>

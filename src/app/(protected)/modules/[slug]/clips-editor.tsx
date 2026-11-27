@@ -15,12 +15,20 @@
 
 import { useState } from "react";
 import { Button } from "@/components/button";
+import { DrawingPad, type DrawingPadResult, type DrawingPadStroke } from "@/components/drawing-pad";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import { TokenPicker } from "@/components/token-picker";
 import {
+  CLIP_DRAWING_HEIGHT,
+  CLIP_DRAWING_INKS,
+  CLIP_DRAWING_PAPER,
+  CLIP_DRAWING_SIZES,
+  CLIP_DRAWING_WIDTH,
   sanitizeClipHtml,
   toClipSummary,
   type ClipCardColor,
+  type ClipDrawingInk,
+  type ClipImage,
   type ClipItem,
   type ClipSummary,
 } from "@/lib/clips";
@@ -28,9 +36,40 @@ import { TintPicker } from "@/components/tint-picker";
 import {
   addClipImageAction,
   createClipAction,
+  getClipDrawingAction,
+  saveClipDrawingAction,
   saveClipItemsAction,
   updateClipAction,
 } from "./clips-actions";
+
+/** The pad's palette, from the library's ink keys. Labels are for the swatches' names. */
+const INK_LABELS: Record<ClipDrawingInk, string> = {
+  ink: "Black",
+  red: "Red",
+  orange: "Orange",
+  green: "Green",
+  blue: "Blue",
+  purple: "Purple",
+};
+
+const PAD_INKS = (Object.keys(CLIP_DRAWING_INKS) as ClipDrawingInk[]).map((key) => ({
+  key,
+  color: CLIP_DRAWING_INKS[key],
+  label: INK_LABELS[key],
+}));
+
+/**
+ * Which part of the editor a new clip opens on — what the quick-compose bar's three
+ * targets mean. It changes what is first and focused, never what the clip can hold:
+ * a checklist clip can still have a body and a drawing.
+ */
+export type ClipsEditorMode = "text" | "checklist" | "drawing";
+
+/** The pad, when open: blank for a new drawing, or reopening `replacesImageId`. */
+interface PadState {
+  replacesImageId?: number;
+  strokes?: DrawingPadStroke[];
+}
 
 /** One line in the checklist editor, before it has been saved. */
 interface DraftItem {
@@ -54,6 +93,10 @@ export interface ClipsEditorProps {
   initialColor?: ClipCardColor | "";
   /** The clip's existing checklist, when editing one that has items. */
   initialItems?: ClipItem[];
+  /** The clip's drawings, when editing one that has any — offered to reopen. */
+  initialDrawings?: ClipImage[];
+  /** Which part a new clip opens on. Defaults to the body. */
+  initialMode?: ClipsEditorMode;
   /** The managed lists, so the pickers offer what already exists. */
   categoryOptions: string[];
   tagOptions: string[];
@@ -75,12 +118,18 @@ export function ClipsEditor({
   initialTags = [],
   initialColor = "",
   initialItems = [],
+  initialDrawings = [],
+  initialMode = "text",
   categoryOptions,
   tagOptions,
   onSaved,
   onSavedClip,
   onCancel,
 }: ClipsEditorProps) {
+  const [drawings, setDrawings] = useState<ClipImage[]>(initialDrawings);
+  const [pad, setPad] = useState<PadState | null>(initialMode === "drawing" ? {} : null);
+  const [padSaving, setPadSaving] = useState(false);
+  const [padError, setPadError] = useState("");
   const [title, setTitle] = useState(initialTitle);
   const [contentHtml, setContentHtml] = useState(initialContentHtml);
   const [categories, setCategories] = useState<string[]>(initialCategories);
@@ -128,6 +177,87 @@ export function ClipsEditor({
       else setError(result.error ?? "One image could not be saved.");
     }
     return urls;
+  }
+
+  /**
+   * Stores what the pad drew, then closes it.
+   *
+   * The clip's own fields are written **first**, for both a new clip and an existing
+   * one. A new clip needs an id to own the drawing (the same silent save a pasted
+   * image makes). An existing clip needs it because the use-case appends the drawing
+   * to the *stored* body and hands that body back for the editor to adopt — without
+   * the write, any text typed since the editor opened would be replaced by the
+   * stored version.
+   */
+  async function handleDrawingSave(result: DrawingPadResult) {
+    setPadSaving(true);
+    setPadError("");
+
+    const id = clipId ?? savedId;
+    const written = id
+      ? await updateClipAction({ id, title, contentHtml, categories, tags, color })
+      : await createClipAction({ title, contentHtml, categories, tags, color });
+    if (!written.ok || !written.clip) {
+      setPadSaving(false);
+      setPadError(written.error ?? "Could not save the clip for this drawing.");
+      return;
+    }
+    if (id === undefined) setSavedId(written.clip.id);
+
+    const replaces = pad?.replacesImageId;
+    const saved = await saveClipDrawingAction({
+      clipId: written.clip.id,
+      base64Data: result.pngBase64,
+      drawing: {
+        version: 1,
+        width: CLIP_DRAWING_WIDTH,
+        height: CLIP_DRAWING_HEIGHT,
+        // The pad's ink is a plain string; the use-case's schema is what checks it
+        // is one of the palette keys, so an unknown one fails there, not here.
+        strokes: result.strokes.map((stroke) => ({ ...stroke, ink: stroke.ink as ClipDrawingInk })),
+      },
+      replacesImageId: replaces,
+    });
+    setPadSaving(false);
+
+    if (!saved.ok || !saved.clip || saved.imageId === undefined) {
+      setPadError(saved.error ?? "Could not save that drawing.");
+      return;
+    }
+
+    setContentHtml(saved.clip.contentHtml);
+    // Only `id` is read from these (the reopen buttons), so the stand-in row's sizes
+    // are zero rather than a second fetch for metadata nothing shows.
+    const drawn: ClipImage = {
+      id: saved.imageId,
+      clipId: saved.clip.id,
+      mimeType: "image/png",
+      width: 0,
+      height: 0,
+      byteSize: 0,
+      sortOrder: 0,
+      isDrawing: true,
+    };
+    setDrawings((previous) => [...previous.filter((image) => image.id !== replaces), drawn]);
+    setPad(null);
+
+    // Opened from the bar's brush: the drawing *is* the clip, so saving it is done —
+    // the Keep-style "draw, save, see it on the board". Anything else (a title, a
+    // tag) is one Edit away. Reopening or adding a second drawing stays in the editor.
+    if (initialMode === "drawing" && clipId === undefined && replaces === undefined) {
+      if (onSavedClip) onSavedClip(toClipSummary(saved.clip, 1, 0));
+      onSaved?.();
+    }
+  }
+
+  async function handleReopenDrawing(imageId: number) {
+    setPadError("");
+    const result = await getClipDrawingAction(imageId);
+    if (!result.ok || !result.drawing) {
+      setError(result.error ?? "Could not open that drawing.");
+      return;
+    }
+    setPad({ replacesImageId: imageId, strokes: result.drawing.strokes });
   }
 
   async function handleSave() {
@@ -215,6 +345,36 @@ export function ClipsEditor({
         />
       </div>
 
+      {pad && (
+        <div>
+          <p className="mb-1 text-sm font-medium text-ink">
+            {pad.replacesImageId === undefined ? "New drawing" : "Edit drawing"}
+          </p>
+          {/* Keyed so reopening a different drawing remounts the pad with its own
+              strokes rather than keeping the previous sheet's record in its ref. */}
+          <DrawingPad
+            key={pad.replacesImageId ?? "new"}
+            inks={PAD_INKS}
+            sizes={CLIP_DRAWING_SIZES}
+            paperColor={CLIP_DRAWING_PAPER}
+            width={CLIP_DRAWING_WIDTH}
+            height={CLIP_DRAWING_HEIGHT}
+            initialStrokes={pad.strokes}
+            onSave={(result) => void handleDrawingSave(result)}
+            onCancel={() => setPad(null)}
+            saving={padSaving}
+            error={padError}
+          />
+        </div>
+      )}
+
+      {/* Checklist mode puts the list first and focuses it: the bar's ☑ means "I am
+          making a list", and making someone scroll past an empty body to start one
+          is the friction the bar exists to remove. */}
+      {initialMode === "checklist" && (
+        <ClipItemsEditor items={items} onChange={setItems} autoFocus />
+      )}
+
       <RichTextEditor
         value={contentHtml}
         onChange={setContentHtml}
@@ -222,6 +382,24 @@ export function ClipsEditor({
         onSanitize={(html) => sanitizeClipHtml(html).html}
         placeholder="Write, or paste an email here…"
       />
+
+      {!pad && (
+        <div className="flex flex-wrap items-center gap-2">
+          {drawings.map((image, index) => (
+            <Button
+              key={image.id}
+              size="sm"
+              variant="secondary"
+              onClick={() => void handleReopenDrawing(image.id)}
+            >
+              Edit drawing{drawings.length > 1 ? ` ${index + 1}` : ""}
+            </Button>
+          ))}
+          <Button size="sm" variant="secondary" onClick={() => setPad({})}>
+            Add a drawing
+          </Button>
+        </div>
+      )}
 
       {/* Two pickers, two vocabularies: a category says what KIND of thing this is,
           a tag says what it is ABOUT. Both create inline, so writing a clip never
@@ -247,7 +425,7 @@ export function ClipsEditor({
         />
       </div>
 
-      <ClipItemsEditor items={items} onChange={setItems} />
+      {initialMode !== "checklist" && <ClipItemsEditor items={items} onChange={setItems} />}
 
       <div>
         <p className="mb-1 text-sm font-medium text-ink">Card colour</p>
@@ -295,9 +473,12 @@ export function ClipsEditor({
 function ClipItemsEditor({
   items,
   onChange,
+  autoFocus = false,
 }: {
   items: DraftItem[];
   onChange: (items: DraftItem[]) => void;
+  /** Puts the caret in the blank row on mount — the bar's checklist mode. */
+  autoFocus?: boolean;
 }) {
   function update(index: number, patch: Partial<DraftItem>) {
     onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -345,7 +526,10 @@ function ClipItemsEditor({
           </li>
         ))}
 
-        <NewItemRow onAdd={(text) => onChange([...items, { text, isDone: false }])} />
+        <NewItemRow
+          autoFocus={autoFocus}
+          onAdd={(text) => onChange([...items, { text, isDone: false }])}
+        />
       </ul>
     </div>
   );
@@ -361,7 +545,13 @@ function ClipItemsEditor({
  * so a typed line is not silently lost when they tab away) keeps the caret where it
  * is and makes "add an item" one deliberate action.
  */
-function NewItemRow({ onAdd }: { onAdd: (text: string) => void }) {
+function NewItemRow({
+  onAdd,
+  autoFocus = false,
+}: {
+  onAdd: (text: string) => void;
+  autoFocus?: boolean;
+}) {
   const [text, setText] = useState("");
 
   function commit() {
@@ -387,6 +577,7 @@ function NewItemRow({ onAdd }: { onAdd: (text: string) => void }) {
           }
         }}
         onBlur={commit}
+        autoFocus={autoFocus}
         placeholder="Add an item…"
         aria-label="Add a checklist item"
         className={INPUT_CLASS}

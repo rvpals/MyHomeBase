@@ -111,6 +111,27 @@ export function ClipsCard({
         </div>
       </div>
 
+      {clip.drawingImageId !== undefined && (
+        // The drawing itself, because a drawing clip usually has no text and the
+        // card would otherwise only say "1 image". A button so it opens the clip
+        // like the title does. Plain `<img>`: it is served by our own route with the
+        // module check, which `next/image`'s optimiser would sit in front of.
+        <button
+          type="button"
+          onClick={() => onOpen(clip.id)}
+          aria-label="Open this drawing"
+          className="mt-2 block w-full overflow-hidden rounded-lg border border-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- see above. */}
+          <img
+            src={`/api/clips/images/${clip.drawingImageId}`}
+            alt="Drawing"
+            loading="lazy"
+            className="block h-auto w-full"
+          />
+        </button>
+      )}
+
       {clip.excerpt && (
         // `whitespace-pre-wrap` so a clip written as lines stays lines. `break-words`
         // because a pasted URL is otherwise wide enough to stretch its column and

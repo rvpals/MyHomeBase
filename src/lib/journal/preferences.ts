@@ -21,6 +21,7 @@ export const JOURNAL_SETTING_KEYS = {
   photoRoot: "photo_root",
   handwritingSize: "handwriting_size",
   reviewBeforeCalendarImport: "review_before_calendar_import",
+  keepSelectionAfterBulkAction: "keep_selection_after_bulk_action",
   topicMatchBody: "topic_match_body",
   topicEpisodeGapDays: "topic_episode_gap_days",
   excludedWords: "excluded_words",
@@ -291,6 +292,10 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
     byKey.get(JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport) === "true";
 
   // Same strict "true" test, for the same reason.
+  const keepSelectionAfterBulkAction =
+    byKey.get(JOURNAL_SETTING_KEYS.keepSelectionAfterBulkAction) === "true";
+
+  // Same strict "true" test, for the same reason.
   const topicMatchBody = byKey.get(JOURNAL_SETTING_KEYS.topicMatchBody) === "true";
 
   // Clamped rather than trusted, like the texture opacity above: the stored
@@ -374,6 +379,7 @@ export function resolveJournalPreferences(settings: ModuleSetting[]): JournalPre
     topicEpisodeGapDays,
     handwritingSize,
     reviewBeforeCalendarImport,
+    keepSelectionAfterBulkAction,
     excludedWords,
     topWordLimit,
     contentTextureId,
@@ -465,6 +471,11 @@ export function journalPreferencesToEntries(
     {
       key: JOURNAL_SETTING_KEYS.reviewBeforeCalendarImport,
       value: preferences.reviewBeforeCalendarImport ? "true" : "false",
+    },
+    // Written at both values, for the reason the row above is.
+    {
+      key: JOURNAL_SETTING_KEYS.keepSelectionAfterBulkAction,
+      value: preferences.keepSelectionAfterBulkAction ? "true" : "false",
     },
     // Both Topics settings follow the same rule as the row above: written at
     // every value, so unticking the box or restoring the default gap is a real

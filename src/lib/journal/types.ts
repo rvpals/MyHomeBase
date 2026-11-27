@@ -475,6 +475,17 @@ export interface JournalPreferences {
    */
   reviewBeforeCalendarImport: boolean;
   /**
+   * When true, a bulk action on ticked entries (Bulk Edit, Overwrite, Lock,
+   * Unlock, Encrypt, Merge, Delete, Restore, Purge) leaves the ticks in place
+   * after it succeeds instead of clearing them, so a second action can run on
+   * the same rows. Rows the action removed from the list drop out of the
+   * selection regardless — the grid prunes ticks for rows it no longer holds.
+   *
+   * Defaults to **false**: clearing was the behaviour before this existed.
+   * Calendar Import and the Taxonomy screen ignore it (see journal-section.tsx).
+   */
+  keepSelectionAfterBulkAction: boolean;
+  /**
    * When true, the Topics section searches entry **bodies** as well as tags,
    * categories and titles.
    *

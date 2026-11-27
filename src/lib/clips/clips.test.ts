@@ -386,7 +386,16 @@ export class FakeClipsRepository implements ClipsRepository {
     return undefined;
   }
 
-  addClipImage(clipId: number, image: DecodedImage, width: number, height: number): ClipImage {
+  /** Strokes by image id, for the drawing tests (migration 0187). */
+  drawings = new Map<number, string>();
+
+  addClipImage(
+    clipId: number,
+    image: DecodedImage,
+    width: number,
+    height: number,
+    drawingJson?: string,
+  ): ClipImage {
     const row: ClipImage = {
       id: this.nextId++,
       clipId,
@@ -395,13 +404,23 @@ export class FakeClipsRepository implements ClipsRepository {
       height,
       byteSize: image.data.length,
       sortOrder: this.images.filter((i) => i.clipId === clipId).length,
+      isDrawing: drawingJson !== undefined,
     };
     this.images.push(row);
+    if (drawingJson !== undefined) this.drawings.set(row.id, drawingJson);
     return row;
   }
 
   deleteClipImage(id: number): void {
     this.images = this.images.filter((i) => i.id !== id);
+    this.drawings.delete(id);
+  }
+
+  getClipDrawing(imageId: number): { clipId: number; drawingJson: string } | undefined {
+    const image = this.images.find((i) => i.id === imageId);
+    const drawingJson = this.drawings.get(imageId);
+    if (!image || drawingJson === undefined) return undefined;
+    return { clipId: image.clipId, drawingJson };
   }
 
   listLinksForClip(clipId: number): ClipLink[] {

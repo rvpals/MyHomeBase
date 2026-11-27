@@ -6,6 +6,7 @@
 // the client views. Mirrors stock-section.tsx and expense-section.tsx.
 
 import { CollapsibleCard } from "@/components/collapsible-card";
+import { countClipsForTargets } from "@/lib/clips";
 import { listNamedMappings } from "@/lib/csv-import";
 import {
   JOURNAL_PREFILL_FIELDS,
@@ -21,6 +22,7 @@ import {
   listPrefillTemplates,
   listPinnedEntries,
   listRecentEntries,
+  RECENT_JOURNAL_ENTRY_LIMIT,
   listRecentlyEditedEntries,
   listTags,
   listTaxonomyCombos,
@@ -93,7 +95,6 @@ import { JournalTemplatesView } from "./journal-templates-view";
 import { JournalView } from "./journal-view";
 
 const JOURNAL_MODULE_SLUG = "journal";
-const RECENT_JOURNAL_ENTRY_LIMIT = 25;
 /**
  * How many tags and how many categories the Topics picker offers.
  *
@@ -167,9 +168,39 @@ function SectionBody({
       // when the reader has switched that card off — the same rule the app home screen
       // applies to its cards.
       const homeWidgets = getJournalHomeWidgets(deps.userPreferencesRepo, userId);
+      const recentEntries = listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT);
+      // The Recent entries card is the shared JournalEntriesGrid, so it needs what
+      // every host of that grid supplies: the paperclip counts and the reads its
+      // Bulk edit / Merge dialogs mount the entry form with. Same reads as
+      // journal-entries-panel.tsx. Clips is composed here, in the presentation
+      // layer, so `src/lib/journal` never imports `src/lib/clips`.
+      const showsRecent = visibleJournalHomeWidgets(homeWidgets).includes("recentEntries");
+      const recentClipCounts = showsRecent
+        ? Object.fromEntries(
+            countClipsForTargets(
+              deps.clipsRepo,
+              "journal",
+              recentEntries.map((entry) => entry.id),
+            ),
+          )
+        : {};
+      const homeModule = getModuleBySlug(deps.moduleRepo, JOURNAL_MODULE_SLUG);
+      const homeFormOptions = {
+        categoryOptions: listCategories(deps.journalRepo).map((category) => category.name),
+        tagOptions: listTags(deps.journalRepo).map((tag) => tag.name),
+        locationCategoryOptions: listLocationCategories(deps.sysLocationRepo).map((row) => row.name),
+        locationTagOptions: listLocationTags(deps.sysLocationRepo).map((row) => row.name),
+        preferences: resolveJournalPreferences(
+          homeModule ? listModuleSettingsFor(deps.moduleSettingsRepo, homeModule.id) : [],
+        ),
+        contentTextures: listDashboardTextures(deps.dashboardTextureRepo),
+        prefillTemplates: listEnabledPrefillTemplates(deps.journalRepo),
+      };
       return (
         <JournalView
-          entries={listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT)}
+          entries={recentEntries}
+          clipCounts={recentClipCounts}
+          formOptions={homeFormOptions}
           tally={countAllEntries(deps.journalRepo)}
           pinnedEntries={
             visibleJournalHomeWidgets(homeWidgets).includes("pinnedAndRecentlyEdited")

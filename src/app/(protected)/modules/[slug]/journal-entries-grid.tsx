@@ -5,7 +5,9 @@
 //
 //   * the Entries section's four tabs and its Search Results tab
 //     (journal-entries-view.tsx);
-//   * Data Management → Duplicate entries (journal-correct-view.tsx).
+//   * Data Management → Duplicate entries (journal-correct-view.tsx);
+//   * the Journal home's Recent entries card (journal-view.tsx);
+//   * the Calendar's Today in history dialog (journal-on-this-day-dialog.tsx).
 //
 // It exists because those screens had grown two hand-written copies of the same
 // seven buttons and five dialogs, and the Duplicates card was about to be a
@@ -329,6 +331,9 @@ export function JournalEntriesGrid<Row extends JournalEntry>({
   extraSelectionActions,
 }: JournalEntriesGridProps<Row>) {
   const router = useRouter();
+  // The `keepSelectionAfterBulkAction` preference. Read off `formOptions`, which
+  // every host already passes, rather than a new prop each host would thread.
+  const keepSelection = formOptions.preferences.keepSelectionAfterBulkAction;
   // Which entry's clips the paperclip opened, or undefined when none. Migration
   // 0155 — the dialog lists them and opens the one the reader picks.
   const [clipsForEntry, setClipsForEntry] = useState<number | undefined>(undefined);
@@ -364,6 +369,7 @@ export function JournalEntriesGrid<Row extends JournalEntry>({
     setError: onError,
     setNotice: onNotice,
     setBusy,
+    keepSelection,
   });
 
   /**
@@ -381,7 +387,9 @@ export function JournalEntriesGrid<Row extends JournalEntry>({
   function adopt(nextEntries: JournalEntry[], message: string, clearSelection: () => void) {
     onRowsChanged(nextEntries as Row[], message);
     onError(undefined);
-    clearSelection();
+    // With the preference on, the ticks stay. Rows the action removed (Delete)
+    // drop out on their own — `DataGrid` prunes keys it no longer holds.
+    if (!keepSelection) clearSelection();
     setBulkEdit(undefined);
     setBulkOverwrite(undefined);
     setConfirmDelete(undefined);

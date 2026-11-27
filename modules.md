@@ -3091,6 +3091,20 @@ Seven decisions worth knowing, because each was a trap:
   ownership: a journal entry is one person's, a clip is the household's, so a
   forgotten password loses that clip **for everyone**. Taxonomy stays plaintext so a
   sealed clip is still findable; its text is not searchable while sealed.
+- **A drawing is an image that remembers its strokes.** Migration 0187 added a
+  nullable `drawing_json` to `clp_clip_images` (and its bin mirror). The pad
+  (`DrawingPad`) rasterises to a PNG that is stored, served and binned like any
+  pasted image, so the card, viewer and bin needed no new path; the strokes let the
+  editor reopen it. **Editing stores a new row and repoints the body's `<img>`**
+  rather than overwriting the bytes, because `/api/clips/images/<id>` is served
+  `immutable` — `saveClipDrawing` does both, so the CLI and the web app agree. The
+  sheet and inks are fixed colours, not tokens: a drawing is content baked into a
+  PNG, and has to look the same in all eight themes. Ink keys are permanent.
+
+The home screen opens with a **"Take a note…" bar**: the text opens the editor on the
+body, the list icon opens it checklist-first with the caret in the new-item row, and
+the pencil opens it on the drawing pad (saving that first drawing saves the clip and
+closes the composer). A card whose clip has a drawing shows the first one as a picture.
 
 The editor is `contentEditable` with no third-party dependency, which fixes one
 real limit: it **preserves** pasted tables but cannot **edit** them. That was the

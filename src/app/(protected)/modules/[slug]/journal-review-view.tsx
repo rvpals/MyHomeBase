@@ -95,6 +95,9 @@ export function JournalReviewView({
 }: JournalReviewViewProps) {
   const router = useRouter();
   const [groups, setGroups] = useState(initialGroups);
+  // The `keepSelectionAfterBulkAction` preference. With it on, Delete, Lock and
+  // Merge leave the ticks; rows that left the list drop out (DataGrid prunes).
+  const keepSelection = preferences.keepSelectionAfterBulkAction;
 
   const [openEntry, setOpenEntry] = useState<JournalEntry | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | undefined>(undefined);
@@ -375,7 +378,7 @@ export function JournalReviewView({
       // The ticks must not outlive the rows they referred to — after a delete
       // those rows have gone, and so has the rest of their date if only one
       // entry is left on it.
-      pending.clearSelection();
+      if (!keepSelection) pending.clearSelection();
       setPendingDelete(undefined);
       setNotice(
         `Moved ${result.movedCount} ${plural(result.movedCount ?? 0)} to the recycle bin` +
@@ -414,7 +417,7 @@ export function JournalReviewView({
       }
       if (result.groups) setGroups(result.groups);
       // The ticks referred to rows that have now gone from the list.
-      pending.clearSelection();
+      if (!keepSelection) pending.clearSelection();
       setPendingLock(undefined);
       const locked = result.lockedCount ?? 0;
       setNotice(
@@ -769,7 +772,7 @@ export function JournalReviewView({
           // re-read rather than patched. `router.refresh()` (fired by the
           // form) re-runs the server panel, and the ticks are dropped because
           // the rows behind them have been re-numbered.
-          saved.clearSelection();
+          if (!keepSelection) saved.clearSelection();
           // The merged entry is written at this point, so binning the
           // originals is now safe to offer.
           setMergeCleanup({ sourceIds: saved.sourceIds });

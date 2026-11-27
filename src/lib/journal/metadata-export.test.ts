@@ -255,6 +255,7 @@ const PREFERENCES: JournalPreferences = {
   handwritingSize: "2xl",
   // Likewise not the default.
   reviewBeforeCalendarImport: true,
+  keepSelectionAfterBulkAction: true,
   topicMatchBody: false,
   topicEpisodeGapDays: 14,
   excludedWords: [],
@@ -333,6 +334,7 @@ describe("buildMetadataBundle", () => {
       photoRoot: "//NAS_DS223/photos",
       handwritingSize: "2xl",
       reviewBeforeCalendarImport: true,
+      keepSelectionAfterBulkAction: true,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       contentTextColor: "#1A2B3C",
@@ -520,6 +522,7 @@ describe("planMetadataImport", () => {
           photoRoot: "//NAS_DS223/photos",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          keepSelectionAfterBulkAction: false,
           topicMatchBody: false,
           topicEpisodeGapDays: 14,
           contentFontSize: "sm",
@@ -538,6 +541,7 @@ describe("planMetadataImport", () => {
           photoRoot: "",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          keepSelectionAfterBulkAction: false,
           topicMatchBody: false,
           topicEpisodeGapDays: 14,
           contentFontSize: "sm",
@@ -792,6 +796,7 @@ describe("metadataPreferenceEntries", () => {
           photoRoot: "//NAS_DS223/photos",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          keepSelectionAfterBulkAction: false,
           topicMatchBody: false,
           topicEpisodeGapDays: 14,
           contentFontSize: "sm",
@@ -806,6 +811,7 @@ describe("metadataPreferenceEntries", () => {
       { key: "temperature_unit", value: "celsius" },
       { key: "handwriting_size", value: "xl" },
       { key: "review_before_calendar_import", value: "false" },
+      { key: "keep_selection_after_bulk_action", value: "false" },
       // The two Topics preferences travel with the journal for the same reason the
       // type size does: they describe how the journal reads, not where this machine
       // keeps its files. Added with the Topics section; this expectation was not
@@ -827,6 +833,7 @@ describe("metadataPreferenceEntries", () => {
           photoRoot: "",
           handwritingSize: "4xl",
           reviewBeforeCalendarImport: false,
+          keepSelectionAfterBulkAction: false,
           topicMatchBody: false,
           topicEpisodeGapDays: 14,
           contentFontSize: "sm",
@@ -852,6 +859,20 @@ describe("metadataPreferenceEntries", () => {
     });
   });
 
+  it("restores keep-selection as off for a bundle written before it existed", () => {
+    const parsed = journalMetadataBundleSchema.parse({
+      format: JOURNAL_METADATA_FORMAT,
+      version: JOURNAL_METADATA_FORMAT_VERSION,
+      exportedAt: new Date().toISOString(),
+      preferences: { defaultLocation: null, temperatureUnit: "celsius", photoRoot: "" },
+    });
+    expect(parsed.preferences?.keepSelectionAfterBulkAction).toBe(false);
+    expect(metadataPreferenceEntries(parsed)).toContainEqual({
+      key: "keep_selection_after_bulk_action",
+      value: "false",
+    });
+  });
+
   it("emits the default location when the bundle has one", () => {
     const entries = metadataPreferenceEntries(bundleOf({ preferences: PREFERENCES }));
 
@@ -859,6 +880,7 @@ describe("metadataPreferenceEntries", () => {
       { key: "temperature_unit", value: "celsius" },
       { key: "handwriting_size", value: "2xl" },
       { key: "review_before_calendar_import", value: "true" },
+      { key: "keep_selection_after_bulk_action", value: "true" },
       // As above — the Topics preferences are part of the exported set.
       { key: "topic_match_body", value: "false" },
       { key: "topic_episode_gap_days", value: "14" },
@@ -880,6 +902,7 @@ describe("metadataPreferenceEntries", () => {
           photoRoot: "",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          keepSelectionAfterBulkAction: false,
           topicMatchBody: false,
           topicEpisodeGapDays: 14,
           contentTextColor: "#ABCDEF",
@@ -968,6 +991,7 @@ describe("metadataPreferenceEntries", () => {
           photoRoot: "",
           handwritingSize: "xl",
           reviewBeforeCalendarImport: false,
+          keepSelectionAfterBulkAction: false,
           topicMatchBody: false,
           topicEpisodeGapDays: 14,
           contentFontSize: "sm",

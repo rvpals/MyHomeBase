@@ -110,6 +110,14 @@ export interface ClipSummary {
   items: ClipItem[];
   /** How many images the clip holds, without fetching any of them. */
   imageCount: number;
+  /**
+   * The clip's first drawing, for the card to show as a picture — a drawing clip
+   * with no text would otherwise be a card that only says "1 image".
+   *
+   * Undefined when the clip has no drawing, and always undefined while sealed: the
+   * card shows nothing of a sealed clip's content, and a drawing is content.
+   */
+  drawingImageId?: number;
   /** How many records elsewhere link to it. Drives the "linked" badge. */
   linkCount: number;
   createdAt: string;
@@ -185,6 +193,12 @@ export interface ClipImage {
   height: number;
   byteSize: number;
   sortOrder: number;
+  /**
+   * Whether this image is a drawing — a raster that keeps the strokes it was drawn
+   * from, so the pad can reopen it (migration 0187). The strokes themselves are not
+   * carried here; `getClipDrawing` fetches them for the one drawing being edited.
+   */
+  isDrawing: boolean;
 }
 
 /**

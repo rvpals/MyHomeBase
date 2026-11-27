@@ -1075,7 +1075,7 @@ function DayCell({
       }}
       // `group` is what the hover-revealed controls (the +, the Today in history
       // button and the photo button) key off on desktop.
-      className={`group flex min-w-0 cursor-pointer flex-col gap-1 border-b border-r border-line p-1.5 text-left transition-colors ${cellHeightClass(
+      className={`group relative flex min-w-0 cursor-pointer flex-col gap-1 border-b border-r border-line p-1.5 text-left transition-colors ${cellHeightClass(
         variant,
         isDisplay,
       )} ${
@@ -1087,49 +1087,20 @@ function DayCell({
       }`}
     >
       <div className="flex items-start justify-between gap-1">
-        {/* The day number carries its own entry count, as a badge on the number's
-            shoulder. It used to be a faint `brass-soft` chip over in the controls
-            on the right, where it read as one more piece of cell chrome among the
-            + and the photo button; a count is a property OF the day, so it sits on
-            the day. The wrapper is what the badge positions against — the number
-            itself can't be `relative` without its own circle moving. `inline-flex`
-            rather than the default `inline`, so the wrapper's box is exactly the
-            number's circle: an inline box is sized by line-height, which would put
-            the badge's corner somewhere that moves with the font. */}
-        <span className="relative inline-flex shrink-0">
-          <span
-            className={`inline-flex shrink-0 items-center justify-center rounded-full font-display font-light leading-none ${
-              isDisplay ? "h-14 min-w-14 px-2 text-4xl" : "h-9 min-w-9 px-1 text-2xl max-lg:h-7 max-lg:min-w-7 max-lg:text-base"
-            } ${
-              day.isToday
-                ? // Today is a large filled accent circle — the one thing on the grid
-                  // that must be findable without reading any numbers.
-                  "bg-brass font-normal text-paper"
-                : day.isCurrentPeriod
-                  ? "text-ink"
-                  : "text-muted opacity-60"
-            }`}
-          >
-            {dayLabel}
-          </span>
-          {day.entries.length > 0 ? (
-            // `bg-brass` + `text-paper`, the same pair today's filled circle uses —
-            // proven to carry in all nine themes, which a one-off shade would not
-            // be. The `ring-paper` is what keeps it legible when it lands ON that
-            // circle: without it, today's badge would dissolve into the brass
-            // underneath it. Decorative — the cell's aria-label already counts the
-            // entries in words, so announcing the number again would say it twice.
-            <span
-              aria-hidden="true"
-              className={`pointer-events-none absolute flex items-center justify-center rounded-full bg-brass font-semibold text-paper ring-2 ring-paper ${
-                isDisplay
-                  ? "-right-2 -top-1 h-7 min-w-7 px-1.5 text-base"
-                  : "-right-1 -top-1 h-4 min-w-4 px-1 text-[10px] max-lg:-right-0.5 max-lg:h-3.5 max-lg:min-w-3.5 max-lg:px-0.5 max-lg:text-[9px]"
-              }`}
-            >
-              {day.entries.length}
-            </span>
-          ) : null}
+        <span
+          className={`inline-flex shrink-0 items-center justify-center rounded-full font-display font-light leading-none ${
+            isDisplay ? "h-14 min-w-14 px-2 text-4xl" : "h-9 min-w-9 px-1 text-2xl max-lg:h-7 max-lg:min-w-7 max-lg:text-base"
+          } ${
+            day.isToday
+              ? // Today is a large filled accent circle — the one thing on the grid
+                // that must be findable without reading any numbers.
+                "bg-brass font-normal text-paper"
+              : day.isCurrentPeriod
+                ? "text-ink"
+                : "text-muted opacity-60"
+          }`}
+        >
+          {dayLabel}
         </span>
         {isDisplay ? null : (
           <span className="flex shrink-0 items-center gap-1">
@@ -1159,7 +1130,7 @@ function DayCell({
                 Shown the way the photo button is, and for the same reasons — hidden
                 until hover or focus on desktop so 42 of them don't compete with the
                 titles, always visible on a phone, which has no hover. It fits
-                because the entry count moved onto the day number above, so the cell
+                because the entry count lives in the cell's lower-right corner, so the cell
                 still carries the two controls it carried before.
 
                 A row action, not a place, so a bare `TreeIcon` and no icon slot —
@@ -1258,6 +1229,22 @@ function DayCell({
           </span>
         ) : null}
       </div>
+      {day.entries.length > 0 ? (
+        // The entry count, pinned to the cell's lower-right corner (the cell is
+        // `relative`). `bg-brass` + `text-paper`, the pair today's filled circle
+        // uses — proven to carry in all nine themes. Decorative — the cell's
+        // aria-label already counts the entries in words.
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute flex items-center justify-center rounded-full bg-brass font-semibold text-paper ${
+            isDisplay
+              ? "bottom-1.5 right-1.5 h-7 min-w-7 px-1.5 text-base"
+              : "bottom-1 right-1 h-4 min-w-4 px-1 text-[10px] max-lg:bottom-0.5 max-lg:right-0.5 max-lg:h-3.5 max-lg:min-w-3.5 max-lg:px-0.5 max-lg:text-[9px]"
+          }`}
+        >
+          {day.entries.length}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -1444,6 +1431,13 @@ function DayEntriesPanel({
   const selectedRows = entries.filter((entry) => selectedIds.has(entry.id));
   const allSelected = entries.length > 0 && selectedRows.length === entries.length;
   const clearSelection = () => setSelectedIds(new Set());
+  // The `keepSelectionAfterBulkAction` preference: with it on, a finished bulk
+  // action leaves the ticks. Deleted rows still drop out — `selectedRows` is
+  // derived from the current `entries`. The Clear button always clears.
+  const keepSelection = mergeFormOptions.preferences.keepSelectionAfterBulkAction;
+  const clearAfterBulk = () => {
+    if (!keepSelection) clearSelection();
+  };
 
   // The bulk actions hand back a re-read of a grid's rows for a scope. The
   // calendar has no such grid — its rows are props — so the scope is only the
@@ -1459,6 +1453,7 @@ function DayEntriesPanel({
     setError,
     setNotice,
     setBusy: setIsBulkBusy,
+    keepSelection,
   });
 
   function toggleEntry(id: number) {
@@ -1483,7 +1478,7 @@ function DayEntriesPanel({
         setError(result.error ?? "Failed to delete the selected entries.");
         return;
       }
-      clearSelection();
+      clearAfterBulk();
       setNotice(result.message ?? "Entries deleted.");
       router.refresh();
     } finally {
@@ -1505,7 +1500,7 @@ function DayEntriesPanel({
         setError(result.error ?? "Failed to update the selected entries.");
         return;
       }
-      clearSelection();
+      clearAfterBulk();
       setNotice(result.message ?? "Entries updated.");
       router.refresh();
     } finally {

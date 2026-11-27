@@ -11,7 +11,13 @@ import {
   emptyClipsRecycleBin,
   encryptClip,
   getClip,
+  getClipDrawing,
   getClipsSettings,
+  listClipDrawings,
+  saveClipDrawing,
+  type ClipDrawing,
+  type ClipImage,
+  type SaveClipDrawingInput,
   linkClip,
   listClipItems,
   listClips,
@@ -84,6 +90,8 @@ export interface ClipResult extends ActionResult {
    * mean two loading states for one panel.
    */
   items?: ClipItem[];
+  /** The clip's drawings, on the same reads — so the editor can offer to reopen them. */
+  drawings?: ClipImage[];
 }
 
 export interface ClipListResult extends ActionResult {
@@ -110,6 +118,7 @@ export async function getClipAction(id: number): Promise<ClipResult> {
       ok: true,
       clip: getClip(deps.clipsRepo, id),
       items: listClipItems(deps.clipsRepo, id),
+      drawings: listClipDrawings(deps.clipsRepo, id),
     };
   } catch (error) {
     return toErrorResult(error, "Could not load that clip.");
@@ -284,6 +293,46 @@ export async function addClipImageAction(
     return { ok: true, url: `/api/clips/images/${image.id}` };
   } catch (error) {
     return toErrorResult(error, "Could not save that image.");
+  }
+}
+
+// Drawings (migration 0187).
+
+export interface ClipDrawingSaveResult extends ActionResult {
+  /** The clip with its body already pointing at the drawing — the editor adopts it. */
+  clip?: Clip;
+  imageId?: number;
+}
+
+/**
+ * Stores one drawing from the pad: a new one, or an edit of `replacesImageId`.
+ *
+ * Revalidates, unlike a pasted image: a drawing changes what the card shows.
+ */
+export async function saveClipDrawingAction(
+  input: SaveClipDrawingInput,
+): Promise<ClipDrawingSaveResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    const { clip, image } = await saveClipDrawing(deps.clipsRepo, deps.clipImageProcessor, input);
+    revalidatePath(CLIPS_PATH);
+    return { ok: true, clip, imageId: image.id };
+  } catch (error) {
+    return toErrorResult(error, "Could not save that drawing.");
+  }
+}
+
+export interface ClipDrawingResult extends ActionResult {
+  drawing?: ClipDrawing;
+}
+
+/** The strokes behind one drawing, for the pad to reopen. */
+export async function getClipDrawingAction(imageId: number): Promise<ClipDrawingResult> {
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+    return { ok: true, drawing: getClipDrawing(deps.clipsRepo, imageId) };
+  } catch (error) {
+    return toErrorResult(error, "Could not open that drawing.");
   }
 }
 

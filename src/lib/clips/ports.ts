@@ -147,9 +147,21 @@ export interface ClipsRepository {
   listClipImages(clipId: number): ClipImage[];
   /** The bytes, for the serving route. */
   getClipImage(id: number): DecodedImage | undefined;
-  /** Returns the stored row so the caller can rewrite the body to point at its id. */
-  addClipImage(clipId: number, image: DecodedImage, width: number, height: number): ClipImage;
+  /**
+   * Returns the stored row so the caller can rewrite the body to point at its id.
+   * `drawingJson` is set only for a drawing (migration 0187) — the strokes it was
+   * rasterised from, already validated by `saveClipDrawing`.
+   */
+  addClipImage(
+    clipId: number,
+    image: DecodedImage,
+    width: number,
+    height: number,
+    drawingJson?: string,
+  ): ClipImage;
   deleteClipImage(id: number): void;
+  /** A drawing's strokes and owning clip, or undefined for a plain image or no row. */
+  getClipDrawing(imageId: number): { clipId: number; drawingJson: string } | undefined;
 
   // Links
   listLinksForClip(clipId: number): ClipLink[];

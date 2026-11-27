@@ -47,32 +47,15 @@ const PINNED_AND_EDITED_SLOT = getIconSlot("journal_card_pinned_and_recently_edi
 const PINNED_SLOT = getIconSlot("journal_card_pinned_entries")!;
 const RECENTLY_EDITED_SLOT = getIconSlot("journal_card_recently_edited_entries")!;
 import { runJournalSqlAction } from "./journal-actions";
+import type { BulkRefreshScope } from "./journal-bulk-actions";
+import { JournalEntriesGrid, type JournalEntryFormOptions } from "./journal-entries-grid";
 import { excludeWordAction } from "./journal-word-actions";
 
-const COLUMNS: DataGridColumn<JournalEntry>[] = [
-  { key: "date", header: "Date", value: (entry) => entry.date, render: (entry) => entry.date },
-  { key: "time", header: "Time", value: (entry) => entry.time, render: (entry) => entry.time },
-  { key: "title", header: "Title", value: (entry) => entry.title, render: (entry) => entry.title },
-  {
-    key: "categories",
-    header: "Categories",
-    value: (entry) => entry.categories.join(", "),
-    render: (entry) => entry.categories.join(", "),
-  },
-  {
-    key: "tags",
-    header: "Tags",
-    value: (entry) => entry.tags.join(", "),
-    render: (entry) => entry.tags.join(", "),
-  },
-  { key: "place", header: "Place", value: (entry) => entry.placeName, render: (entry) => entry.placeName },
-  {
-    key: "locations",
-    header: "Locations",
-    value: (entry) => entry.locations.length,
-    render: (entry) => (entry.locations.length > 0 ? String(entry.locations.length) : ""),
-  },
-];
+// The Recent entries card has no columns of its own: it is `JournalEntriesGrid`, with
+// the shared `JOURNAL_ENTRY_COLUMNS` and the Entries list's storage key.
+
+/** The Recent entries card's refresh scope. Module-scope: it carries no state. */
+const RECENT_SCOPE = (): BulkRefreshScope => ({ tab: "recent" });
 
 // Just date and title for the Pinned Entries card. Deliberately far narrower than the
 // recent-entries grid: this card sits in one half of a two-column layout, and it is a
@@ -745,8 +728,14 @@ export function JournalView({
   recentlyEditedEntries = [],
   canRunSql = false,
   widgets = defaultJournalHomeWidgets(),
+  clipCounts,
+  formOptions,
 }: {
   entries: JournalEntry[];
+  /** Clips per entry id on the Recent entries card, for the grid's paperclip. */
+  clipCounts: Record<number, number>;
+  /** What the Recent entries grid's Bulk edit and Merge dialogs need. */
+  formOptions: JournalEntryFormOptions;
   /**
    * The journal's headline counts. Deliberately *not* derived from
    * `entries.length` — that array is the LIMITed recent slice, so it would read
@@ -782,6 +771,17 @@ export function JournalView({
   const router = useRouter();
   const [sqlResult, setSqlResult] = useState<{ columns: string[]; rows: unknown[][] } | undefined>(undefined);
   const [sqlError, setSqlError] = useState<string | undefined>(undefined);
+  // The Recent entries rows, held locally so a bulk write's refreshed rows show
+  // straight away. Re-seeded when the server hands down a new list (the grid's own
+  // `router.refresh()`, or any other navigation back here).
+  const [recentRows, setRecentRows] = useState(entries);
+  const [seededFrom, setSeededFrom] = useState(entries);
+  if (seededFrom !== entries) {
+    setSeededFrom(entries);
+    setRecentRows(entries);
+  }
+  const [recentNotice, setRecentNotice] = useState("");
+  const [recentError, setRecentError] = useState<string | undefined>(undefined);
 
   function openEntry(entryId: number) {
     router.push(`/modules/journal/entries/${entryId}`);
@@ -920,10 +920,9 @@ export function JournalView({
                   </div>
 
                   <div className="mt-3">
-                    {/* No `compactLayout="record"` here, unlike the recent-entries
-                        grid: that exists because seven columns can't fit a phone, and
-                        two comfortably can. A date beside a title is the same shape on
-                        both screens. */}
+                    {/* No `compactLayout="record"` here: two columns fit a phone
+                        comfortably. A date beside a title is the same shape on both
+                        screens. */}
                     <DataGrid
                       columns={PINNED_COLUMNS}
                       rows={pinnedEntries}
@@ -1011,10 +1010,14 @@ export function JournalView({
         <p className="text-sm text-muted">
           {sqlResult
             ? `${sqlResult.rows.length} row(s) returned by your query.`
-            : `Showing the most recent ${entries.length} ${entries.length === 1 ? "entry" : "entries"}, newest first. Click a row to open it.`}
+            : `Showing the most recent ${recentRows.length} ${recentRows.length === 1 ? "entry" : "entries"}, newest first. Click a row to open it.`}
         </p>
 
         {sqlError && <p className="mt-2 text-sm text-red-400">{sqlError}</p>}
+        {!sqlResult && recentError && <p className="mt-2 text-sm text-red-400">{recentError}</p>}
+        {!sqlResult && recentNotice && !recentError && (
+          <p className="mt-2 text-sm text-muted">{recentNotice}</p>
+        )}
 
         <div className="mt-3">
           {sqlResult ? (
@@ -1027,18 +1030,26 @@ export function JournalView({
               {...sqlProps}
             />
           ) : (
-            // `compactLayout="record"` puts a phone on the tabbed one-record-at-a-time
-            // layout: an entry is something you read, and a card that has to fit seven
-            // fields truncates most of them. Desktop is unaffected.
-            <DataGrid
-              columns={COLUMNS}
-              rows={entries}
-              getRowKey={(entry) => entry.id}
-              emptyMessage="No entries yet. Add one from New Journal Entry, or import a CSV."
-              enableExport
-              exportFileName="journal-entries"
+            // The same grid as every other journal list: shared columns, paperclip,
+            // and the bulk actions. Its own `"recent"` scope so a write hands back
+            // this card's 25 rows, not the Entries tab's 500. The Entries list's
+            // storage key, because the columns are exactly the shared set — a width
+            // or hidden column set there holds here too.
+            <JournalEntriesGrid
+              rows={recentRows}
+              scope={RECENT_SCOPE}
+              onRowsChanged={(nextRows, message) => {
+                setRecentRows(nextRows);
+                setRecentNotice(message);
+              }}
+              onError={setRecentError}
+              onNotice={setRecentNotice}
               onRowClick={(entry) => openEntry(entry.id)}
-              compactLayout="record"
+              clipCounts={clipCounts}
+              storageKey="myhomebase:journal-entries-grid"
+              exportFileName="journal-entries"
+              emptyMessage="No entries yet. Add one from New Journal Entry, or import a CSV."
+              formOptions={formOptions}
               {...sqlProps}
             />
           )}

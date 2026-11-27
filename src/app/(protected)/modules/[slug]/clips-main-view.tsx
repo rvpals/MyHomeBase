@@ -23,11 +23,18 @@ import { Button } from "@/components/button";
 import { CollapsibleCard } from "@/components/collapsible-card";
 import { Tabs } from "@/components/tabs";
 import { ViewModeSwitch, type ViewModeOption } from "@/components/view-mode-switch";
-import type { ClipCardColor, ClipItem, ClipSummary, ClipTaxonomyItem } from "@/lib/clips";
+import type {
+  ClipCardColor,
+  ClipImage,
+  ClipItem,
+  ClipSummary,
+  ClipTaxonomyItem,
+} from "@/lib/clips";
 import { ClipsBoardView } from "./clips-board-view";
 import { ClipsCard } from "./clips-card";
 import { TintPicker } from "@/components/tint-picker";
-import { ClipsEditor } from "./clips-editor";
+import { TreeIcon, type TreeIconName } from "@/components/tree-icons";
+import { ClipsEditor, type ClipsEditorMode } from "./clips-editor";
 import { ClipsViewer } from "./clips-viewer";
 import {
   deleteClipAction,
@@ -84,7 +91,8 @@ export function ClipsMainView({
 }: ClipsMainViewProps) {
   const router = useRouter();
   const params = useSearchParams();
-  const [writing, setWriting] = useState(false);
+  // `false` when the composer is closed, else the part of the editor it opened on.
+  const [writing, setWriting] = useState<ClipsEditorMode | false>(false);
   const [editing, setEditing] = useState<number | undefined>(undefined);
   const [viewing, setViewing] = useState<number | undefined>(undefined);
   const [searchText, setSearchText] = useState(search);
@@ -240,15 +248,9 @@ export function ClipsMainView({
         </div>
       </CollapsibleCard>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {!writing && editing === undefined ? (
-          <Button variant="primary" onClick={() => setWriting(true)}>
-            Write a clip
-          </Button>
-        ) : (
-          <span />
-        )}
+      {!writing && editing === undefined && <QuickComposeBar onCompose={setWriting} />}
 
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <ViewModeSwitch
           options={VIEW_MODE_OPTIONS}
           value={viewMode}
@@ -258,8 +260,13 @@ export function ClipsMainView({
       </div>
 
       {writing && (
-        <CollapsibleCard title="New clip">
+        <CollapsibleCard
+          title={
+            writing === "checklist" ? "New list" : writing === "drawing" ? "New drawing" : "New clip"
+          }
+        >
           <ClipsEditor
+            initialMode={writing}
             categoryOptions={categories.map((item) => item.name)}
             tagOptions={tags.map((item) => item.name)}
             onSaved={() => {
@@ -480,6 +487,7 @@ function ClipsEditorLoader({
       tags: string[];
       color: ClipCardColor | "";
       items: ClipItem[];
+      drawings: ClipImage[];
     } | undefined
   >(undefined);
   const [error, setError] = useState("");
@@ -501,6 +509,7 @@ function ClipsEditorLoader({
           tags: result.clip.tags,
           color: result.clip.color,
           items: result.items ?? [],
+          drawings: result.drawings ?? [],
         });
       } else {
         setError(result.error ?? "Could not load that clip.");
@@ -524,10 +533,54 @@ function ClipsEditorLoader({
       initialTags={loaded.tags}
       initialColor={loaded.color}
       initialItems={loaded.items}
+      initialDrawings={loaded.drawings}
       categoryOptions={categories}
       tagOptions={tags}
       onSaved={onDone}
       onCancel={onDone}
     />
+  );
+}
+
+/** The bar's two shortcut targets, after the text field itself. */
+const COMPOSE_SHORTCUTS: { mode: ClipsEditorMode; icon: TreeIconName; label: string }[] = [
+  { mode: "checklist", icon: "list", label: "New list" },
+  { mode: "drawing", icon: "pencil", label: "New drawing" },
+];
+
+/**
+ * The "Take a note…" bar that opens the composer — the text opens a plain clip, the
+ * icons open it on a checklist or on the drawing pad.
+ *
+ * Route-local, not in `src/components/`: it has one caller, and its targets are
+ * Clips' editor modes. Promote it if a second module wants the same bar.
+ *
+ * The icons are bare glyphs rather than slots: they are actions, not places, which
+ * `coding-guide.md` keeps off the slot registry. Narrow, it is the same bar at full
+ * width — the targets are 40px so a thumb hits them.
+ */
+function QuickComposeBar({ onCompose }: { onCompose: (mode: ClipsEditorMode) => void }) {
+  return (
+    <div className="flex items-center gap-1 rounded-xl border border-line bg-paper-raised py-1 pl-4 pr-1 shadow-sm">
+      <button
+        type="button"
+        onClick={() => onCompose("text")}
+        className="min-w-0 flex-1 py-2 text-left text-sm text-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+      >
+        Take a note…
+      </button>
+      {COMPOSE_SHORTCUTS.map((shortcut) => (
+        <button
+          key={shortcut.mode}
+          type="button"
+          onClick={() => onCompose(shortcut.mode)}
+          aria-label={shortcut.label}
+          title={shortcut.label}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass"
+        >
+          <TreeIcon name={shortcut.icon} className="h-5 w-5" />
+        </button>
+      ))}
+    </div>
   );
 }

@@ -183,7 +183,10 @@ export function JournalCorrectView({
       }
       if (result.duplicateGroups) setDuplicateRows(toDuplicateRows(result.duplicateGroups));
       if (result.recycledEntries) setRecycled(result.recycledEntries);
-      clearSelection?.();
+      // The `keepSelectionAfterBulkAction` preference. Restore and Purge both
+      // take their rows out of the bin, so in practice DataGrid's pruning empties
+      // the ticks either way; gated anyway so the rule is the same on every screen.
+      if (!preferences.keepSelectionAfterBulkAction) clearSelection?.();
       setConfirm(undefined);
       setNotice(describe(result as Record<string, unknown>));
       // The entry count in the module chrome and the Entries list are stale now.

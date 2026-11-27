@@ -170,10 +170,38 @@ belongs in `src/components/` as usual.
 | [`AudioSpectrum`](#audiospectrum) | **Audio visualizer** — frequency bars or a waveform, driven by an analyser | [src/components/audio-spectrum.tsx](src/components/audio-spectrum.tsx) | yes |
 | [`UtcTime`](#utctime) | **A stored UTC timestamp plus the reader's local time** — `2026-08-16 14:48:00 UTC (10:48 AM EDT)` | [src/components/utc-time.tsx](src/components/utc-time.tsx) | yes |
 | [`TintPicker`](#tintpicker) | **Pick a record colour** — Default plus the six shared tint swatches (Clips cards, Journal categories) | [src/components/tint-picker.tsx](src/components/tint-picker.tsx) | yes |
+| [`DrawingPad`](#drawingpad) | **Draw with a finger or mouse** and get back the PNG *and* the strokes, so it can be reopened | [src/components/drawing-pad.tsx](src/components/drawing-pad.tsx) | yes |
 
 Small helpers that are not full components: [see below](#unregistered-helpers).
 
 ---
+
+## DrawingPad
+
+A white sheet to draw on — finger, pen or mouse — with a colour row, sizes, eraser,
+Undo and Clear. Hands back both the rendered PNG and the strokes, so a caller can
+store the picture and reopen it later for editing. Presentation only: the palette,
+the sizes and what a valid drawing is are the caller's (Clips:
+`src/lib/clips/drawing.ts`).
+
+- **Source:** [src/components/drawing-pad.tsx](src/components/drawing-pad.tsx)
+- **Import:** `import { DrawingPad } from "@/components/drawing-pad";`
+- **Client component:** yes (canvas + pointer events)
+- **Used by:** Clips editor ([clips-editor.tsx](<src/app/(protected)/modules/[slug]/clips-editor.tsx>)).
+  Pictionary still has its own board; moving it here is a follow-up.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `inks` | `{ key, color, label }[]` | Literal colours — the drawing is content, baked into a PNG, not chrome. `key` is what each stroke stores. |
+| `sizes` | `readonly number[]` | Pen widths in backing-store px, thinnest first. The eraser uses them too. |
+| `paperColor` | `string` | The sheet. The eraser paints it. |
+| `width` / `height` | `number` | Backing store. The CSS box scales to fit, keeping the ratio, capped against `vh`. |
+| `initialStrokes?` | `DrawingPadStroke[]` | To reopen a drawing. Key the pad by drawing id so a different one remounts. |
+| `onSave` | `({ strokes, pngBase64 }) => void` | `pngBase64` has no `data:` prefix. |
+| `onCancel?`, `saving?`, `error?`, `className?` | | |
+
+Narrow: the sheet is full width with `touch-none`, so a drag draws rather than
+scrolls; the toolbar wraps.
 
 ## AudioSpectrum
 
@@ -1118,6 +1146,9 @@ before they were folded back together.
 ([journal-entries-view.tsx](<src/app/(protected)/modules/[slug]/journal-entries-view.tsx>)),
 Data Management → Duplicate entries
 ([journal-correct-view.tsx](<src/app/(protected)/modules/[slug]/journal-correct-view.tsx>)),
+the Journal home's **Recent entries** card
+([journal-view.tsx](<src/app/(protected)/modules/[slug]/journal-view.tsx>), scope `"recent"`,
+sharing the Entries list's storage key because its columns are the unchanged shared set),
 and the Calendar cell's **Today in history** dialog
 ([journal-on-this-day-dialog.tsx](<src/app/(protected)/modules/[slug]/journal-on-this-day-dialog.tsx>)),
 which is the first caller to render it **inside a [`Modal`](#modal)** — see the stacking

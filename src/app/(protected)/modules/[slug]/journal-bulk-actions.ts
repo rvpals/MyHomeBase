@@ -32,7 +32,9 @@ import {
   getEntry,
   listEntries,
   listEntriesOnMonthDayKey,
+  listRecentEntries,
   mergeEntryDraft,
+  RECENT_JOURNAL_ENTRY_LIMIT,
   recycleEntries,
   searchEntries,
   splitMergeSources,
@@ -88,8 +90,13 @@ const ENTRIES_LIMIT = 500;
  * Keyed by the month-day rather than by the date that was clicked, because the
  * dialog's question has no year in it — handing back one year's entries after a
  * write would empty the list of everything the dialog exists to show.
+ *
+ * `"recent"` is the Journal home's **Recent entries** card: the newest
+ * `RECENT_JOURNAL_ENTRY_LIMIT` entries, no filter. Its own arm because borrowing
+ * `"main"` would hand that card back the Entries tab's 500 rows after a write.
  */
 export type BulkRefreshScope =
+  | { tab: "recent" }
   | { tab: "main"; filter: JournalFilter }
   | { tab: "unlocked"; filter: JournalFilter }
   | { tab: "substantial"; filter: JournalFilter }
@@ -112,6 +119,8 @@ function toErrorResult(error: unknown, fallback: string): BulkActionResult {
 }
 
 function refresh(scope: BulkRefreshScope): JournalEntry[] {
+  // The home card's slice, re-read at the same size it was first drawn at.
+  if (scope.tab === "recent") return listRecentEntries(deps.journalRepo, RECENT_JOURNAL_ENTRY_LIMIT);
   if (scope.tab === "search") return searchEntries(deps.journalRepo, scope.term, ENTRIES_LIMIT);
   // The Duplicates card, re-grouped from scratch. Deliberately not capped at
   // ENTRIES_LIMIT and deliberately not narrowed: two entries duplicating each

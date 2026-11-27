@@ -149,6 +149,11 @@ const metadataPreferencesSchema = z.object({
    */
   reviewBeforeCalendarImport: z.boolean().default(false),
   /**
+   * Defaulted like the review flag above, so an older bundle is still legal and
+   * restores with ticks clearing after a bulk action — the module's default.
+   */
+  keepSelectionAfterBulkAction: z.boolean().default(false),
+  /**
    * The two Topics settings, defaulted for the same reason as everything above:
    * a bundle written before Topics existed is still a legal file and restores
    * with body matching off and the standard fortnight gap — exactly what the
@@ -340,6 +345,7 @@ export function buildMetadataBundle(
       photoRoot: preferences.photoRoot,
       handwritingSize: preferences.handwritingSize,
       reviewBeforeCalendarImport: preferences.reviewBeforeCalendarImport,
+      keepSelectionAfterBulkAction: preferences.keepSelectionAfterBulkAction,
       topicMatchBody: preferences.topicMatchBody,
       topicEpisodeGapDays: preferences.topicEpisodeGapDays,
       contentTextColor: preferences.contentTextColor,
@@ -518,6 +524,11 @@ export function metadataPreferenceEntries(
     {
       key: "review_before_calendar_import",
       value: preferences.reviewBeforeCalendarImport ? "true" : "false",
+    },
+    // Same rule as the review flag: a working preference, written at both values.
+    {
+      key: "keep_selection_after_bulk_action",
+      value: preferences.keepSelectionAfterBulkAction ? "true" : "false",
     },
     // Both written at every value, for the same reason the review flag is: a
     // restore has to be able to turn body matching back off and to put the

@@ -89,6 +89,7 @@ interface ImageRow {
   height: number;
   byte_size: number;
   sort_order: number;
+  is_drawing: number;
 }
 
 interface LinkRow {
@@ -205,6 +206,9 @@ export class SqliteClipsRepository implements ClipsRepository {
                 c.created_at, c.updated_at,
                 substr(c.content_html, 1, ${sourceChars}) AS excerpt_source,
                 (SELECT COUNT(*) FROM clp_clip_images i WHERE i.clip_id = c.id) AS image_count,
+                (SELECT i.id FROM clp_clip_images i
+                  WHERE i.clip_id = c.id AND i.drawing_json IS NOT NULL
+                  ORDER BY i.sort_order, i.id LIMIT 1) AS drawing_image_id,
                 (SELECT COUNT(*) FROM clp_clip_links l WHERE l.clip_id = c.id) AS link_count
          FROM clp_clips c
          ${where}
@@ -220,6 +224,7 @@ export class SqliteClipsRepository implements ClipsRepository {
       updated_at: string;
       excerpt_source: string;
       image_count: number;
+      drawing_image_id: number | null;
       link_count: number;
     }>;
 
@@ -244,6 +249,9 @@ export class SqliteClipsRepository implements ClipsRepository {
       tags: tags.get(row.id) ?? [],
       items: items.get(row.id) ?? [],
       imageCount: row.image_count,
+      // Never for a sealed clip: the card shows none of its content.
+      drawingImageId:
+        row.is_encrypted === 1 || row.drawing_image_id === null ? undefined : row.drawing_image_id,
       linkCount: row.link_count,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -415,8 +423,10 @@ export class SqliteClipsRepository implements ClipsRepository {
     // /api/clips/images/<id>.
     const copyImages = this.db.prepare(
       `INSERT INTO clp_recycled_clip_images
-         (recycled_clip_id, image_data, mime_type, width, height, byte_size, sort_order, created_at)
-       SELECT ?, image_data, mime_type, width, height, byte_size, sort_order, created_at
+         (recycled_clip_id, image_data, mime_type, width, height, byte_size, sort_order,
+          created_at, drawing_json)
+       SELECT ?, image_data, mime_type, width, height, byte_size, sort_order,
+              created_at, drawing_json
        FROM clp_clip_images WHERE clip_id = ?`,
     );
     const copyItems = this.db.prepare(
@@ -634,8 +644,10 @@ export class SqliteClipsRepository implements ClipsRepository {
     );
     const restoreImages = this.db.prepare(
       `INSERT INTO clp_clip_images
-         (clip_id, image_data, mime_type, width, height, byte_size, sort_order, created_at)
-       SELECT ?, image_data, mime_type, width, height, byte_size, sort_order, created_at
+         (clip_id, image_data, mime_type, width, height, byte_size, sort_order,
+          created_at, drawing_json)
+       SELECT ?, image_data, mime_type, width, height, byte_size, sort_order,
+              created_at, drawing_json
        FROM clp_recycled_clip_images WHERE recycled_clip_id = ? ORDER BY sort_order, id`,
     );
     const restoreItems = this.db.prepare(
@@ -1035,7 +1047,8 @@ export class SqliteClipsRepository implements ClipsRepository {
   listClipImages(clipId: number): ClipImage[] {
     const rows = this.db
       .prepare(
-        `SELECT id, clip_id, mime_type, width, height, byte_size, sort_order
+        `SELECT id, clip_id, mime_type, width, height, byte_size, sort_order,
+                (drawing_json IS NOT NULL) AS is_drawing
          FROM clp_clip_images WHERE clip_id = ? ORDER BY sort_order, id`,
       )
       .all(clipId) as ImageRow[];
@@ -1048,7 +1061,18 @@ export class SqliteClipsRepository implements ClipsRepository {
       height: row.height,
       byteSize: row.byte_size,
       sortOrder: row.sort_order,
+      isDrawing: row.is_drawing === 1,
     }));
+  }
+
+  getClipDrawing(imageId: number): { clipId: number; drawingJson: string } | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT clip_id, drawing_json FROM clp_clip_images WHERE id = ? AND drawing_json IS NOT NULL",
+      )
+      .get(imageId) as { clip_id: number; drawing_json: string } | undefined;
+    if (!row) return undefined;
+    return { clipId: row.clip_id, drawingJson: row.drawing_json };
   }
 
   getClipImage(id: number): DecodedImage | undefined {
@@ -1059,15 +1083,22 @@ export class SqliteClipsRepository implements ClipsRepository {
     return { data: row.image_data, mimeType: row.mime_type };
   }
 
-  addClipImage(clipId: number, image: DecodedImage, width: number, height: number): ClipImage {
+  addClipImage(
+    clipId: number,
+    image: DecodedImage,
+    width: number,
+    height: number,
+    drawingJson?: string,
+  ): ClipImage {
     const next = this.db
       .prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM clp_clip_images WHERE clip_id = ?")
       .get(clipId) as { next: number };
 
     const result = this.db
       .prepare(
-        `INSERT INTO clp_clip_images (clip_id, image_data, mime_type, width, height, byte_size, sort_order)
-         VALUES (@clipId, @data, @mimeType, @width, @height, @byteSize, @sortOrder)`,
+        `INSERT INTO clp_clip_images
+           (clip_id, image_data, mime_type, width, height, byte_size, sort_order, drawing_json)
+         VALUES (@clipId, @data, @mimeType, @width, @height, @byteSize, @sortOrder, @drawingJson)`,
       )
       .run({
         clipId,
@@ -1077,6 +1108,7 @@ export class SqliteClipsRepository implements ClipsRepository {
         height,
         byteSize: image.data.length,
         sortOrder: next.next,
+        drawingJson: drawingJson ?? null,
       });
 
     return {
@@ -1087,6 +1119,7 @@ export class SqliteClipsRepository implements ClipsRepository {
       height,
       byteSize: image.data.length,
       sortOrder: next.next,
+      isDrawing: drawingJson !== undefined,
     };
   }
 

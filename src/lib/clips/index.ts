@@ -153,6 +153,25 @@ export {
   type SanitizeHtmlResult,
 } from "./sanitize-html";
 
+export {
+  CLIP_DRAWING_HEIGHT,
+  CLIP_DRAWING_INK_KEYS,
+  CLIP_DRAWING_INKS,
+  CLIP_DRAWING_PAPER,
+  CLIP_DRAWING_SIZES,
+  CLIP_DRAWING_WIDTH,
+  ClipDrawingNotFoundError,
+  clipDrawingSchema,
+  getClipDrawing,
+  listClipDrawings,
+  saveClipDrawing,
+  type ClipDrawing,
+  type ClipDrawingInk,
+  type ClipDrawingStroke,
+  type SaveClipDrawingInput,
+  type SaveClipDrawingResult,
+} from "./drawing";
+
 export { SqliteClipsRepository } from "./repository";
 export { SharpClipImageProcessor } from "./image-processor";
 

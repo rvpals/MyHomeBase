@@ -34,6 +34,7 @@ describe("resolveJournalPreferences", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -59,6 +60,7 @@ describe("resolveJournalPreferences", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -93,6 +95,7 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: ["Beach", "picnic"],
@@ -114,6 +117,7 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -137,6 +141,7 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -162,6 +167,7 @@ describe("journalPreferencesToEntries", () => {
       handwritingSize: "3xl" as const,
       // Not the default either, for the same reason.
       reviewBeforeCalendarImport: true,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       // Non-empty for the same reason as the two above: a round-trip through an
@@ -205,6 +211,7 @@ describe("journalPreferencesToEntries", () => {
         photoRoot: "   ",
         handwritingSize: "xl",
         reviewBeforeCalendarImport: false,
+        keepSelectionAfterBulkAction: false,
         topicMatchBody: false,
         topicEpisodeGapDays: 14,
         excludedWords: [],
@@ -225,6 +232,7 @@ describe("journalPreferencesToEntries", () => {
       photoRoot: "  /volume1/MEDIA/PHOTO/BY YEAR  ",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -297,6 +305,7 @@ describe("handwriting size", () => {
       photoRoot: "",
       handwritingSize: "2xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -381,6 +390,7 @@ describe("topic episode gap days", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 30,
       excludedWords: [],
@@ -444,6 +454,7 @@ describe("top word limit", () => {
         photoRoot: "",
         handwritingSize: "xl",
         reviewBeforeCalendarImport: false,
+        keepSelectionAfterBulkAction: false,
         topicMatchBody: false,
         topicEpisodeGapDays: 14,
         excludedWords: [],
@@ -472,6 +483,7 @@ describe("top word limit", () => {
         photoRoot: "",
         handwritingSize: "xl",
         reviewBeforeCalendarImport: false,
+        keepSelectionAfterBulkAction: false,
         topicMatchBody: false,
         topicEpisodeGapDays: 14,
         excludedWords: [],
@@ -497,6 +509,7 @@ describe("top word limit", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -569,6 +582,7 @@ describe("review before calendar import", () => {
         photoRoot: "",
         handwritingSize: "xl",
         reviewBeforeCalendarImport: enabled,
+        keepSelectionAfterBulkAction: false,
         topicMatchBody: false,
         topicEpisodeGapDays: 14,
         // Empty: this test is about the review flag's row, and an irrelevant
@@ -586,6 +600,46 @@ describe("review before calendar import", () => {
           ?.value,
         `enabled ${enabled}`,
       ).toBe(enabled ? "true" : "false");
+    }
+  });
+});
+
+describe("keep selection after bulk actions", () => {
+  it("defaults to off when no row is stored", () => {
+    // Ticks cleared after every bulk action before this preference existed.
+    expect(resolveJournalPreferences([]).keepSelectionAfterBulkAction).toBe(false);
+  });
+
+  it("reads a stored 'true' as on", () => {
+    const prefs = resolveJournalPreferences([
+      setting(JOURNAL_SETTING_KEYS.keepSelectionAfterBulkAction, "true"),
+    ]);
+    expect(prefs.keepSelectionAfterBulkAction).toBe(true);
+  });
+
+  it("treats anything that isn't 'true' as off", () => {
+    for (const stored of ["false", "1", "yes", "", "TRUE", " true "]) {
+      const prefs = resolveJournalPreferences([
+        setting(JOURNAL_SETTING_KEYS.keepSelectionAfterBulkAction, stored),
+      ]);
+      expect(prefs.keepSelectionAfterBulkAction, `stored ${JSON.stringify(stored)}`).toBe(false);
+    }
+  });
+
+  it("writes a row at both values and round-trips through the resolver", () => {
+    for (const enabled of [true, false]) {
+      const entries = journalPreferencesToEntries({
+        ...resolveJournalPreferences([]),
+        keepSelectionAfterBulkAction: enabled,
+      });
+      const row = entries.find(
+        (entry) => entry.key === JOURNAL_SETTING_KEYS.keepSelectionAfterBulkAction,
+      );
+      expect(row?.value, `enabled ${enabled}`).toBe(enabled ? "true" : "false");
+      expect(
+        resolveJournalPreferences(entries.map((entry) => setting(entry.key, entry.value)))
+          .keepSelectionAfterBulkAction,
+      ).toBe(enabled);
     }
   });
 });
@@ -633,6 +687,7 @@ describe("content background texture", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -725,6 +780,7 @@ describe("content text color", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -780,6 +836,7 @@ describe("content texture strength", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],
@@ -837,6 +894,7 @@ describe("content font and size", () => {
       photoRoot: "",
       handwritingSize: "xl",
       reviewBeforeCalendarImport: false,
+      keepSelectionAfterBulkAction: false,
       topicMatchBody: false,
       topicEpisodeGapDays: 14,
       excludedWords: [],

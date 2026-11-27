@@ -89,6 +89,12 @@ export interface UseJournalMergeOptions {
   setError: (message: string | undefined) => void;
   setNotice: (message: string) => void;
   setBusy: (busy: boolean) => void;
+  /**
+   * The `keepSelectionAfterBulkAction` preference. When true a saved merge leaves
+   * the ticks alone; the originals are still ticked, so the cleanup offer's
+   * Delete — or any other bulk action — can run on them next.
+   */
+  keepSelection?: boolean;
 }
 
 /**
@@ -105,6 +111,7 @@ export function useJournalMerge({
   setError,
   setNotice,
   setBusy,
+  keepSelection = false,
 }: UseJournalMergeOptions) {
   const [merge, setMerge] = useState<PendingMerge | undefined>(undefined);
   const [cleanup, setCleanup] = useState<PendingMergeCleanup | undefined>(undefined);
@@ -153,7 +160,7 @@ export function useJournalMerge({
    * then offer to bin the originals. They stay in place until the reader chooses.
    */
   async function handleSaved(saved: PendingMerge) {
-    saved.clearSelection();
+    if (!keepSelection) saved.clearSelection();
     setMerge(undefined);
     setCleanup({ sourceIds: saved.sourceIds });
     await reload("Merged entry saved. Choose whether to delete the originals.");

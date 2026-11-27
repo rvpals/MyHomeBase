@@ -209,6 +209,7 @@ export {
 export {
   listEntries,
   listRecentEntries,
+  RECENT_JOURNAL_ENTRY_LIMIT,
   listEntriesInDateRange,
   searchEntries,
   findEntries,

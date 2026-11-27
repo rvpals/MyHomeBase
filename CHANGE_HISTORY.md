@@ -1,5 +1,48 @@
 # Change History
 
+## 2026-11-26 — Clips: drawings (DrawingPad, "Take a note…" bar); Journal: keep ticks after bulk actions, Recent entries card on the shared grid, calendar count badge moved
+
+**Migration 0187** (`drawing_json` on `clp_clip_images` and `clp_recycled_clip_images`).
+No new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or outside service.
+
+### Clips — drawings
+- **New reusable `DrawingPad`** (`src/components/drawing-pad.tsx`): draw with a finger, pen
+  or mouse on a white sheet, with an ink row, pen sizes, eraser, Undo and Clear. It returns
+  both the PNG and the strokes. On a phone the sheet is full width with `touch-none`, so a drag
+  draws instead of scrolling, and the toolbar wraps. Registered in `components.md`.
+- **A drawing is an image that remembers its strokes.** The PNG is stored, served, capped and
+  binned like any pasted image. The strokes go in the new `drawing_json` column so the editor
+  can reopen and keep editing the drawing. The bin copies the column both ways, so a restored
+  drawing can still be edited.
+- **Editing stores a new image row and repoints the body's `<img>`**, then deletes the old
+  row. Bytes are never rewritten because `/api/clips/images/<id>` is served `immutable`.
+  This is all done in `saveClipDrawing`, so the web app and the CLI behave the same.
+- **Lib:** `src/lib/clips/drawing.ts` holds `clipDrawingSchema`, the fixed inks, sizes and
+  sheet (`CLIP_DRAWING_*`), plus `saveClipDrawing`, `getClipDrawing` and `listClipDrawings`,
+  with tests in `drawing.test.ts`. Ink keys are permanent. The colours are fixed values, not
+  theme tokens, because a drawing is content baked into a PNG.
+- **Actions:** `saveClipDrawingAction` and `getClipDrawingAction`, both authorised on Clips.
+- **CLI:** `clips drawings --id`, `clips drawing --image` (prints the strokes as JSON) and
+  `clips draw --id --png --strokes [--replaces]`.
+- **Home screen "Take a note…" bar:** the text opens the editor on the body, the list icon
+  opens it checklist-first, and the pencil opens it on the drawing pad. Saving that first
+  drawing saves the clip and closes the composer.
+- **Cards** show a clip's first drawing as a picture. Sealed clips never do.
+
+### Journal
+- **Preferences → Bulk actions → "Keep check box state after bulk actions"** (off by
+  default). When it's on, Bulk Edit, Overwrite, Lock, Unlock, Encrypt, Merge, Delete, Restore
+  and Purge leave the ticks in place, so a second action can run on the same rows. Rows the
+  action removed still drop out. It applies to every ticked list: Entries, On This Day,
+  Calendar, Review and Correct. The setting is `keep_selection_after_bulk_action`, and it is
+  carried in the metadata export and restore (older bundles default it to off).
+- **Journal home → Recent entries** now uses the shared `JournalEntriesGrid`, so it gets the
+  same columns, paperclip counts, tick boxes and bulk actions as the Entries list. It has a new
+  `"recent"` refresh scope, and `RECENT_JOURNAL_ENTRY_LIMIT` (25) moved into `src/lib/journal`
+  so the first read and the post-write refresh return the same slice.
+- **Calendar:** a day's entry count moved from the day number's shoulder to the cell's
+  lower-right corner.
+
 ## 2026-11-25 (night) — Home Systems card: recipes to try, most-played songs, a random archive photo, a T-Bill shortcut; Modal scrim-dismiss fix
 
 **No migrations, no dependency changes, no paid or outside service.**

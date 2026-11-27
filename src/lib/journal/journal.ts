@@ -61,8 +61,18 @@ export function listEntries(repo: JournalRepository): JournalEntry[] {
   return repo.listEntries();
 }
 
+/**
+ * How many rows the Journal home's Recent entries card shows. Shared by the
+ * page's first read and the bulk-action refresh, so a write hands back the same
+ * slice the reader was looking at.
+ */
+export const RECENT_JOURNAL_ENTRY_LIMIT = 25;
+
 /** The most recent entries, newest journal date first — for the module's overview list. */
-export function listRecentEntries(repo: JournalRepository, limit = 25): JournalEntry[] {
+export function listRecentEntries(
+  repo: JournalRepository,
+  limit = RECENT_JOURNAL_ENTRY_LIMIT,
+): JournalEntry[] {
   if (!Number.isInteger(limit) || limit <= 0) {
     throw new Error(`listRecentEntries: limit must be a positive integer, got ${limit}.`);
   }

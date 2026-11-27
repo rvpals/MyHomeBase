@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
 import {
   createClip,
   deleteClip,
+  getClipDrawing,
+  listClipDrawings,
+  saveClipDrawing,
   deleteRecycledClipsForever,
   emptyClipsRecycleBin,
   getClip,
@@ -34,6 +38,9 @@ import { parseFlags } from "./parse-flags";
  *   clips colour --id 3 --colour ocean      (--colour "" clears it)
  *   clips items --id 3
  *   clips items --id 3 --set "Goggles,Towel,Cap"
+ *   clips drawings --id 3
+ *   clips drawing --image 12    (prints its strokes as JSON)
+ *   clips draw --id 3 --png sketch.png --strokes sketch.json [--replaces 12]
  *   clips tick --item 7         /  clips untick --item 7
  *   clips link --id 3 --entry 42
  *   clips delete --id 3            (moves it to the recycle bin)
@@ -46,9 +53,10 @@ import { parseFlags } from "./parse-flags";
  * `--content` takes HTML and is sanitized exactly as a paste in the browser is —
  * that is the point of routing both through the use-case rather than the view.
  *
- * Images are deliberately not reachable here: pasting one is a browser gesture,
- * and a CLI flag taking a base64 blob on argv would be unusable. Everything else
- * a clip does is available.
+ * Pasted images are deliberately not reachable here: pasting one is a browser
+ * gesture, and a CLI flag taking a base64 blob on argv would be unusable. Drawings
+ * are, through files (`draw --png --strokes`). Everything else a clip does is
+ * available.
  */
 export async function clipsCommand(args: string[]): Promise<void> {
   const [subcommand, ...rest] = args;
@@ -193,6 +201,51 @@ export async function clipsCommand(args: string[]): Promise<void> {
       return;
     }
 
+    case "drawings": {
+      const id = Number(flags.id);
+      if (!id) {
+        console.error("Usage: clips drawings --id 3");
+        process.exitCode = 1;
+        return;
+      }
+      const drawings = listClipDrawings(deps.clipsRepo, id);
+      if (drawings.length === 0) console.log("No drawings on that clip.");
+      for (const image of drawings) console.log(`  ${image.id}\t${image.width}x${image.height}`);
+      return;
+    }
+
+    case "drawing": {
+      // Prints the strokes as JSON, so `draw --strokes` can take an edited copy back.
+      const imageId = Number(flags.image);
+      if (!imageId) {
+        console.error("Usage: clips drawing --image 12");
+        process.exitCode = 1;
+        return;
+      }
+      console.log(JSON.stringify(getClipDrawing(deps.clipsRepo, imageId), null, 2));
+      return;
+    }
+
+    case "draw": {
+      // Files rather than argv: a PNG and a strokes document are both far too big for
+      // a flag, which is the reason pasted images stay browser-only. The PNG is
+      // whatever the strokes rasterise to — the CLI has no canvas to render one.
+      const id = Number(flags.id);
+      if (!id || !flags.png || !flags.strokes) {
+        console.error("Usage: clips draw --id 3 --png sketch.png --strokes sketch.json [--replaces 12]");
+        process.exitCode = 1;
+        return;
+      }
+      const { image } = await saveClipDrawing(deps.clipsRepo, deps.clipImageProcessor, {
+        clipId: id,
+        base64Data: readFileSync(flags.png).toString("base64"),
+        drawing: JSON.parse(readFileSync(flags.strokes, "utf8")),
+        replacesImageId: flags.replaces ? Number(flags.replaces) : undefined,
+      });
+      console.log(`Saved drawing ${image.id} on clip ${id}.`);
+      return;
+    }
+
     case "tick":
     case "untick": {
       const itemId = Number(flags.item);
@@ -318,7 +371,7 @@ export async function clipsCommand(args: string[]): Promise<void> {
 
     default:
       console.error(
-        "Usage: clips <list|show|add|pin|unpin|colour|items|tick|untick|link|delete|" +
+        "Usage: clips <list|show|add|pin|unpin|colour|items|drawings|drawing|draw|tick|untick|link|delete|" +
           "recycled|restore|purge|empty-bin> [flags]",
       );
       process.exitCode = 1;
