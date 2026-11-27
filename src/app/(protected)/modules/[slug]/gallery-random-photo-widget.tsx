@@ -25,6 +25,7 @@ import type { RandomPhotoPick } from "@/lib/journal-photos/random";
 import { calendarAgeSince, formatCalendarAge } from "@/lib/shared/date";
 import {
   listAllPhotosInFolderAction,
+  listArchiveFolderAction,
   readPhotoDetailsAction,
 } from "../../photos-viewer-actions";
 import {
@@ -845,6 +846,7 @@ export function RandomPhotoWidget({
             photoUrl={photoUrl}
             thumbUrl={thumbUrl}
             onPhotoDetails={readPhotoDetailsAction}
+            onBrowseFolder={listArchiveFolderAction}
             isFavorite={isPhotoFavorited}
             onToggleFavorite={toggleFavoriteByPath}
             {...albumFiling}
@@ -856,6 +858,7 @@ export function RandomPhotoWidget({
             photoUrl={photoUrl}
             thumbUrl={thumbUrl}
             onPhotoDetails={readPhotoDetailsAction}
+            onBrowseFolder={listArchiveFolderAction}
             isFavorite={isPhotoFavorited}
             onToggleFavorite={toggleFavoriteByPath}
             {...albumFiling}

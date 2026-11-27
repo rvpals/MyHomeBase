@@ -24,7 +24,7 @@ import { Modal } from "@/components/modal";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { TreeIcon } from "@/components/tree-icons";
 import type { AlbumSummary, AlbumWithPhotos } from "@/lib/albums";
-import { readPhotoDetailsAction } from "../../photos-viewer-actions";
+import { listArchiveFolderAction, readPhotoDetailsAction } from "../../photos-viewer-actions";
 import { BusyOverlay } from "@/components/busy-overlay";
 import { CullControls } from "@/components/cull-controls";
 import { useCulling, type CullVerdict } from "@/components/use-culling";
@@ -596,6 +596,7 @@ export function AlbumsView({ initialAlbums }: { initialAlbums: AlbumSummary[] })
           photoUrl={photoUrl}
           thumbUrl={thumbUrl}
           onPhotoDetails={readPhotoDetailsAction}
+          onBrowseFolder={listArchiveFolderAction}
           {...albumFiling}
           onClose={() => {
             setOpenAtIndex(-1);

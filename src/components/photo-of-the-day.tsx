@@ -205,6 +205,8 @@ export interface PhotoOfTheDayProps {
   onCreateAlbum?: PhotoViewerProps["onCreateAlbum"];
   /** Reads one photo's capture details for the viewer's details line. */
   onPhotoDetails?: PhotoViewerProps["onPhotoDetails"];
+  /** Reads one level of the photo archive for the viewer's Browse panel. */
+  onBrowseFolder?: PhotoViewerProps["onBrowseFolder"];
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -273,6 +275,7 @@ export function PhotoOfTheDay({
   onAddToAlbum,
   onCreateAlbum,
   onPhotoDetails,
+  onBrowseFolder,
   className = "",
 }: PhotoOfTheDayProps) {
   // Memoized on its contents rather than rebuilt each render: it is a dependency of
@@ -614,6 +617,7 @@ export function PhotoOfTheDay({
           onAddToAlbum={onAddToAlbum}
           onCreateAlbum={onCreateAlbum}
           onPhotoDetails={onPhotoDetails}
+          onBrowseFolder={onBrowseFolder}
           onClose={() => setViewer(undefined)}
         />
       )}

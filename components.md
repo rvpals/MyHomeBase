@@ -144,7 +144,8 @@ belongs in `src/components/` as usual.
 | [`JournalViewer`](#journalviewer) | Full detail sheet for one journal entry | [src/components/journal-viewer.tsx](src/components/journal-viewer.tsx) | yes |
 | [`EncryptionPrompt`](#encryptionprompt) | **Password prompt for an encrypted journal entry** — unlock, encrypt, or confirm-before-decrypting | [src/components/encryption-prompt.tsx](src/components/encryption-prompt.tsx) | yes |
 | [`EntryEncryptionExplainer`](#entryencryptionexplainer) | **The one account of how entry encryption works** — prose, rendered in three places | [src/components/entry-encryption-explainer.tsx](src/components/entry-encryption-explainer.tsx) | no |
-| [`PhotoViewer`](#photoviewer) | **THE photo viewer** — stage, thumbnail strip, slide show, capture details, Journal link, favourite heart, EXIF panel | [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx) | yes |
+| [`PhotoViewer`](#photoviewer) | **THE photo viewer** — stage, thumbnail strip, slide show, capture details, Journal link, favourite heart, EXIF panel, Browse tree, zoom | [src/components/photo-viewer.tsx](src/components/photo-viewer.tsx) | yes |
+| [`PhotoFolderTree`](#photofoldertree) | **Lazy archive tree** — folders and JPEGs, any depth, click a file to open it (the viewer's Browse panel) | [src/components/photo-folder-tree.tsx](src/components/photo-folder-tree.tsx) | yes |
 | [`PhotoExifDialog`](#photoexifdialog) | **One photograph's EXIF data** — Common / GPS / Misc tabs, with a map button | [src/components/photo-exif-dialog.tsx](src/components/photo-exif-dialog.tsx) | yes |
 | [`PhotoMapDialog`](#photomapdialog) | Where a photograph was taken, as a modal map | [src/components/photo-map-dialog.tsx](src/components/photo-map-dialog.tsx) | yes |
 | [`LocationMap`](#locationmap) | **THE map** — one pin or many, read-only or pickable, on OpenStreetMap tiles | [src/components/location-map.tsx](src/components/location-map.tsx) | yes |
@@ -5051,6 +5052,34 @@ differs, never the words.
 
 ---
 
+## PhotoFolderTree
+
+**A lazy, any-depth tree over the photo archive — folders and JPEGs — whose file rows are
+clickable.** The photo viewer's Browse panel. Dark-on-black, because its only home is the
+viewer's opaque overlay.
+
+- **Source:** [src/components/photo-folder-tree.tsx](src/components/photo-folder-tree.tsx)
+- **Import:** `import { PhotoFolderTree, type FolderTreeListing } from "@/components/photo-folder-tree";`
+- **Client component:** yes
+- **Below 1024px:** no change of its own; the host decides whether it is a column or a cover.
+
+Not [`TreeNav`](#treenav) (two levels, app navigation) and not
+[`FolderBrowser`](#folderbrowser) (a modal that picks a folder one level at a time): this
+shows files as well as folders, and clicking a file is the point. **Lazy** — a folder is
+read through `onListFolder` only when opened, so the archive is never walked up front.
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `onListFolder` | `(relativePath) => Promise<FolderTreeListing>` | One level; `""` is the root. `FolderTreeListing` is `{ ok, folders?, photos?, error? }`. Stable reference. |
+| `initialExpanded?` | `readonly string[]` | Folders open at mount, root-first — `ancestorFolders(path, true)` from `@/lib/journal-photos/browse`. Read once. |
+| `selectedPath?` | `string` | The photo to highlight; scrolled into view once, when its folder first lands. |
+| `onSelectPhoto` | `(folderPath, photoNames, photoName) => void` | Hands over the whole folder's names so the host can build its set without a second read. |
+| `className?` | `string` | |
+
+**Used by:** [`PhotoViewer`](#photoviewer) only.
+
+---
+
 ## PhotoViewer
 
 **THE photograph viewer.** One full-screen overlay: a big stage, a scrolling thumbnail
@@ -5101,7 +5130,22 @@ shape or the other, and the branch inside is a single `useEffect`.
 | `onAddToAlbum?` | `(albumId, relativePath) => Promise<void>` | Files it. **Must not resolve until `albumIdsFor` would return the new answer** — same contract as the heart. Reject to report a failed write. |
 | `onCreateAlbum?` | `(name, relativePath) => Promise<{ ok: true, album } \| { ok: false, error }>` | Makes an album and files the photo into it. Optional *within* the album group: omit for a picker that cannot create. |
 | `folderLabel?` | `string` | A friendlier folder name, shown above the file name. Falls back to the last segment of `folderPath`. |
+| `onBrowseFolder?` | `(relativePath) => Promise<FolderTreeListing>` | Reads one level of the archive (`""` = root) for the **Browse** panel — pass `listArchiveFolderAction`. Omit to hide the `Browse` pill. Picking a photo in the tree makes **its folder** the viewer's set until the viewer closes, whichever form it was opened in; culling verdicts are dropped. Stable reference. |
 | `className?` | `string` | |
+
+### Browse and zoom
+
+- **Browse** — a text pill in the header (no icon slot, like `EXIF`). Opens
+  [`PhotoFolderTree`](#photofoldertree) as a 288px column left of the stage on desktop;
+  below 1024px it **covers** the stage and closes itself when a photo is picked. It opens
+  expanded to the folder of the photo on the stage. Escape closes the panel before the viewer.
+- **Zoom** — `−` / level / `+` at the stage's bottom-right; the level button resets to fit.
+  Keys `+`/`=`, `-`, `0`; Ctrl+wheel (and trackpad pinch); double-click toggles. Range
+  100–800% (`@/lib/journal-photos/zoom`). Drag pans while zoomed, clamped so no black
+  stage shows beside the picture. **Zoom belongs to one photo** — it is stored with the
+  path, so arrowing on resets to fit with no effect. The transform is on a wrapper, not
+  the `<img>`: the slideshow's entry animations run on the image with `fill-mode: both`
+  and would override it.
 
 `ViewerPhoto` is `{ name, relativePath, caption?, subcaption? }`. `caption` exists because
 the favourites screen captions with the **note** the reader wrote — that is what they said

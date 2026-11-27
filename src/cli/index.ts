@@ -23,6 +23,7 @@ import { gameSavesCommand } from "./game-saves";
 import { gameScoresCommand } from "./game-scores";
 import { pictionaryWordsCommand } from "./pictionary-words";
 import { favPhotosCommand } from "./fav-photos";
+import { browsePhotosCommand } from "./browse-photos";
 import { favoriteQuotesCommand } from "./favorite-quotes";
 import { importCsvFilesCommand } from "./import-csv-files";
 import { importJournalCsvCommand } from "./import-journal-csv";
@@ -133,6 +134,7 @@ const commands: Record<string, Command> = {
   "favorite-quotes": favoriteQuotesCommand,
   "color-themes": colorThemesCommand,
   "fav-photos": favPhotosCommand,
+  "browse-photos": browsePhotosCommand,
   chess: chessCommand,
   "game-saves": gameSavesCommand,
   "game-scores": gameScoresCommand,

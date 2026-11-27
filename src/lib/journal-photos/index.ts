@@ -25,6 +25,8 @@ export {
   photoFolderContentsSchema,
   photoFolderAllSchema,
   photoDetailsSchema,
+  photoBrowseSchema,
+  type PhotoBrowseInput,
   photoRangeSchema,
   photoRangeContentsSchema,
   type PhotoFolderLookupInput,
@@ -36,6 +38,12 @@ export {
 } from "./schema";
 export { listPhotoFoldersForDate, listPhotosInFolder, monthFolderLabel } from "./photos";
 export { listAllPhotosInFolder } from "./folder";
+export {
+  listArchiveFolder,
+  joinArchivePath,
+  ancestorFolders,
+  type ArchiveFolderListing,
+} from "./browse";
 export { readPhotoDetails } from "./photo-details";
 export {
   DEFAULT_SLIDESHOW_OPTIONS,

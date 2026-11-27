@@ -29,7 +29,14 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { BusyOverlay } from "./busy-overlay";
 import { useCulling } from "./use-culling";
@@ -58,6 +65,17 @@ import {
   nearestFirst,
   revealFromRun,
 } from "@/lib/journal-photos/strip-window";
+import { ancestorFolders, joinArchivePath } from "@/lib/journal-photos/browse";
+import {
+  MAX_ZOOM,
+  MIN_ZOOM,
+  clampPan,
+  stepZoom,
+  wheelZoom,
+  zoomPercentLabel,
+  type PanOffset,
+} from "@/lib/journal-photos/zoom";
+import { PhotoFolderTree, type FolderTreeListing } from "@/components/photo-folder-tree";
 import { useIsCompact } from "@/components/viewport-context";
 import { useBodyScrollLock } from "@/components/body-scroll-lock";
 import type { ExifGpsFix } from "@/lib/journal-photos/exif-all";
@@ -308,6 +326,14 @@ interface PhotoViewerCommonProps {
    * strip LOOKS like and not what browsing means.
    */
   onCull?: (relativePaths: string[]) => Promise<ViewerCullOutcome>;
+  /**
+   * Reads one level of the photo archive (`""` is the root) for the Browse panel.
+   *
+   * OPTIONAL: the `Browse` pill appears only when it is supplied. Picking a photo in the
+   * tree makes ITS FOLDER the viewer's set until the viewer closes -- whichever form the
+   * caller opened it in. Pass a stable reference (a module-scope server action).
+   */
+  onBrowseFolder?: (relativePath: string) => Promise<FolderTreeListing>;
   /** Caller-supplied classes, merged last so they win. */
   className?: string;
 }
@@ -403,6 +429,7 @@ export function PhotoViewer({
   onAddToAlbum,
   onCreateAlbum,
   onCull,
+  onBrowseFolder,
   className = "",
 }: PhotoViewerProps) {
   // The folder read's result. Unused when the caller supplied a set — `photos` below
@@ -573,12 +600,26 @@ export function PhotoViewer({
     };
   }, [folderPath, initialPhotoPath, onListFolder]);
 
+  // A folder the reader picked in the Browse panel. When set it WINS over both the
+  // caller's set and the folder read above, and stays until the viewer closes -- the
+  // reader went somewhere, and closing the panel is not a request to go back.
+  const [browsed, setBrowsed] = useState<
+    { folderPath: string; photos: ViewerPhoto[] } | undefined
+  >(undefined);
+  const [isBrowseOpen, setIsBrowseOpen] = useState(false);
+  // The tree's opening state, captured when the panel opens so it starts expanded to the
+  // photo then on the stage (see `openBrowse`).
+  const [browseExpanded, setBrowseExpanded] = useState<string[]>([]);
+
   // One list from here on, whichever way it arrived.
   //
   // `useMemo` rather than `??` inline: for the folder case this is `loadedPhotos`
   // either way, but a caller that inlines its `photos` array gets a new reference every
   // render, and several effects below depend on the list.
-  const photos = useMemo(() => suppliedPhotos ?? loadedPhotos, [suppliedPhotos, loadedPhotos]);
+  const photos = useMemo(
+    () => browsed?.photos ?? suppliedPhotos ?? loadedPhotos,
+    [browsed, suppliedPhotos, loadedPhotos],
+  );
 
   const photo = photos[index];
 
@@ -621,7 +662,12 @@ export function PhotoViewer({
   // precedence `readPhotoDetails` follows, deliberately in step so the link and the
   // details line can never claim two different days for one picture.
   const label =
-    folderLabel ?? (folderPath === undefined ? "" : (folderPath.split("/").pop() ?? folderPath));
+    browsed !== undefined
+      ? browsed.folderPath === ""
+        ? "Photo archive"
+        : (browsed.folderPath.split("/").pop() ?? browsed.folderPath)
+      : (folderLabel ??
+        (folderPath === undefined ? "" : (folderPath.split("/").pop() ?? folderPath)));
   const details = photo === undefined ? undefined : detailsByPath[photo.relativePath];
   const journalDate =
     details?.takenAtDate ?? photoJournalDate({ photoName: photo?.name, folderName: label });
@@ -905,6 +951,138 @@ export function PhotoViewer({
     setIndex(target);
   }, []);
 
+  // ---- Browse: the folder tree. ----
+
+  /** Opens the panel, expanded to the folder of the photo on the stage. */
+  const openBrowse = useCallback(() => {
+    setBrowseExpanded(photo === undefined ? [] : ancestorFolders(photo.relativePath, true));
+    setIsBrowseOpen(true);
+  }, [photo]);
+
+  /**
+   * A photo picked in the tree. Its folder becomes the set -- built from the listing the
+   * tree already has, so no second read -- and the stage lands on the one clicked.
+   *
+   * Culling is switched off and its verdicts dropped: they judged the previous set, and
+   * dimming thumbnails in a different folder by them would be a claim about photographs
+   * nobody measured.
+   */
+  const pickBrowsedPhoto = useCallback(
+    (folder: string, photoNames: string[], photoName: string) => {
+      const nextPhotos = photoNames.map((name) => ({
+        name,
+        relativePath: joinArchivePath(folder, name),
+      }));
+      setBrowsed({ folderPath: folder, photos: nextPhotos });
+      setIndex(Math.max(0, photoNames.indexOf(photoName)));
+      setIsPlaying(false);
+      setIsCullOn(false);
+      cullRun.reset();
+      // On a phone the panel covers the stage, so picking a photo has to reveal it.
+      if (isCompact) setIsBrowseOpen(false);
+    },
+    [cullRun, isCompact],
+  );
+
+  // ---- Zoom and pan. ----
+  //
+  // Stored WITH THE PATH it belongs to, so moving to another photo resets to fit with no
+  // effect: a zoom whose path is not the photo on the stage simply reads as 1.
+  const [zoomState, setZoomState] = useState<{ path: string; zoom: number; pan: PanOffset }>({
+    path: "",
+    zoom: MIN_ZOOM,
+    pan: { x: 0, y: 0 },
+  });
+  const isZoomForPhoto = photo !== undefined && zoomState.path === photo.relativePath;
+  const zoom = isZoomForPhoto ? zoomState.zoom : MIN_ZOOM;
+  const pan = isZoomForPhoto ? zoomState.pan : { x: 0, y: 0 };
+  const stageImageRef = useRef<HTMLImageElement>(null);
+
+  /** The picture's fitted size on the stage -- layout size, which a transform ignores. */
+  const fittedSize = useCallback(() => {
+    const image = stageImageRef.current;
+    return { width: image?.offsetWidth ?? 0, height: image?.offsetHeight ?? 0 };
+  }, []);
+
+  /** Sets the zoom for the photo on the stage, re-clamping the pan to the new overhang. */
+  const applyZoom = useCallback(
+    (nextZoom: (current: number) => number) => {
+      if (photo === undefined) return;
+      const path = photo.relativePath;
+      setZoomState((current) => {
+        const currentZoom = current.path === path ? current.zoom : MIN_ZOOM;
+        const currentPan = current.path === path ? current.pan : { x: 0, y: 0 };
+        const zoomed = nextZoom(currentZoom);
+        return { path, zoom: zoomed, pan: clampPan(currentPan, zoomed, fittedSize()) };
+      });
+    },
+    [photo, fittedSize],
+  );
+
+  const zoomIn = useCallback(() => applyZoom((z) => stepZoom(z, "in")), [applyZoom]);
+  const zoomOut = useCallback(() => applyZoom((z) => stepZoom(z, "out")), [applyZoom]);
+  const zoomReset = useCallback(() => applyZoom(() => MIN_ZOOM), [applyZoom]);
+
+  // Ctrl+wheel (and a trackpad pinch, which browsers report as Ctrl+wheel) zooms the
+  // photo instead of the page. A NATIVE listener because React's `onWheel` is passive
+  // and cannot `preventDefault` the browser's own page zoom.
+  const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (stage === null) return;
+    function onWheel(event: WheelEvent) {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      applyZoom((z) => wheelZoom(z, event.deltaY));
+    }
+    stage.addEventListener("wheel", onWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", onWheel);
+  }, [applyZoom]);
+
+  // Drag to pan while zoomed. Pointer events, so a mouse and a finger behave the same.
+  // The drag itself is a ref (read only in handlers); `isPanning` is the render-visible
+  // half, which turns the transform's easing off so the picture tracks the pointer.
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; from: PanOffset }>(
+    undefined,
+  );
+  const [isPanning, setIsPanning] = useState(false);
+  const onPanStart = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (zoom <= MIN_ZOOM) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      dragRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        from: pan,
+      };
+      setIsPanning(true);
+    },
+    [zoom, pan],
+  );
+  const onPanMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (drag === undefined || drag.pointerId !== event.pointerId || photo === undefined) return;
+      const path = photo.relativePath;
+      const moved = {
+        x: drag.from.x + (event.clientX - drag.startX),
+        y: drag.from.y + (event.clientY - drag.startY),
+      };
+      setZoomState((current) =>
+        current.path === path
+          ? { ...current, pan: clampPan(moved, current.zoom, fittedSize()) }
+          : current,
+      );
+    },
+    [photo, fittedSize],
+  );
+  const onPanEnd = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = undefined;
+    setIsPanning(false);
+  }, []);
+
   // Bound on the document, not a focused element: the viewer is opened by clicking a
   // button elsewhere, so there is no reliable focus target and the arrow keys have to
   // work without the reader clicking the stage first.
@@ -923,8 +1101,22 @@ export function PhotoViewer({
         return;
       }
 
-      if (event.key === "Escape") onClose();
-      else if (event.key === "ArrowLeft") goPrevious();
+      // Escape backs out one layer: an open Browse panel first, then the viewer.
+      if (event.key === "Escape") {
+        if (isBrowseOpen) setIsBrowseOpen(false);
+        else onClose();
+      } else if (
+        // Zoom: `+`/`=` in, `-` out, `0` back to fit. Modifier-free, so Ctrl+`+` stays
+        // the browser's own page zoom.
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        (event.key === "+" || event.key === "=" || event.key === "-" || event.key === "0")
+      ) {
+        if (event.key === "-") zoomOut();
+        else if (event.key === "0") zoomReset();
+        else zoomIn();
+      } else if (event.key === "ArrowLeft") goPrevious();
       else if (event.key === "ArrowRight") {
         // Guarded here rather than inside `goNext`, which the timer also calls.
         if (index < photos.length - 1) goNext();
@@ -954,6 +1146,10 @@ export function PhotoViewer({
     canFavorite,
     isTogglingFavorite,
     toggleFavorite,
+    isBrowseOpen,
+    zoomIn,
+    zoomOut,
+    zoomReset,
   ]);
 
   // The page behind must not scroll while the viewer is up — on a phone a swipe would
@@ -1370,6 +1566,26 @@ export function PhotoViewer({
                 Hidden entirely when the photograph carries no EXIF -- a scan, a
                 screenshot, an editor's re-save. The alternative is a button that opens
                 three empty tabs, which is a control that cannot act. */}
+            {/* Opens the folder tree beside the stage. A TEXT pill with no icon slot, for
+                the same reason as `EXIF` beside it: it opens a panel inside this viewer and
+                marks no PLACE in the app. `aria-pressed` because it is a panel that stays
+                open until closed, not a one-shot action. */}
+            {onBrowseFolder !== undefined && (
+              <button
+                type="button"
+                onClick={() => (isBrowseOpen ? setIsBrowseOpen(false) : openBrowse())}
+                aria-pressed={isBrowseOpen}
+                title="Browse the photo archive's folders"
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+                  isBrowseOpen
+                    ? "bg-white/90 text-black hover:bg-white"
+                    : "bg-white/10 text-white hover:bg-white/20"
+                }`}
+              >
+                Browse
+              </button>
+            )}
+
             {canShowExif && (
               <button
                 type="button"
@@ -1432,10 +1648,45 @@ export function PhotoViewer({
           </div>
         </div>
 
+        {/* The body: the Browse panel (when open) beside the stage-and-strip column.
+            `relative` so on a phone the panel can cover the column instead of squeezing
+            it -- 390px cannot hold a tree and a photograph side by side. */}
+        <div className="relative flex min-h-0 flex-1">
+          {isBrowseOpen && onBrowseFolder !== undefined && (
+            <aside
+              aria-label="Browse folders"
+              className="flex w-72 shrink-0 flex-col border-r border-white/10 bg-neutral-950 text-white max-lg:absolute max-lg:inset-0 max-lg:z-20 max-lg:w-full max-lg:border-r-0"
+            >
+              <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-3 py-2">
+                <p className="text-xs uppercase tracking-wide text-white/50">Photo archive</p>
+                <button
+                  type="button"
+                  onClick={() => setIsBrowseOpen(false)}
+                  aria-label="Close the folder tree"
+                  className="grid h-8 w-8 place-items-center rounded-full text-lg leading-none text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  &times;
+                </button>
+              </div>
+              <PhotoFolderTree
+                onListFolder={onBrowseFolder}
+                initialExpanded={browseExpanded}
+                selectedPath={photo?.relativePath}
+                onSelectPhoto={pickBrowsedPhoto}
+                className="min-h-0 flex-1 overflow-y-auto py-1"
+              />
+            </aside>
+          )}
+
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* The stage. `min-h-0` is what lets it shrink instead of pushing the strip off the
             bottom — a flex child's default `min-height: auto` would let a tall photo win
-            the argument with the thumbnails. */}
-        <div className="relative flex min-h-0 flex-1 items-center justify-center px-2">
+            the argument with the thumbnails. `overflow-hidden` keeps a zoomed picture
+            inside the stage rather than over the strip. */}
+        <div
+          ref={stageRef}
+          className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden px-2"
+        >
           {isLoading ? (
             <p className="text-sm text-white/60">Reading the folder…</p>
           ) : error !== undefined ? (
@@ -1447,10 +1698,32 @@ export function PhotoViewer({
               {/* Keyed on the path so React remounts the image when the photo changes,
                   which is what lets a CSS entry animation run again. Without the key the
                   same element would swap its `src` and no transition would play. */}
+              {/* The zoom/pan layer. The transform lives HERE, not on the `<img>`: the
+                  slideshow's entry animations run on the image with `fill-mode: both`,
+                  which would override an inline transform on the same element. Scaling
+                  this full-stage box about its centre scales the centred photo about
+                  its own centre. Pointer handlers pan only while zoomed; at fit the
+                  layer is inert and a swipe does nothing new. */}
+              <div
+                className={`absolute inset-0 flex items-center justify-center px-2 ${
+                  zoom > MIN_ZOOM ? "cursor-grab touch-none active:cursor-grabbing" : ""
+                }`}
+                style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transition: isPanning ? "none" : "transform 120ms ease-out",
+                }}
+                onPointerDown={onPanStart}
+                onPointerMove={onPanMove}
+                onPointerUp={onPanEnd}
+                onPointerCancel={onPanEnd}
+                onDoubleClick={() => (zoom > MIN_ZOOM ? zoomReset() : zoomIn())}
+              >
               {/* eslint-disable-next-line @next/next/no-img-element -- the bytes come from
                   our own session-gated route over a NAS share, not a static asset
                   next/image can optimize. */}
               <img
+                ref={stageImageRef}
+                draggable={false}
                 key={photo.relativePath}
                 src={photoUrl(photo.relativePath)}
                 alt={caption}
@@ -1473,6 +1746,43 @@ export function PhotoViewer({
                 onLoad={() => setLoadedPath(photo.relativePath)}
                 onError={() => setLoadedPath(photo.relativePath)}
               />
+              </div>
+
+              {/* Zoom controls, bottom-right of the stage: out, the level (click to fit),
+                  in. Text glyphs, not icon slots -- these are state controls on the
+                  stage, not marks for a place. Clear of the right-hand arrow, which sits
+                  at mid-height. */}
+              <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-black/60 p-1 text-white ring-1 ring-white/15">
+                <button
+                  type="button"
+                  onClick={zoomOut}
+                  disabled={zoom <= MIN_ZOOM}
+                  aria-label="Zoom out"
+                  title="Zoom out (−)"
+                  className="grid h-9 w-9 place-items-center rounded-full text-xl leading-none transition-colors hover:bg-white/15 disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  &minus;
+                </button>
+                <button
+                  type="button"
+                  onClick={zoomReset}
+                  title="Fit to screen (0)"
+                  aria-label={`Zoom ${zoomPercentLabel(zoom)} — fit to screen`}
+                  className="min-w-12 rounded-full px-1 py-1.5 text-xs tabular-nums transition-colors hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  {zoomPercentLabel(zoom)}
+                </button>
+                <button
+                  type="button"
+                  onClick={zoomIn}
+                  disabled={zoom >= MAX_ZOOM}
+                  aria-label="Zoom in"
+                  title="Zoom in (+)"
+                  className="grid h-9 w-9 place-items-center rounded-full text-xl leading-none transition-colors hover:bg-white/15 disabled:opacity-40 disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  +
+                </button>
+              </div>
 
               {/* Only while this photograph's bytes are in flight. Absolute, so it
                   neither moves the centred image nor changes the stage's height.
@@ -1699,6 +2009,8 @@ export function PhotoViewer({
               </div>
             </CollapsibleCard>
           )}
+        </div>
+          </div>
         </div>
       </div>
 

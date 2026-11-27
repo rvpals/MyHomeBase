@@ -1,5 +1,42 @@
 # Change History
 
+## 2026-11-26 (night) — Photo viewer: Browse the archive tree, zoom and pan
+
+No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or
+outside service.
+
+### Photo viewer — Browse
+- **New `Browse` pill** in the viewer header (a text pill like `EXIF`, no icon slot). It opens
+  the photo archive as a folder tree, already expanded to the folder of the photo on the
+  stage. Click any JPEG and **its folder becomes the viewer's set** until the viewer closes,
+  whatever the viewer was opened on. Culling is switched off and its verdicts dropped, since
+  they judged the previous set. Escape closes the panel first, then the viewer.
+- **Desktop:** a 288px column to the left of the stage. **Phone:** the panel covers the stage
+  and closes itself when a photo is picked.
+- **New reusable `PhotoFolderTree`** (`src/components/photo-folder-tree.tsx`): a lazy tree of
+  folders and JPEGs at any depth. A folder is read only when it is opened, so the archive is
+  never walked up front. Registered in `components.md`.
+- **Wired in everywhere the viewer opens:** Gallery Albums, Favourite photos, Magic list,
+  the random-photo widget, and the Journal's photos of the day (`PhotoOfTheDay` gained an
+  `onBrowseFolder` pass-through).
+- **Lib:** `src/lib/journal-photos/browse.ts` holds `listArchiveFolder` (one level, two
+  directory listings, no file opened), `joinArchivePath` and `ancestorFolders`, with tests
+  in `browse.test.ts`. `photoBrowseSchema` is the one boundary where a blank path (the
+  archive root) is legal. Every other path goes through the same traversal guard as before.
+- **Action:** `listArchiveFolderAction` in `photos-viewer-actions.ts`, authorised on its
+  first line.
+- **CLI:** `browse-photos [folder]` lists one level of the archive.
+
+### Photo viewer — Zoom and pan
+- **`−` / level / `+` controls** at the stage's bottom-right. Click the level to go back to
+  fit. Keys `+`/`=`, `-` and `0`. Ctrl+wheel and trackpad pinch zoom the photo instead of the
+  page. Double-click toggles. Range is 100–800%.
+- **Drag to pan while zoomed**, with a mouse or a finger. The pan is clamped so no black
+  stage shows beside the picture.
+- **Zoom belongs to one photo:** moving to the next photo resets it to fit.
+- **Lib:** `src/lib/journal-photos/zoom.ts` holds the zoom steps, clamping, wheel and pan
+  arithmetic, with tests in `zoom.test.ts`.
+
 ## 2026-11-26 — Clips: drawings (DrawingPad, "Take a note…" bar); Journal: keep ticks after bulk actions, Recent entries card on the shared grid, calendar count badge moved
 
 **Migration 0187** (`drawing_json` on `clp_clip_images` and `clp_recycled_clip_images`).

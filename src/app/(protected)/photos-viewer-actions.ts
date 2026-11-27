@@ -2,6 +2,8 @@
 
 import {
   listAllPhotosInFolder,
+  listArchiveFolder,
+  photoBrowseSchema,
   photoDetailsSchema,
   photoFolderAllSchema,
   readPhotoDetails,
@@ -56,6 +58,40 @@ export async function listAllPhotosInFolderAction(
   } catch {
     // An SMB share that drops mid-listing lands here. Same vocabulary as the root
     // check, so the viewer has one set of reasons to render.
+    return { ok: false, error: "The photo archive isn't answering." };
+  }
+}
+
+/** What the viewer's Browse tree gets back for one folder. */
+export interface ArchiveFolderResult {
+  ok: boolean;
+  folders?: string[];
+  photos?: string[];
+  error?: string;
+}
+
+/**
+ * One level of the photo archive -- sub-folders and JPEG names -- for the viewer's
+ * Browse tree. `""` is the archive root. Two directory listings, no file opened.
+ */
+export async function listArchiveFolderAction(
+  relativePath: string,
+): Promise<ArchiveFolderResult> {
+  // Reports the denial rather than throwing, to keep this action's `{ ok }` contract.
+  try {
+    await requireModuleAccess(ACCESS_MODULE_SLUG);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Not signed in." };
+  }
+
+  const parsed = photoBrowseSchema.safeParse({ relativePath });
+  if (!parsed.success) return { ok: false, error: "Not a valid photo folder." };
+
+  try {
+    const result = await listArchiveFolder(photoStore(), parsed.data);
+    if (!result.isAvailable) return { ok: false, error: messageFor(result.reason) };
+    return { ok: true, folders: result.folders, photos: result.photos };
+  } catch {
     return { ok: false, error: "The photo archive isn't answering." };
   }
 }

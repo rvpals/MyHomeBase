@@ -28,7 +28,7 @@ import { cullGalleryPhotosAction } from "./gallery-culling-actions";
 import { PhotoViewer } from "@/components/photo-viewer";
 import { TreeIcon } from "@/components/tree-icons";
 import type { FavPhoto } from "@/lib/fav-photos";
-import { readPhotoDetailsAction } from "../../photos-viewer-actions";
+import { listArchiveFolderAction, readPhotoDetailsAction } from "../../photos-viewer-actions";
 import {
   listFavPhotosAction,
   removeFavPhotosAction,
@@ -553,6 +553,7 @@ duplicate of ${fileNameOf(verdict.duplicateOf)}`))
           photoUrl={photoUrl}
           thumbUrl={thumbUrl}
           onPhotoDetails={readPhotoDetailsAction}
+          onBrowseFolder={listArchiveFolderAction}
           {...albumFiling}
           onClose={closeViewer}
         />

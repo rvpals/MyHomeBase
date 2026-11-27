@@ -30,6 +30,7 @@ import {
 } from "./entries/[id]/journal-photos-actions";
 import { cullPhotosAction } from "./entries/[id]/culling-actions";
 import { cullGalleryPhotosAction } from "./gallery-culling-actions";
+import { listArchiveFolderAction } from "../../photos-viewer-actions";
 import { listFavPhotosAction, toggleFavPhotoAction } from "./gallery-photo-actions";
 import { useAlbumFiling } from "./use-album-filing";
 
@@ -148,6 +149,7 @@ export function JournalPhotosHost({ date, range, onClose, autoLookup }: JournalP
       // The viewer's own Culling toggle. Path-shaped rather than folder-shaped, and
       // it goes through the GALLERY action because the viewer's set can span folders.
       onCullPhotos={cullGalleryPhotosAction}
+      onBrowseFolder={listArchiveFolderAction}
     />
   );
 }

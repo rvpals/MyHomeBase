@@ -9,6 +9,7 @@ import { BusyOverlay } from "@/components/busy-overlay";
 import { CullControls } from "@/components/cull-controls";
 import { useCulling, type CullVerdict } from "@/components/use-culling";
 import { cullGalleryPhotosAction } from "./gallery-culling-actions";
+import { listArchiveFolderAction } from "../../photos-viewer-actions";
 import { Progress3D } from "@/components/progress-3d";
 import {
   MAX_LIST_PHOTOS,
@@ -661,6 +662,7 @@ export function MagicListView({
         <PhotoViewer
           photos={viewerPhotos}
           onCull={cullGalleryPhotosAction}
+          onBrowseFolder={listArchiveFolderAction}
           initialIndex={viewerIndex}
           autoPlay={viewerAutoPlay}
           photoUrl={photoUrl}

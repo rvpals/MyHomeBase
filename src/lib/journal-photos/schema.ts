@@ -112,6 +112,24 @@ export const photoDetailsSchema = z.object({
   relativePath: photoRelativePathSchema,
 });
 
+/**
+ * One level of the archive to browse, for `listArchiveFolder`.
+ *
+ * The one boundary where a BLANK path is legal: `""` is the archive root, the top of the
+ * viewer's Browse tree. Every non-blank path goes through the same traversal guard as
+ * `photoRelativePathSchema`.
+ */
+export const photoBrowseSchema = z.object({
+  relativePath: z
+    .string()
+    .max(1024)
+    .refine(
+      (value) => value === "" || isSafeRelativePath(value),
+      "Path is outside the photo folder.",
+    ),
+});
+
+export type PhotoBrowseInput = z.infer<typeof photoBrowseSchema>;
 export type PhotoFolderLookupInput = z.infer<typeof photoFolderLookupSchema>;
 export type PhotoFolderContentsInput = z.infer<typeof photoFolderContentsSchema>;
 export type PhotoFolderAllInput = z.infer<typeof photoFolderAllSchema>;
