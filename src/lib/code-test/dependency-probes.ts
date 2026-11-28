@@ -23,6 +23,7 @@ import path from "node:path";
 import {
   OCR_LANGUAGE,
   OCR_WORKER_START_TIMEOUT_MS,
+  checkOcrWorkerFiles,
   ocrModelFolder,
   ocrWorkerOptions,
   startOcrWorker,
@@ -231,6 +232,21 @@ function createTesseractProbe(requireLocalModel: boolean): DependencyProbe {
           requireLocalModel ? "fail" : "warn",
         );
       }
+
+      // What the worker THREAD will require. Missing files there don't fail the start --
+      // they kill the server -- so they are named here, before anything is spawned.
+      const files = await record.step(
+        "Worker files present",
+        () => {
+          const check = checkOcrWorkerFiles();
+          if (check.missing.length > 0) {
+            throw new Error(`missing from this install: ${check.missing.join("; ")}`);
+          }
+          return check;
+        },
+        (check) => `${check.filesChecked} worker source files, every require resolves`,
+      );
+      record.fact("Worker script", files.workerScript);
 
       // Timed separately from the worker start: a broken install fails HERE, a missing
       // or unreachable model fails at "Start worker".

@@ -227,6 +227,13 @@ export {
 } from "./text-engines";
 
 export {
+  checkOcrWorkerFiles,
+  extractRequireSpecifiers,
+  isBuiltinSpecifier,
+  type OcrWorkerFilesCheck,
+} from "./ocr-worker-files";
+
+export {
   extractAttachmentText,
   extractDocumentText,
   findDocumentIdsByContent,

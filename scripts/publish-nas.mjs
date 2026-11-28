@@ -505,6 +505,55 @@ step("Copying tesseract.js-core (the OCR engine the bundler cannot trace)");
   }
 }
 
+step("Copying tesseract.js and its worker's dependencies (file tracing misses the worker)");
+{
+  // tesseract.js runs OCR in a worker thread started with
+  // `new Worker(".../src/worker-script/node/index.js")` -- a path, not an import, so
+  // Next's file tracing never follows it. The traced `.next/standalone` copy held only
+  // the MAIN-THREAD half of the package (21 of its 42 files): no `worker-script/index.js`,
+  // `getCore.js`, `gunzip.js`, `cache.js`, and none of `wasm-feature-detect` or `bmp-js`.
+  //
+  // On the NAS the worker's first `require` then threw, and because tesseract.js puts no
+  // 'error' listener on its Worker, Node killed the whole server process: the browser saw
+  // "An unexpected response was received from the server" and the System Log simply
+  // stopped at `step "Start worker" starting` (found 2026-11-28 by the Dependency test).
+  //
+  // So the package and its whole production dependency closure are copied by hand, over
+  // the partial traced copy. A package nested under its parent's own node_modules comes
+  // along with the parent's directory.
+  const copied = [];
+  const queue = ["tesseract.js"];
+  const seen = new Set();
+  while (queue.length > 0) {
+    const name = queue.shift();
+    if (seen.has(name) || name === "tesseract.js-core") continue; // core: copied above
+    seen.add(name);
+    const source = path.join(ROOT, "node_modules", name);
+    if (!existsSync(source)) continue; // nested under its parent, or optional
+    const dest = path.join(OUT, "node_modules", name);
+    mkdirSync(path.dirname(dest), { recursive: true });
+    cpSync(source, dest, { recursive: true });
+    copied.push(name);
+    const manifest = JSON.parse(readFileSync(path.join(source, "package.json"), "utf8"));
+    queue.push(...Object.keys(manifest.dependencies ?? {}));
+  }
+
+  // The files the worker thread loads first. If any is absent, OCR would take the
+  // server down on the NAS -- fail the publish here instead.
+  const workerFiles = [
+    "tesseract.js/src/worker-script/node/index.js",
+    "tesseract.js/src/worker-script/node/getCore.js",
+    "tesseract.js/src/worker-script/index.js",
+    "wasm-feature-detect/package.json",
+    "bmp-js/package.json",
+  ];
+  const missing = workerFiles.filter((file) => !existsSync(path.join(OUT, "node_modules", file)));
+  if (missing.length > 0) {
+    throw new Error(`OCR worker files missing from the package: ${missing.join(", ")}`);
+  }
+  console.log(`  Shipped ${copied.length} packages: ${copied.join(", ")}`);
+}
+
 step("Vendoring the OCR language model (so the NAS never downloads one)");
 {
   // Looked for where tesseract.js caches it after a local run, then beside the repo.

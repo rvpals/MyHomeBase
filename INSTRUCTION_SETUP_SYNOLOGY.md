@@ -327,7 +327,9 @@ folder can be excluded.
 **OCR for the Document Library needs one more line in `.env` on an existing install:**
 `MYHOMEBASE_TESSDATA=/volume1/app/myhomebase/tessdata`. The publish ships
 `tessdata/eng.traineddata` (~5 MB) there, along with the arm64 `@napi-rs/canvas` and
-`tesseract.js-core` (~44 MB); without the variable, `tesseract.js` downloads the language
+`tesseract.js-core` (~44 MB), and the whole of `tesseract.js` with its worker thread's
+dependencies. Next's file tracing can't follow the worker, and a package without them takes
+the server down the first time OCR runs, so the publish now fails rather than ship one; without the variable, `tesseract.js` downloads the language
 model from a CDN the first time someone presses OCR. Like the music root it is read at
 startup, so **restart the app** after adding it. Read the publish output for `!` lines — the
 canvas, core and model steps warn rather than abort, and a missing one means scanned PDFs

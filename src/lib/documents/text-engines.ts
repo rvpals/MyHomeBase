@@ -20,6 +20,7 @@
 // That is why `ocrImage` caps the pages it will read and why nothing calls it from an
 // upload path.
 
+import { checkOcrWorkerFiles } from "./ocr-worker-files";
 import type { TextExtractionEngines } from "./text-extract";
 
 /**
@@ -140,6 +141,16 @@ export async function startOcrWorker(
     logger?: (message: { status: string; progress: number }) => void;
   } = {},
 ): Promise<import("tesseract.js").Worker> {
+  // A worker whose own files are missing doesn't fail -- it kills the server process
+  // (see ocr-worker-files.ts). Refuse to spawn one, with the names, instead.
+  const files = checkOcrWorkerFiles();
+  if (files.missing.length > 0) {
+    throw new Error(
+      `OCR can't start: the worker's files are missing from this install -- ${files.missing.join("; ")}. ` +
+        `Republish; scripts/publish-nas.mjs copies them.`,
+    );
+  }
+
   const { createWorker } = await import("tesseract.js");
 
   let failStart: (error: Error) => void = () => {};
