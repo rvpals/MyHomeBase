@@ -18,6 +18,7 @@
 // engine version, compile options, WAL on a real file -- and for the CLI.)
 
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -248,6 +249,24 @@ function createTesseractProbe(requireLocalModel: boolean): DependencyProbe {
       );
       record.fact("Worker script", files.workerScript);
 
+      // The two WebAssembly probes the worker awaits before it sends ANY message. Run
+      // here, on the main thread, with a timeout -- a hang in one of them is otherwise
+      // indistinguishable from a worker that never started.
+      await record.step(
+        "WebAssembly SIMD probes",
+        () => probeWasmFeatures(files.workerScript),
+        (features) => `simd ${features.simd}, relaxed simd ${features.relaxedSimd} (picks ${features.coreVariant})`,
+      );
+
+      // tesseract.js hides its Worker and listens for nothing but messages, so a thread
+      // that dies or stalls is silent. This starts the same script with every listener
+      // attached and sends it the same first message.
+      await record.step(
+        "Worker thread smoke test",
+        () => smokeTestWorkerThread(files.workerScript, record),
+        (outcome) => outcome,
+      );
+
       // Timed separately from the worker start: a broken install fails HERE, a missing
       // or unreachable model fails at "Start worker".
       await record.step(
@@ -347,6 +366,135 @@ function createTesseractProbe(requireLocalModel: boolean): DependencyProbe {
       }
     },
   };
+}
+
+/** How long the main-thread WebAssembly probes may take; they are microseconds normally. */
+const WASM_PROBE_TIMEOUT_MS = 10_000;
+
+/** How long the worker smoke test waits for the thread to answer `load`. */
+const WORKER_SMOKE_TIMEOUT_MS = 45_000;
+
+/** Rejects with `label` after `ms`, clearing its timer whichever way the race goes. */
+async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} did not finish within ${ms / 1000}s`)), ms);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * `wasm-feature-detect`'s `simd()` and `relaxedSimd()`, resolved from the worker
+ * script's own location so it is the copy the worker would load.
+ */
+async function probeWasmFeatures(
+  workerScript: string,
+): Promise<{ simd: boolean; relaxedSimd: boolean; coreVariant: string }> {
+  const detect = createRequire(workerScript)("wasm-feature-detect") as {
+    simd: () => Promise<boolean>;
+    relaxedSimd: () => Promise<boolean>;
+  };
+  const simd = await withTimeout(detect.simd(), WASM_PROBE_TIMEOUT_MS, "simd()");
+  const relaxedSimd = await withTimeout(detect.relaxedSimd(), WASM_PROBE_TIMEOUT_MS, "relaxedSimd()");
+  const coreVariant = relaxedSimd ? "relaxedsimd-lstm" : simd ? "simd-lstm" : "lstm";
+  return { simd, relaxedSimd, coreVariant };
+}
+
+/**
+ * Starts tesseract.js's worker script directly and sends it the `load` message the
+ * library sends first, with logging on. Every event goes to the System Log AS IT
+ * HAPPENS -- if the thread takes the process down, the lines before it survive.
+ *
+ * Resolves with a one-line outcome when `load` succeeds; throws, with the timeline of
+ * events in the message, when the thread errors, exits, rejects or stays silent.
+ */
+async function smokeTestWorkerThread(workerScript: string, record: DependencyRecorder): Promise<string> {
+  const { Worker } = await import("node:worker_threads");
+  const startedAt = performance.now();
+  const timeline: string[] = [];
+  const note = (event: string, detail?: string) => {
+    const line = `@${Math.round(performance.now() - startedAt)}ms ${event}`;
+    timeline.push(detail ? `${line}: ${detail.split("\n")[0]}` : line);
+    record.debug(`worker smoke test ${line}`, detail);
+  };
+
+  // stdout/stderr: true keeps the thread's console output for us rather than letting it
+  // go to the server's own output, which on the NAS nobody is watching.
+  const worker = new Worker(workerScript, { stdout: true, stderr: true });
+  const capture = (stream: NodeJS.ReadableStream, name: string) => {
+    let buffered = "";
+    stream.on("data", (chunk: Buffer) => {
+      buffered += chunk.toString("utf8");
+      let newline: number;
+      while ((newline = buffered.indexOf("\n")) >= 0) {
+        const line = buffered.slice(0, newline).trim();
+        buffered = buffered.slice(newline + 1);
+        if (line !== "") note(name, line.slice(0, 500));
+      }
+    });
+  };
+  capture(worker.stdout, "stdout");
+  capture(worker.stderr, "stderr");
+
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      const fail = (reason: string) =>
+        reject(new Error(`${reason}. Timeline: ${timeline.join(" | ") || "no events at all"}`));
+      const timer = setTimeout(
+        () => fail(`the worker thread did not answer "load" within ${WORKER_SMOKE_TIMEOUT_MS / 1000}s`),
+        WORKER_SMOKE_TIMEOUT_MS,
+      );
+      const finish = (callback: () => void) => {
+        clearTimeout(timer);
+        callback();
+      };
+
+      worker.on("online", () => {
+        note("online (script started)");
+        worker.postMessage({
+          workerId: "dependency-test",
+          jobId: "dependency-test-load",
+          action: "load",
+          payload: { options: { lstmOnly: true, corePath: undefined, logging: true } },
+        });
+        note("sent load");
+      });
+      worker.on("message", (packet: { status?: string; action?: string; data?: unknown }) => {
+        const data = packet.data as { status?: string; progress?: number } | string | undefined;
+        if (packet.status === "progress" && typeof data === "object") {
+          note("progress", `${data?.status} ${data?.progress}`);
+        } else if (packet.status === "resolve") {
+          note(`resolve ${packet.action}`);
+          finish(() =>
+            resolve(`thread online and "load" answered in ${Math.round(performance.now() - startedAt)} ms`),
+          );
+        } else if (packet.status === "reject") {
+          const text = describeErrorFully(packet.data);
+          note(`reject ${packet.action}`, text);
+          finish(() => fail(`the worker rejected "${packet.action}": ${text.split("\n")[0]}`));
+        } else {
+          note("message", JSON.stringify(packet).slice(0, 300));
+        }
+      });
+      worker.on("messageerror", (error) => note("messageerror", describeErrorFully(error)));
+      worker.on("error", (error) => {
+        const text = describeErrorFully(error);
+        note("error", text);
+        finish(() => fail(`the worker thread threw: ${text.split("\n")[0]}`));
+      });
+      worker.on("exit", (code) => {
+        note("exit", `code ${code}`);
+        finish(() => fail(`the worker thread exited with code ${code} before answering "load"`));
+      });
+    });
+  } finally {
+    // Terminated whatever happened: a stalled thread must not outlive the check.
+    await worker.terminate().catch(() => undefined);
+  }
 }
 
 // ---------------------------------------------------------------- sharp

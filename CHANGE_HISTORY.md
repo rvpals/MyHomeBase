@@ -1,5 +1,23 @@
 # Change History
 
+## 2026-11-28 — Dependency test: see inside the OCR worker thread
+
+No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or
+outside service.
+
+- **Why:** with the worker files now shipped, the NAS worker still sent no message at all
+  for 120 seconds, not even its first "loading tesseract core". tesseract.js listens to its
+  thread for messages only, so a thread that throws, exits or stalls is invisible.
+- **WebAssembly SIMD probes:** a new step in the Tesseract check runs the two feature
+  checks the worker awaits before its first message (`simd()`, `relaxedSimd()`) on the
+  main thread, with a 10-second timeout, and reports which engine build they select.
+- **Worker thread smoke test:** starts the same worker script directly, with listeners on
+  online, error, exit, messageerror and every message. It captures the thread's own
+  stdout/stderr with tesseract's internal logging on, and sends it the same `load` message.
+  Each event goes to the System Log as it happens, with its time since spawn. If the
+  thread stays silent for 45 seconds, errors or exits, the step fails with the whole
+  timeline and the check stops there instead of waiting out the 120-second start.
+
 ## 2026-11-27 (night) — Control Center settings, renamed card, photo opens the viewer
 
 Migration **0188** (data-only: seeds the `control_center_config` setting). No new table,
