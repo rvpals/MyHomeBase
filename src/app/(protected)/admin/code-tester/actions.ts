@@ -1,8 +1,10 @@
 "use server";
 
 import {
+  DEPENDENCY_LOG_SOURCE,
   createTimedPhotoReader,
   dependencyCheckSchema,
+  describeErrorFully,
   formatDependencyReport,
   runDependencyChecks,
   runServerResizeSuite,
@@ -55,13 +57,18 @@ export async function runDependencyCheckAction(ids: string[]): Promise<Dependenc
   const parsed = dependencyCheckSchema.safeParse({ ids });
   if (!parsed.success) return { ok: false, error: "Not a known dependency." };
 
+  const log = deps.systemLogger;
+  log.debug(DEPENDENCY_LOG_SOURCE, `action called with ids [${parsed.data.ids.join(", ") || "all"}]`);
   try {
     const report = await runDependencyChecks(
-      { ...deps.codeTestDependencies, now: () => performance.now(), clock: () => new Date() },
+      { ...deps.codeTestDependencies, now: () => performance.now(), clock: () => new Date(), log },
       parsed.data,
     );
-    return { ok: true, report, text: formatDependencyReport(report) };
+    const text = formatDependencyReport(report);
+    log.debug(DEPENDENCY_LOG_SOURCE, `action returning ${report.status}, ${text.length} chars of report`);
+    return { ok: true, report, text };
   } catch (error) {
+    log.debug(DEPENDENCY_LOG_SOURCE, "action threw", () => describeErrorFully(error));
     return { ok: false, error: error instanceof Error ? error.message : "The checks didn't run." };
   }
 }

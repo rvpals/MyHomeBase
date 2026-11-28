@@ -26,9 +26,17 @@ export async function checkDependenciesCommand(args: string[]): Promise<void> {
   }
 
   const report = await runDependencyChecks(
-    { ...deps.codeTestDependencies, now: () => performance.now(), clock: () => new Date() },
+    {
+      ...deps.codeTestDependencies,
+      now: () => performance.now(),
+      clock: () => new Date(),
+      // Same DEBUG lines as the web card, when DEBUG is on.
+      log: deps.systemLogger,
+    },
     parsed.data,
   );
   console.log(formatDependencyReport(report));
-  if (report.status === "fail") process.exitCode = 1;
+  // Exit explicitly: an OCR worker that failed to start can't be terminated (see
+  // `startOcrWorker`), and its thread would otherwise keep this process alive forever.
+  process.exit(report.status === "fail" ? 1 : 0);
 }

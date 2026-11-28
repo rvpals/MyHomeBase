@@ -27,6 +27,8 @@ export interface DependencyStep {
   /** How long it took; absent for a check that only inspected a value. */
   ms?: number;
   detail: string;
+  /** A failed step's whole error: every message line, `cause`, and the stack. */
+  trace?: string;
 }
 
 /** A fact about the dependency, for the report: a version, a path, a setting. */
@@ -94,7 +96,21 @@ export interface DependencyRecorder {
   step<T>(name: string, run: () => T | Promise<T>, describe?: (value: T) => string): Promise<T>;
   /** Records a check on a value already in hand. Does not abort, whatever the result. */
   check(name: string, passed: boolean, detail: string, whenNotPassed?: "warn" | "fail"): void;
+  /**
+   * A System Log DEBUG line, prefixed with the probe's id. For what happens INSIDE a
+   * step -- a worker's stage messages, a raw error payload -- which the step's own
+   * before/after lines can't see. A no-op unless DEBUG is on.
+   */
+  debug(message: string, detail?: string): void;
 }
+
+/** The slice of `SystemLogger` the checks write to. Optional: tests and callers may omit it. */
+export interface DependencyCheckLog {
+  debug(source: string, message: string | (() => string), detail?: string | (() => string)): void;
+}
+
+/** The System Log `source` every dependency-test line is written under. */
+export const DEPENDENCY_LOG_SOURCE = "code-test/dependencies";
 
 /** One dependency's test. The real ones are in `dependency-probes.ts`. */
 export interface DependencyProbe {
@@ -111,6 +127,8 @@ export interface DependencyCheckDeps {
   now: () => number;
   /** Wall clock for `ranAt`. */
   clock: () => Date;
+  /** `deps.systemLogger` in production: a DEBUG line before and after every step. */
+  log?: DependencyCheckLog;
 }
 
 /** What the screen lists before anything has run. */
@@ -144,6 +162,35 @@ export function describeError(error: unknown): string {
   return text.slice(0, 400);
 }
 
+/**
+ * Everything an error carries, for the System Log and a failed step's `trace`: the
+ * code, every line of the message, the stack, and the `cause` chain. Capped at 6000
+ * characters. A non-Error (tesseract.js rejects with plain strings) is JSON-ish.
+ */
+export function describeErrorFully(error: unknown): string {
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; current !== undefined && current !== null && depth < 4; depth += 1) {
+    if (depth > 0) parts.push("Caused by:");
+    if (current instanceof Error) {
+      const code = (current as { code?: unknown }).code;
+      if (code !== undefined) parts.push(`code: ${String(code)}`);
+      parts.push(current.stack ?? `${current.name}: ${current.message}`);
+      current = (current as { cause?: unknown }).cause;
+    } else {
+      let text: string;
+      try {
+        text = typeof current === "string" ? current : JSON.stringify(current);
+      } catch {
+        text = String(current);
+      }
+      parts.push(`(thrown ${typeof current}) ${text}`);
+      current = undefined;
+    }
+  }
+  return parts.join("\n").slice(0, 6000);
+}
+
 const RANK: Record<DependencyStatus, number> = { pass: 0, warn: 1, fail: 2 };
 
 /** Display order of the statuses in a tally. */
@@ -174,14 +221,27 @@ function summarise(steps: readonly DependencyStep[], totalMs: number): string {
   return `All ${steps.length} steps passed in ${formatMs(totalMs)}.`;
 }
 
-/** Runs one probe and never throws: an exception is a failed step in its result. */
+/**
+ * Runs one probe and never throws: an exception is a failed step in its result.
+ *
+ * With a `log`, every step writes a DEBUG line BEFORE it starts as well as after it
+ * ends. The "starting" line is the point: if a step takes the whole server process
+ * down -- a native crash, an uncaught throw from a worker thread -- no result ever
+ * comes back, and the last "starting" line in the System Log names the step that did it.
+ */
 export async function runDependencyProbe(
   probe: DependencyProbe,
   now: () => number,
+  log?: DependencyCheckLog,
+  /** Resident memory in MB, appended to the step lines: a 2GB NAS can be OOM-killed mid-step. */
+  rssMb?: () => number,
 ): Promise<DependencyCheckResult> {
   const steps: DependencyStep[] = [];
   const facts: DependencyFact[] = [];
   let version = "unknown";
+  const debug = (message: string | (() => string), detail?: string | (() => string)) =>
+    log?.debug(DEPENDENCY_LOG_SOURCE, message, detail);
+  const memory = () => (rssMb ? ` [RSS ${rssMb()} MB]` : "");
 
   const record: DependencyRecorder = {
     version(value) {
@@ -189,14 +249,19 @@ export async function runDependencyProbe(
     },
     fact(label, value) {
       facts.push({ label, value: formatFactValue(value) });
+      debug(() => `${probe.id}: fact ${label} = ${formatFactValue(value)}`);
     },
     async step(name, run, describe) {
+      debug(() => `${probe.id}: step "${name}" starting${memory()}`);
       const startedAt = now();
       let value;
       try {
         value = await run();
       } catch (error) {
-        steps.push({ name, status: "fail", ms: now() - startedAt, detail: describeError(error) });
+        const ms = now() - startedAt;
+        const trace = describeErrorFully(error);
+        steps.push({ name, status: "fail", ms, detail: describeError(error), trace });
+        debug(() => `${probe.id}: step "${name}" FAILED after ${formatMs(ms)}${memory()}: ${describeError(error)}`, trace);
         throw new StepAborted();
       }
       const ms = now() - startedAt;
@@ -209,13 +274,20 @@ export async function runDependencyProbe(
         }
       }
       steps.push({ name, status: "pass", ms, detail });
+      debug(() => `${probe.id}: step "${name}" passed in ${formatMs(ms)}${memory()}: ${detail}`);
       return value;
     },
     check(name, passed, detail, whenNotPassed = "fail") {
-      steps.push({ name, status: passed ? "pass" : whenNotPassed, detail });
+      const status = passed ? "pass" : whenNotPassed;
+      steps.push({ name, status, detail });
+      debug(`${probe.id}: check "${name}" ${status}: ${detail}`);
+    },
+    debug(message, detail) {
+      debug(`${probe.id}: ${message}`, detail);
     },
   };
 
+  debug(`${probe.id}: starting ${probe.label}`);
   const startedAt = now();
   try {
     await probe.run(record);
@@ -224,7 +296,9 @@ export async function runDependencyProbe(
     // outside a step -- a probe bug or an unexpected library throw -- and is recorded
     // here so the report still shows it.
     if (!(error instanceof StepAborted)) {
-      steps.push({ name: "Unexpected error", status: "fail", detail: describeError(error) });
+      const trace = describeErrorFully(error);
+      steps.push({ name: "Unexpected error", status: "fail", detail: describeError(error), trace });
+      debug(`${probe.id}: unexpected error outside a step: ${describeError(error)}`, trace);
     }
   }
   const totalMs = now() - startedAt;
@@ -261,6 +335,10 @@ export async function runDependencyChecks(
 ): Promise<DependencyReport> {
   const ranAt = deps.clock().toISOString();
   const wanted = input.ids && input.ids.length > 0 ? new Set(input.ids) : new Set(DEPENDENCY_IDS);
+  deps.log?.debug(DEPENDENCY_LOG_SOURCE, () => {
+    const runtime = deps.runtime();
+    return `run starting: ${[...wanted].join(", ")} on Node ${runtime.node} (ABI ${runtime.abi}) ${runtime.platform}/${runtime.arch}, RSS ${runtime.rssMb} MB`;
+  });
 
   const results: DependencyCheckResult[] = [];
   for (const id of DEPENDENCY_IDS) {
@@ -280,15 +358,17 @@ export async function runDependencyChecks(
       });
       continue;
     }
-    results.push(await runDependencyProbe(probe, deps.now));
+    results.push(await runDependencyProbe(probe, deps.now, deps.log, () => deps.runtime().rssMb));
   }
 
-  return {
-    ranAt,
-    runtime: deps.runtime(),
-    status: worstStatus(results.map((result) => result.status)),
-    results,
-  };
+  const runtime = deps.runtime();
+  const status = worstStatus(results.map((result) => result.status));
+  deps.log?.debug(
+    DEPENDENCY_LOG_SOURCE,
+    () => `run finished: ${status} (${results.map((result) => `${result.id} ${result.status}`).join(", ")})`,
+    () => `RSS ${runtime.rssMb} MB after the run`,
+  );
+  return { ranAt, runtime, status, results };
 }
 
 /** `0.4 ms`, `12.3 ms`, `845 ms`, `3.72 s`. */
@@ -335,6 +415,7 @@ export function formatDependencyReport(report: DependencyReport): string {
     for (const step of result.steps) {
       const ms = step.ms === undefined ? "" : formatMs(step.ms);
       lines.push(`    ${STEP_MARK[step.status]}  ${step.name.padEnd(width)}  ${ms.padStart(9)}  ${step.detail}`);
+      if (step.trace) for (const line of step.trace.split("\n")) lines.push(`          | ${line}`);
     }
   }
 

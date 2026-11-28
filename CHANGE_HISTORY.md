@@ -1,5 +1,40 @@
 # Change History
 
+## 2026-11-27 (evening) — Fix: OCR worker start-up no longer crashes or hangs the server; Dependency test debug output
+
+No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or
+outside service.
+
+### Fix — an OCR worker that can't start no longer crashes or hangs the server
+- On the NAS, the Dependency test's Tesseract check came back with only "An unexpected
+  response was received from the server".
+- In tesseract.js 7, a failure while loading the language model (missing file, CDN out of
+  reach) is swallowed by `createWorker`'s own `.catch`. With no `errorHandler`, the worker
+  then rethrows it uncaught and the server process dies mid-request. With a handler, the
+  start never finishes and the request hangs until the proxy gives up.
+- New `startOcrWorker()` in `src/lib/documents/text-engines.ts`, used by Documents' OCR
+  and the dependency test: the first worker error rejects the start, and so does a
+  120-second timeout (`OCR_WORKER_START_TIMEOUT_MS`). Every worker now gets an
+  `errorHandler` through `ocrWorkerOptions()`.
+- `check-dependencies` exits explicitly when done: a worker that failed to start can't be
+  terminated, and its thread would otherwise keep the process alive.
+
+### Dependency test — more detail when something breaks
+- **System Log (DEBUG):** with DEBUG on, the test writes lines under source
+  `code-test/dependencies`. There is a line before and after every step (with the
+  process's memory), plus the tesseract worker's stages, any raw worker error with its
+  full payload, the model path and settings used, and the start and finish of the run and
+  of the server action. If the server dies mid-check, the last "starting" line names the
+  step that did it.
+- **Full error on screen:** a failed step keeps the whole error (every message line, the
+  `cause` chain and the stack) under a **Full error** toggle. The copied report includes
+  it too.
+- If no result comes back at all, the card says so and points at the System Log.
+- The tesseract check records **Worker errors** and how far the worker's stages got,
+  even when the start fails.
+- `INSTRUCTION_SETUP_SYNOLOGY.md`: the CLI isn't shipped to the NAS, so the guide now
+  points at the card and the System Log instead.
+
 ## 2026-11-27 — Code Tester: Dependency test card; fix — OCR with a local model folder
 
 No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or

@@ -85,10 +85,97 @@ export function ocrModelFolder(): string | undefined {
  * `eng.traineddata`. Without the flag, setting `MYHOMEBASE_TESSDATA` as the NAS guide
  * says made every OCR fail with `ENOENT ... eng.traineddata.gz` -- found by the
  * dependency test on 2026-11-27. Unset, the CDN download path is left alone.
+ *
+ * **`errorHandler` is always set, and that is not optional either.** Without one,
+ * tesseract.js answers a worker-side failure with `throw Error(data)` inside its
+ * message listener -- an UNCAUGHT exception in the server process, on top of the
+ * rejected promise the caller already gets. In a server action that kills the
+ * response, and the browser shows only "An unexpected response was received from the
+ * server". With a handler the rejection is the only signal, and it is caught like any
+ * other error. `onWorkerError` lets a caller log the raw payload as well.
  */
-export function ocrWorkerOptions(): { langPath: string; gzip: false } | undefined {
+export function ocrWorkerOptions(onWorkerError?: (error: unknown) => void): {
+  errorHandler: (error: unknown) => void;
+  langPath?: string;
+  gzip?: false;
+} {
+  const errorHandler = (error: unknown) => onWorkerError?.(error);
   const langPath = ocrModelFolder();
-  return langPath ? { langPath, gzip: false } : undefined;
+  return langPath ? { errorHandler, langPath, gzip: false } : { errorHandler };
+}
+
+/**
+ * How long a worker may take to start before it is given up on. Generous: on the
+ * DS223 (aarch64, 2GB) loading the WASM core and the 5MB model takes several times
+ * the ~0.8s the dev box needs.
+ */
+export const OCR_WORKER_START_TIMEOUT_MS = 120_000;
+
+/**
+ * Starts a tesseract.js worker that FAILS when it can't start, instead of hanging.
+ *
+ * ## Why `createWorker` can't be awaited on its own
+ *
+ * tesseract.js 7 (`createWorker.js`) chains its startup as
+ * `loadInternal().then(loadLanguage).then(initialize).then(resolve).catch(() => {})`,
+ * and rejects the promise it returned only when the FIRST stage fails. A failure
+ * while loading the language model -- a missing or wrong model file, a CDN that
+ * can't be reached from the NAS -- is swallowed by that `.catch`. What happens next
+ * depends on `errorHandler`:
+ *
+ * - none: the worker's rejection is rethrown with `throw Error(data)` inside a message
+ *   listener -- uncaught, so the server process dies mid-request and the browser shows
+ *   "An unexpected response was received from the server";
+ * - set: nothing is thrown, and the returned promise NEVER SETTLES. The request hangs
+ *   until a proxy times it out.
+ *
+ * So the first worker error before startup completes rejects here, as does
+ * `OCR_WORKER_START_TIMEOUT_MS`. Found by Admin -> Code Tester's dependency test.
+ * A worker that failed to start can't be terminated -- tesseract.js never hands it
+ * over -- so its thread is left to the process; this is rare and bounded by retries.
+ */
+export async function startOcrWorker(
+  hooks: {
+    onWorkerError?: (error: unknown) => void;
+    logger?: (message: { status: string; progress: number }) => void;
+  } = {},
+): Promise<import("tesseract.js").Worker> {
+  const { createWorker } = await import("tesseract.js");
+
+  let failStart: (error: Error) => void = () => {};
+  const startFailed = new Promise<never>((_, reject) => {
+    failStart = reject;
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`the OCR worker did not start within ${OCR_WORKER_START_TIMEOUT_MS / 1000}s`)),
+      OCR_WORKER_START_TIMEOUT_MS,
+    );
+  });
+  // Either may reject after the race is decided (a later worker error, say). Without a
+  // handler that is an unhandled rejection, which Node also treats as fatal.
+  startFailed.catch(() => {});
+  timedOut.catch(() => {});
+
+  const options = ocrWorkerOptions((error) => {
+    hooks.onWorkerError?.(error);
+    failStart(
+      error instanceof Error
+        ? error
+        : new Error(`the OCR worker failed: ${typeof error === "string" ? error : JSON.stringify(error)}`),
+    );
+  });
+
+  try {
+    return await Promise.race([
+      createWorker(OCR_LANGUAGE, undefined, hooks.logger ? { ...options, logger: hooks.logger } : options),
+      startFailed,
+      timedOut,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -172,8 +259,6 @@ async function ocrImage(
   data: Uint8Array,
   mimeType: string,
 ): Promise<{ text: string; confidence: number }> {
-  const { createWorker } = await import("tesseract.js");
-
   const pages =
     mimeType.toLowerCase().startsWith("application/pdf")
       ? await renderPdfPages(data)
@@ -181,7 +266,7 @@ async function ocrImage(
 
   if (pages.length === 0) return { text: "", confidence: 0 };
 
-  const worker = await createWorker(OCR_LANGUAGE, undefined, ocrWorkerOptions());
+  const worker = await startOcrWorker();
   try {
     const texts: string[] = [];
     const confidences: number[] = [];

@@ -20,8 +20,10 @@ export {
 } from "./schema";
 export {
   DEPENDENCY_IDS,
+  DEPENDENCY_LOG_SOURCE,
   DEPENDENCY_STATUS_ORDER,
   describeError,
+  describeErrorFully,
   formatDependencyReport,
   formatMs,
   listDependencyChecks,
@@ -29,6 +31,7 @@ export {
   runDependencyProbe,
   worstStatus,
   type DependencyCheckDeps,
+  type DependencyCheckLog,
   type DependencyCheckResult,
   type DependencyCheckSummary,
   type DependencyFact,

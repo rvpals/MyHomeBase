@@ -333,8 +333,13 @@ startup, so **restart the app** after adding it. Read the publish output for `!`
 canvas, core and model steps warn rather than abort, and a missing one means scanned PDFs
 cannot be OCR'd on the NAS (text-layer reads still work). To confirm OCR, SQLite, sharp
 and canvas all load after a publish, run **Admin → Code Tester → Dependency test → Test
-all** (or `npm run cli -- check-dependencies` on the NAS); on Linux a missing local model
-is reported as a failure, not a warning. OCR holds ~320 MB while it runs,
+all**; on Linux a missing local model is reported as a failure, not a warning. (The
+`check-dependencies` CLI runs the same checks on the dev box only — the NAS package
+doesn't ship the CLI.) If a check fails, open its **Full error**. If the card shows
+"An unexpected response was received from the server" instead, turn DEBUG on and run it
+again. Admin → System Messages → System Log, source `code-test/dependencies`, then shows
+a line before every step with the process's memory, and the last "starting" line names
+the step that took the server down. OCR holds ~320 MB while it runs,
 so leave **Document text indexing → Read scans with OCR** off in Admin → Background Tasks
 unless the NAS has the headroom.
 

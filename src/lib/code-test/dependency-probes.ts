@@ -20,8 +20,19 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { OCR_LANGUAGE, ocrModelFolder, ocrWorkerOptions } from "@/lib/documents";
-import type { DependencyProbe, DependencyRecorder, RuntimeInfo } from "./dependency-checks";
+import {
+  OCR_LANGUAGE,
+  OCR_WORKER_START_TIMEOUT_MS,
+  ocrModelFolder,
+  ocrWorkerOptions,
+  startOcrWorker,
+} from "@/lib/documents";
+import {
+  describeErrorFully,
+  type DependencyProbe,
+  type DependencyRecorder,
+  type RuntimeInfo,
+} from "./dependency-checks";
 import { OCR_SAMPLE_PNG_BASE64, OCR_SAMPLE_WORDS } from "./ocr-sample";
 
 /** Below this mean confidence a clean printed sample is suspicious, though readable. */
@@ -221,7 +232,9 @@ function createTesseractProbe(requireLocalModel: boolean): DependencyProbe {
         );
       }
 
-      const { createWorker } = await record.step(
+      // Timed separately from the worker start: a broken install fails HERE, a missing
+      // or unreachable model fails at "Start worker".
+      await record.step(
         "Load module",
         async () => import("tesseract.js"),
         () => "tesseract.js loaded",
@@ -232,15 +245,54 @@ function createTesseractProbe(requireLocalModel: boolean): DependencyProbe {
       // stage is visible in the report rather than only a total.
       const stageStart = performance.now();
       const stages = new Map<string, number>();
-      const logger = (message: { status: string }) => {
-        if (!stages.has(message.status)) stages.set(message.status, performance.now() - stageStart);
+      const logger = (message: { status: string; progress: number }) => {
+        if (!stages.has(message.status)) {
+          const ms = performance.now() - stageStart;
+          stages.set(message.status, ms);
+          // One line per stage, not per progress tick: recognition alone sends dozens.
+          record.debug(`worker stage "${message.status}" at ${Math.round(ms)} ms`);
+        }
+      };
+      // Raw worker-side failures. tesseract.js rejects the pending promise as well, so
+      // the step records the failure; this keeps the payload, which is often a bare
+      // string (e.g. an ENOENT on the model file) with no stack of its own.
+      const workerErrors: string[] = [];
+      let workerErrorsReported = 0;
+      const onWorkerError = (error: unknown) => {
+        const text = describeErrorFully(error);
+        workerErrors.push(text);
+        record.debug("worker reported an error", text);
+      };
+      /** Records any worker errors not yet in the facts. */
+      const flushWorkerErrors = () => {
+        const fresh = workerErrors.slice(workerErrorsReported);
+        workerErrorsReported = workerErrors.length;
+        if (fresh.length > 0) record.fact("Worker errors", fresh.join(" | "));
       };
 
-      const worker = await record.step(
-        "Start worker",
-        () => createWorker(OCR_LANGUAGE, undefined, { ...ocrWorkerOptions(), logger }),
-        () => (folder ? `model read from ${folder}` : "model from the CDN or its cwd cache"),
+      const options = ocrWorkerOptions();
+      record.debug(
+        "creating worker",
+        `language ${OCR_LANGUAGE}, langPath ${options.langPath ?? "(CDN)"}, gzip ${String(options.gzip ?? true)}, ` +
+          `start timeout ${OCR_WORKER_START_TIMEOUT_MS / 1000}s, cwd ${process.cwd()}`,
       );
+      let worker: Awaited<ReturnType<typeof startOcrWorker>>;
+      try {
+        // Documents' own start-up path, so a failure here is the one OCR would hit.
+        worker = await record.step(
+          "Start worker",
+          () => startOcrWorker({ onWorkerError, logger }),
+          () => (folder ? `model read from ${folder}` : "model from the CDN or its cwd cache"),
+        );
+      } catch (error) {
+        // The probe stops here, so record how far the worker got before it did.
+        flushWorkerErrors();
+        record.fact(
+          "Worker stages",
+          [...stages].map(([status, ms]) => `${status} @${Math.round(ms)}ms`).join(" > ") || "none reported",
+        );
+        throw error;
+      }
       try {
         const sample = Buffer.from(OCR_SAMPLE_PNG_BASE64, "base64");
         const { data } = await record.step(
@@ -267,11 +319,15 @@ function createTesseractProbe(requireLocalModel: boolean): DependencyProbe {
           "warn",
         );
       } finally {
-        await record.step("Terminate worker", () => worker.terminate(), () => "worker stopped");
-        record.fact(
-          "Worker stages",
-          [...stages].map(([status, ms]) => `${status} @${Math.round(ms)}ms`).join(" > ") || "none reported",
-        );
+        try {
+          await record.step("Terminate worker", () => worker.terminate(), () => "worker stopped");
+        } finally {
+          flushWorkerErrors();
+          record.fact(
+            "Worker stages",
+            [...stages].map(([status, ms]) => `${status} @${Math.round(ms)}ms`).join(" > ") || "none reported",
+          );
+        }
       }
     },
   };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   describeError,
+  describeErrorFully,
   formatDependencyReport,
   formatMs,
   listDependencyChecks,
@@ -136,6 +137,81 @@ describe("runDependencyProbe", () => {
     );
     expect(result.steps[0]).toMatchObject({ status: "pass" });
     expect(result.steps[0]!.detail).toContain("bad describe");
+  });
+});
+
+describe("debug logging and traces", () => {
+  function recordingLog() {
+    const lines: { source: string; message: string; detail?: string }[] = [];
+    const resolve = (value: string | (() => string) | undefined) =>
+      typeof value === "function" ? value() : value;
+    return {
+      lines,
+      log: {
+        debug(source: string, message: string | (() => string), detail?: string | (() => string)) {
+          lines.push({ source, message: resolve(message)!, detail: resolve(detail) });
+        },
+      },
+    };
+  }
+
+  it("logs each step before it starts and after it ends", async () => {
+    const { lines, log } = recordingLog();
+    await runDependencyProbe(
+      probe("sharp", async (record) => {
+        await record.step("Load", () => undefined, () => "loaded");
+        record.debug("inside", "payload");
+      }),
+      tickingClock(),
+      log,
+    );
+
+    expect(lines.every((line) => line.source === "code-test/dependencies")).toBe(true);
+    expect(lines.map((line) => line.message)).toEqual([
+      "sharp: starting sharp label",
+      'sharp: step "Load" starting',
+      'sharp: step "Load" passed in 10.0 ms: loaded',
+      "sharp: inside",
+    ]);
+    expect(lines[3]!.detail).toBe("payload");
+  });
+
+  it("keeps a failed step's full error, cause and stack, and logs it", async () => {
+    const { lines, log } = recordingLog();
+    const result = await runDependencyProbe(
+      probe("tesseract", async (record) => {
+        await record.step("Start worker", () => {
+          throw new Error("worker failed\nsecond line", { cause: new Error("ENOENT eng.traineddata.gz") });
+        });
+      }),
+      tickingClock(),
+      log,
+    );
+
+    const trace = result.steps[0]!.trace!;
+    expect(result.steps[0]!.detail).toBe("worker failed");
+    expect(trace).toContain("second line");
+    expect(trace).toContain("Caused by:");
+    expect(trace).toContain("ENOENT eng.traineddata.gz");
+    const failure = lines.find((line) => line.message.includes("FAILED"));
+    expect(failure?.detail).toBe(trace);
+    expect(formatDependencyReport({ ranAt: "t", runtime: RUNTIME, status: "fail", results: [result] })).toContain(
+      "| Caused by:",
+    );
+  });
+
+  it("describes a thrown string, which is how tesseract.js workers reject", () => {
+    expect(describeErrorFully("Error: ENOENT")).toBe("(thrown string) Error: ENOENT");
+  });
+
+  it("writes start and finish lines for the whole run", async () => {
+    const { lines, log } = recordingLog();
+    await runDependencyChecks(
+      { ...deps([probe("canvas", async (record) => record.check("x", true, "ok"))]), log },
+      { ids: ["canvas"] },
+    );
+    expect(lines[0]!.message).toMatch(/^run starting: canvas on Node v24\.0\.0/);
+    expect(lines.at(-1)!.message).toBe("run finished: pass (canvas pass)");
   });
 });
 

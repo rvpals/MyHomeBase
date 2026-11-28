@@ -271,7 +271,14 @@ function DependencyTestCard({ dependencies }: { dependencies: DependencyCheckSum
       setLastRun({ report, text: result.text });
       setIsCopied(false);
     } catch (thrown) {
-      setError(messageOf(thrown, "The checks didn't run."));
+      // A throw here means no result came back at all -- typically the server process
+      // hit an uncaught error mid-check, which Next reports only as "An unexpected
+      // response was received from the server". The steps' own DEBUG lines survive it.
+      setError(
+        `${messageOf(thrown, "The checks didn't run.")} No result came back from the server. ` +
+          `With DEBUG on, Admin → System Messages → System Log (source "code-test/dependencies") ` +
+          `shows the last step that started.`,
+      );
     } finally {
       setRunning([]);
     }
@@ -410,6 +417,17 @@ function DependencyRow({
                       <span className={`block break-words ${step.status === "pass" ? "text-muted" : STATUS_TEXT[step.status].className}`}>
                         {step.detail}
                       </span>
+                      {step.trace !== undefined && (
+                        // The whole error: every message line, cause chain and stack.
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-muted select-none hover:text-ink">
+                            Full error
+                          </summary>
+                          <pre className="mt-1 max-h-64 overflow-auto rounded border border-line bg-paper p-2 font-mono text-[11px] leading-4 whitespace-pre-wrap break-all text-ink">
+                            {step.trace}
+                          </pre>
+                        </details>
+                      )}
                     </span>
                     <span className="font-mono text-muted">{step.ms === undefined ? "" : formatDuration(step.ms)}</span>
                   </li>

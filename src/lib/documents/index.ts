@@ -220,8 +220,10 @@ export {
   OCR_PAGE_LIMIT,
   OCR_RENDER_DPI,
   nodeTextExtractionEngines,
+  OCR_WORKER_START_TIMEOUT_MS,
   ocrModelFolder,
   ocrWorkerOptions,
+  startOcrWorker,
 } from "./text-engines";
 
 export {
