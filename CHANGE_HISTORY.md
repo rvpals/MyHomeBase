@@ -1,5 +1,65 @@
 # Change History
 
+## 2026-11-27 (night) — Control Center settings, renamed card, photo opens the viewer
+
+Migration **0188** (data-only: seeds the `control_center_config` setting). No new table,
+no `DEFAULT_MODULES` change, no dependency changes, no paid or outside service.
+
+### Feature — Dashboard Widget Configuration (Admin → Display Settings → Dashboard Widgets)
+- New card **Dashboard Widget Configuration** under *Home screen cards*, with a
+  **MyHomeBase Control Center** group box:
+  - Money: # of gainers and losers (1–10, default 5)
+  - Journal & Notes: # of recent entries (1–10, default 5, previously a fixed 3)
+  - Household: # of recipes to try (1–12, default 4; the re-roll draws the same number)
+  - Media: # of most-played songs (1–10, default 3) and a **Display random pictures** toggle
+  - Classroom: # of classes (1–10, default 3)
+  - Misc (Workbench, Everything else): no settings yet
+- Stored as one row, `control_center_config`, encoded and validated by
+  `src/lib/home-dashboard/control-center.ts` (tested). Reading falls back per field;
+  saving rejects out-of-range values. Mirrored in `DEFAULT_APP_SETTINGS`.
+- New reusable components **`NumberField`** (bounded whole number with − / + steppers) and
+  **`ToggleSwitch`** (`role="switch"` on/off), registered in `components.md`.
+
+### Change — "Systems" card renamed "MyHomeBase Control Center"
+- Card title, layout label and the Dashboard Widgets list. The id `systems` and the
+  `homescreen_card_systems` icon slot are unchanged, so saved layouts and icons carry over.
+
+### Change — Money panel: T-Bill is a row, not a button
+- T-Bill now sits in the Money panel's list beside Investments and Expenses, with its
+  icon (the existing `stock_section_t_bill` slot) and description, instead of a button
+  above the list. Still shown only to readers who can open Investments.
+
+### Fix — the Control Center's archive photo opens the viewer
+- Clicking the Media panel's "From the archive" photo linked to Picture Gallery, whose
+  landing card draws a different random photo. It now opens `PhotoViewer` on that one
+  photo, with its capture details.
+
+## 2026-11-27 (night) — Fix: OCR killed the server on the NAS (tesseract.js worker files missing from the package)
+
+No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or
+outside service.
+
+### Fix — the OCR worker's files never reached the NAS
+- **Symptom:** on the NAS, the Dependency test's Tesseract check showed "An unexpected
+  response was received from the server". The System Log stopped at
+  `step "Start worker" starting [RSS 196 MB]`: no worker stage, no error, no timeout.
+- **Cause:** tesseract.js runs OCR in a worker thread started from a file path
+  (`new Worker(".../worker-script/node/index.js")`), which Next's file tracing can't
+  follow. The traced standalone build held only the main-thread half of the package (21
+  of 42 files). It was missing `worker-script/index.js`, `getCore.js`, `gunzip.js`,
+  `cache.js`, and the `wasm-feature-detect` and `bmp-js` packages. The worker's first
+  `require` threw. tesseract.js puts no `'error'` listener on its Worker, so Node killed
+  the whole server process.
+- **Publish:** `scripts/publish-nas.mjs` has a new step that copies `tesseract.js` and its
+  whole production dependency closure over the traced copy. It then checks that the
+  worker's entry files are present, and fails the publish if they aren't.
+- **Safety net:** new `checkOcrWorkerFiles()` (`src/lib/documents/ocr-worker-files.ts`,
+  tested in `ocr-worker-files.test.ts`) walks the worker's static require graph before a
+  worker is spawned. `startOcrWorker()` refuses to start with an error naming the missing
+  files, so Documents' OCR reports a broken install instead of crashing the server. The
+  Dependency test shows it as its own step, **Worker files present**, before
+  **Start worker**.
+
 ## 2026-11-27 (evening) — Fix: OCR worker start-up no longer crashes or hangs the server; Dependency test debug output
 
 No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or

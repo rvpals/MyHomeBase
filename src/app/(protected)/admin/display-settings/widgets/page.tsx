@@ -4,14 +4,23 @@
 // values with no fetch-then-populate flicker, and hands it to the client view
 // below. One settings row, so the read is a single lookup.
 
-import { HOME_WIDGETS_SETTING_KEY, resolveHomeWidgets } from "@/lib/home-dashboard";
+import {
+  CONTROL_CENTER_SETTING_KEY,
+  HOME_WIDGETS_SETTING_KEY,
+  resolveControlCenterConfig,
+  resolveHomeWidgets,
+} from "@/lib/home-dashboard";
 import { getSetting } from "@/lib/settings";
 import { deps } from "@/lib/wiring";
 import { PAGE_CONTAINER } from "../../../page-container";
+import { ControlCenterConfigView } from "./control-center-config-view";
 import { DashboardWidgetsView } from "./view";
 
 export default function DashboardWidgetsPage() {
   const stored = getSetting(deps.settingsRepo, HOME_WIDGETS_SETTING_KEY)?.value;
+  const controlCenter = resolveControlCenterConfig(
+    getSetting(deps.settingsRepo, CONTROL_CENTER_SETTING_KEY)?.value,
+  );
 
   return (
     <div className={PAGE_CONTAINER}>
@@ -25,6 +34,7 @@ export default function DashboardWidgetsPage() {
       </p>
 
       <DashboardWidgetsView widgets={resolveHomeWidgets(stored)} />
+      <ControlCenterConfigView config={controlCenter} />
     </div>
   );
 }

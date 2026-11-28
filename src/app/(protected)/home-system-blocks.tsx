@@ -14,12 +14,14 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { useMusicPlayer, type PlayableTrack } from "@/components/music-player-provider";
+import { PhotoViewer } from "@/components/photo-viewer";
 import { TreeIcon } from "@/components/tree-icons";
 // The leaf file, not the `@/lib/journal-photos` barrel: that barrel re-exports a
 // Node file store, which a client component must not pull in.
 import type { RandomPhotoPick } from "@/lib/journal-photos/random";
 import { drawRandomRecipesAction } from "./modules/[slug]/household-actions";
 import { drawRandomPhotoAction } from "./modules/[slug]/gallery-photo-actions";
+import { readPhotoDetailsAction } from "./photos-viewer-actions";
 
 /** One recipe row, as the page hands it over. */
 export interface HomeRecipePick {
@@ -42,7 +44,6 @@ export interface HomeTopTrack {
   playCount: number;
 }
 
-const RECIPE_COUNT = 4;
 
 function recipeHref(id: number): string {
   return `/modules/household/recipes?recipe=${id}`;
@@ -81,14 +82,21 @@ function RerollButton({
   );
 }
 
-/** Household: four recipes drawn at random, each opening its own viewer. */
+/**
+ * Household: recipes drawn at random, each opening its own viewer.
+ *
+ * How many is the admin's Control Center setting, already applied by the page's first
+ * draw — so a re-roll asks for `initial.length` rather than carrying a second copy of
+ * the number. When the household has fewer recipes than the setting, the first draw
+ * returned all of them and a re-roll asking for that many returns the same pool.
+ */
 export function SystemRecipes({ initial }: { initial: HomeRecipePick[] }) {
   const [recipes, setRecipes] = useState(initial);
   const [busy, setBusy] = useState(false);
 
   async function reroll() {
     setBusy(true);
-    const result = await drawRandomRecipesAction(RECIPE_COUNT);
+    const result = await drawRandomRecipesAction(initial.length);
     setBusy(false);
     if (result.ok && result.recipes) {
       setRecipes(
@@ -200,6 +208,7 @@ export function SystemTopTracks({ tracks }: { tracks: HomeTopTrack[] }) {
 export function SystemRandomPhoto() {
   const [pick, setPick] = useState<RandomPhotoPick>();
   const [busy, setBusy] = useState(true);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
 
   async function draw() {
     setBusy(true);
@@ -224,21 +233,55 @@ export function SystemRandomPhoto() {
         action={<RerollButton label="Draw another photo" busy={busy} onClick={draw} />}
       />
       {pick?.relativePath ? (
-        <Link href="/modules/picture-gallery" className="block" title={pick.folderName}>
+        // Opens THIS photo in the viewer. It used to link to the Picture Gallery, whose
+        // landing card draws a fresh random photo — so the click showed a different
+        // picture from the one clicked.
+        <button
+          type="button"
+          onClick={() => setIsViewerOpen(true)}
+          className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass rounded-lg"
+          title={pick.folderName}
+        >
           {/* The thumbnail route, not the original: a few KB for a 96px strip. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/api/journal/photos/thumb?path=${encodeURIComponent(pick.relativePath)}`}
+            src={thumbUrl(pick.relativePath)}
             alt={pick.folderName ?? "A photo from the archive"}
             className="h-24 w-full rounded-lg object-cover"
           />
           {pick.folderName && (
             <span className="mt-1 block truncate text-xs text-muted">{pick.folderName}</span>
           )}
-        </Link>
+        </button>
       ) : (
         <div className="h-24 w-full animate-pulse rounded-lg bg-paper-raised" aria-hidden="true" />
       )}
+
+      {/* A set of one: the single image viewer, not a folder browse. Mounted only while
+          open, so a re-roll never re-reads anything behind the scenes. */}
+      {isViewerOpen && pick?.relativePath && (
+        <PhotoViewer
+          photos={[
+            {
+              name: pick.relativePath.split("/").pop() ?? pick.relativePath,
+              relativePath: pick.relativePath,
+              subcaption: pick.folderName,
+            },
+          ]}
+          photoUrl={photoUrl}
+          thumbUrl={thumbUrl}
+          onPhotoDetails={readPhotoDetailsAction}
+          onClose={() => setIsViewerOpen(false)}
+        />
+      )}
     </div>
   );
+}
+
+function photoUrl(relativePath: string): string {
+  return `/api/journal/photos?path=${encodeURIComponent(relativePath)}`;
+}
+
+function thumbUrl(relativePath: string): string {
+  return `/api/journal/photos/thumb?path=${encodeURIComponent(relativePath)}`;
 }

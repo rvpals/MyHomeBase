@@ -4,13 +4,17 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { SESSION_COOKIE_NAME, getCurrentUser } from "@/lib/auth";
 import {
+  CONTROL_CENTER_SETTING_KEY,
   HOME_WIDGETS_SETTING_KEY,
+  controlCenterConfigToValue,
   homeWidgetsToValue,
+  type ControlCenterConfig,
   type HomeWidgetsInput,
 } from "@/lib/home-dashboard";
 import { updateSettings } from "@/lib/settings";
 import { isAdmin } from "@/lib/user";
 import { deps } from "@/lib/wiring";
+import { requireAdmin as requireAdminUser } from "../../../require-access";
 
 /**
  * Rejects a caller who isn't an admin.
@@ -56,6 +60,32 @@ export async function saveHomeWidgetsAction(
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Failed to save the widget layout.",
+    };
+  }
+}
+
+/**
+ * Persists the MyHomeBase Control Center's per-system settings as the
+ * `control_center_config` app setting.
+ *
+ * Validation and encoding are `controlCenterConfigToValue`'s (it throws on a bad
+ * payload); this adapter only authorises, writes and refreshes.
+ */
+export async function saveControlCenterConfigAction(
+  config: ControlCenterConfig,
+): Promise<SaveHomeWidgetsResult> {
+  try {
+    await requireAdminUser();
+    updateSettings(deps.settingsRepo, [
+      { key: CONTROL_CENTER_SETTING_KEY, value: controlCenterConfigToValue(config) },
+    ]);
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error:
+        error instanceof Error ? error.message : "Failed to save the Control Center settings.",
     };
   }
 }

@@ -9,8 +9,10 @@ import { getDashboardTexture } from "@/lib/dashboard-texture";
 import { getHomeAlbumSlideshow } from "@/lib/albums";
 import { getRandomQuote } from "@/lib/daily-quote";
 import {
+  CONTROL_CENTER_SETTING_KEY,
   HOME_WIDGETS_SETTING_KEY,
   isHomeWidgetVisible,
+  resolveControlCenterConfig,
   resolveHomeWidgets,
   visibleHomeWidgets,
   type HomeWidgetId,
@@ -54,7 +56,7 @@ import { PhotoAlbumsWidget } from "./photo-albums-widget";
 import { getNavTreeData } from "./nav-tree-data";
 import { classroomSectionHref } from "./modules/[slug]/classroom-sections";
 import { StockDailyGlance } from "./modules/[slug]/stock-daily-glance";
-import { stockSectionHref } from "./modules/[slug]/stock-sections";
+import { STOCK_SECTION_INFO, stockSectionHref } from "./modules/[slug]/stock-sections";
 import { PAGE_CONTAINER } from "./page-container";
 import { MonitorPopup } from "./monitor-popup";
 import { StartupMessage } from "./startup-message";
@@ -115,6 +117,11 @@ export default async function Home({
   // never an override.
   const widgets = resolveHomeWidgets(getSetting(deps.settingsRepo, HOME_WIDGETS_SETTING_KEY)?.value);
   const shows = (id: HomeWidgetId) => isHomeWidgetVisible(widgets, id);
+  // The Control Center's per-system counts (Admin → Dashboard Widgets → Dashboard Widget
+  // Configuration). One settings row; the resolver never throws and falls back per field.
+  const controlCenter = resolveControlCenterConfig(
+    getSetting(deps.settingsRepo, CONTROL_CENTER_SETTING_KEY)?.value,
+  );
 
   // The Clock card was retired from the home screen; the weather it used to carry now
   // belongs to the Floating Clock, which fetches its own forecast in the protected
@@ -235,12 +242,14 @@ export default async function Home({
   // "Everything else" instead of vanishing — see `groupModulesBySystem`.
   const systemCards = shows("systems") ? groupModulesBySystem(modules) : [];
 
-  // The journal's three most recent entries, for the Journal & Notes panel. The only
-  // read this card adds that no other card was already making — the other two strips
-  // sum data the TODO and Daily Glance cards read anyway. LIMITed in SQL, so it is
-  // three indexed rows rather than the whole journal.
+  // The journal's most recent entries (how many is `controlCenter.journalEntries`), for
+  // the Journal & Notes panel. The only read this card adds that no other card was
+  // already making — the other two strips sum data the TODO and Daily Glance cards read
+  // anyway. LIMITed in SQL, so it is a few indexed rows rather than the whole journal.
   const recentEntries =
-    journalModule && shows("systems") ? listRecentEntries(deps.journalRepo, 3) : [];
+    journalModule && shows("systems")
+      ? listRecentEntries(deps.journalRepo, controlCenter.journalEntries)
+      : [];
 
   // Today's move, summed over the positions already read above. Only when there is
   // something to report: an empty portfolio would otherwise chip "+$0.00 today",
@@ -267,8 +276,8 @@ export default async function Home({
       kind: "money",
       gainLossCents: systemDayMove.gainLossCents,
       changePct: systemDayMove.changePct,
-      gainers: topGainers(tickerMoves, 5).map(toMover),
-      losers: topLosers(tickerMoves, 5).map(toMover),
+      gainers: topGainers(tickerMoves, controlCenter.moneyMovers).map(toMover),
+      losers: topLosers(tickerMoves, controlCenter.moneyMovers).map(toMover),
     };
   }
   if (todoBoard) {
@@ -281,7 +290,11 @@ export default async function Home({
   // is shown, so it costs nothing otherwise. One indexed read of the class list.
   const classroomModule = modules.find((appModule) => appModule.slug === "classroom");
   if (classroomModule && shows("systems")) {
-    const topClasses = pickTopClasses(listClasses(deps.attendanceRepo), todayIsoLocal(), 3);
+    const topClasses = pickTopClasses(
+      listClasses(deps.attendanceRepo),
+      todayIsoLocal(),
+      controlCenter.classroomClasses,
+    );
     if (topClasses.length > 0) {
       systemActivity.classroom = {
         kind: "classroom",
@@ -313,7 +326,7 @@ export default async function Home({
   const musicModule = modules.find((appModule) => appModule.slug === "music-library");
   const homeRecipes =
     householdModule && shows("systems")
-      ? pickRandomRecipes(deps.householdRepo, 4).map((recipe) => ({
+      ? pickRandomRecipes(deps.householdRepo, controlCenter.householdRecipes).map((recipe) => ({
           id: recipe.id,
           name: recipe.name,
           category: recipe.category,
@@ -323,7 +336,7 @@ export default async function Home({
       : undefined;
   const homeTopTracks =
     musicModule && shows("systems")
-      ? listTopPlayedTracks(deps.musicRepo, 3).map((track) => ({
+      ? listTopPlayedTracks(deps.musicRepo, controlCenter.mediaTopTracks).map((track) => ({
           id: track.id,
           title: track.displayTitle,
           artist: track.artist,
@@ -352,19 +365,31 @@ export default async function Home({
     activity: systemActivity[card.system.id],
     // Buttons, not rows: these are the two things a teacher opens Classroom to do.
     // Routes come from the module's own section helper so they can't drift from its nav.
-    // Money gets a T-Bill shortcut, only for a reader who can open Investments.
     actions:
       card.system.id === "classroom"
         ? [
             { label: "Take attendance", href: classroomSectionHref("main"), primary: true },
             { label: "Report", href: classroomSectionHref("report") },
           ]
-        : card.system.id === "money" && stockModule
-          ? [{ label: "T-Bill", href: stockSectionHref("t-bill") }]
-          : undefined,
+        : undefined,
+    // Money lists T-Bill as a row beside Investments and Expenses, only for a reader who
+    // can open Investments. Label, description and icon slot are the section's own, so
+    // the row reads exactly like the T-Bill entry in Investments' section panel.
+    links:
+      card.system.id === "money" && stockModule
+        ? [
+            {
+              label: STOCK_SECTION_INFO["t-bill"].label,
+              description: STOCK_SECTION_INFO["t-bill"].description,
+              href: stockSectionHref("t-bill"),
+              slotId: "stock_section_t_bill",
+            },
+          ]
+        : undefined,
     recipes: card.system.id === "household" ? homeRecipes : undefined,
     topTracks: card.system.id === "media" ? homeTopTracks : undefined,
-    randomPhoto: card.system.id === "media" && galleryModule !== undefined,
+    randomPhoto:
+      card.system.id === "media" && galleryModule !== undefined && controlCenter.mediaRandomPhoto,
   }));
 
   // The cards that will actually appear, in order. Visibility alone isn't enough:
@@ -489,7 +514,7 @@ export default async function Home({
                 return [
                   {
                     id,
-                    label: "Systems",
+                    label: "MyHomeBase Control Center",
                     // Spans both columns, like the carousel and for a related reason:
                     // its body is itself a grid that sizes its own columns, so handing
                     // it half the page would make the browser draw one narrow panel per

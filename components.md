@@ -129,6 +129,8 @@ belongs in `src/components/` as usual.
 | [`TokenPicker`](#tokenpicker) | **Several names on one record** — removable chips + a combobox that filters and creates | [src/components/token-picker.tsx](src/components/token-picker.tsx) | yes |
 | [`RichTextEditor`](#richtexteditor) | **Formatted text a reader writes or pastes** — toolbar, `contentEditable` body, and a paste handler that keeps tables and extracts images | [src/components/rich-text-editor.tsx](src/components/rich-text-editor.tsx) | yes |
 | [`ColorField`](#colorfield) | **One color** — a swatch that opens the OS picker + the hex typed out | [src/components/color-field.tsx](src/components/color-field.tsx) | yes |
+| [`NumberField`](#numberfield) | **One bounded whole number on a form** — label, − / + steppers, typed value clamped to min/max | [src/components/number-field.tsx](src/components/number-field.tsx) | yes |
+| [`ToggleSwitch`](#toggleswitch) | **One on/off setting** — label + `role="switch"` track | [src/components/toggle-switch.tsx](src/components/toggle-switch.tsx) | yes |
 | [`ChartLine`](#chartline) | Time-series line chart | [src/components/chart-line.tsx](src/components/chart-line.tsx) | yes |
 | [`ChartBar`](#chartbar) | Category comparison / part-to-whole | [src/components/chart-bar.tsx](src/components/chart-bar.tsx) | yes |
 | [`ChartPie`](#chartpie) | Share of a whole — **max 5 slices** | [src/components/chart-pie.tsx](src/components/chart-pie.tsx) | yes |
@@ -4004,6 +4006,83 @@ existed only to opt out of that and is **gone**; callers that passed it, and the
 with it.
 
 ---
+
+## NumberField
+
+**One bounded whole number on a form** — a count, a limit, a "how many to show".
+Label on the left, a `−` / value / `+` group on the right, so it lays out as one
+full-width row at any width. **Reach for it instead of a bare `<input type="number">`**:
+the browser spinner is a few pixels tall on a phone and ignores the theme.
+
+- **Source:** [src/components/number-field.tsx](src/components/number-field.tsx)
+- **Import:** `import { NumberField } from "@/components/number-field";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `label` | `ReactNode` | The `<label>` for the input. |
+| `description?` | `ReactNode` | Muted line under the label — the range and default read well here. |
+| `value` | `number` | Controlled. |
+| `onChange` | `(value: number) => void` | Always raised with a whole number **already clamped** into `[min, max]`. |
+| `min` / `max` | `number` | Inclusive bounds. The matching stepper disables at each end. |
+| `step?` | `number` | Stepper and arrow-key increment. Default `1`. |
+| `disabled?` | `boolean` | |
+| `className?` | `string` | Merged last. |
+
+```tsx
+<NumberField
+  label="# of recent journal entries to display"
+  description="1–10, default 5"
+  min={1}
+  max={10}
+  value={draft.journalEntries}
+  onChange={(value) => setDraft({ ...draft, journalEntries: value })}
+/>
+```
+
+**Used by:** Admin → Display Settings → Dashboard Widgets → *Dashboard Widget
+Configuration* ([control-center-config-view.tsx](src/app/(protected)/admin/display-settings/widgets/control-center-config-view.tsx)).
+
+**Notes:** typing is free while the box has focus (digits only) and is clamped on blur
+or Enter, so clearing the box to type `12` doesn't snap to the minimum first. An empty
+or unparseable box on blur restores the last value. ↑ / ↓ step without leaving the box.
+The steppers are 40px targets, so it works by thumb. It clamps for the UI's sake only —
+**the server still validates** with the domain schema.
+
+## ToggleSwitch
+
+**One on/off setting.** Label (and optional description) on the left, a pill track on
+the right. A `<button role="switch" aria-checked>`, so Space/Enter flip it and screen
+readers announce "on/off" rather than "checked". **Reach for it for a setting that takes
+effect as a preference**; keep a plain checkbox for selecting rows in a list.
+
+- **Source:** [src/components/toggle-switch.tsx](src/components/toggle-switch.tsx)
+- **Import:** `import { ToggleSwitch } from "@/components/toggle-switch";`
+- **Client component:** yes
+
+| Prop | Type | Notes |
+|------|------|-------|
+| `label` | `ReactNode` | Names the switch (`aria-labelledby`). |
+| `description?` | `ReactNode` | Muted line under the label (`aria-describedby`). |
+| `checked` | `boolean` | Controlled. |
+| `onChange` | `(checked: boolean) => void` | Raised with the new value. |
+| `disabled?` | `boolean` | |
+| `className?` | `string` | Merged last. |
+
+```tsx
+<ToggleSwitch
+  label="Display random pictures"
+  description="The “From the archive” photo"
+  checked={draft.mediaRandomPhoto}
+  onChange={(checked) => setDraft({ ...draft, mediaRandomPhoto: checked })}
+/>
+```
+
+**Used by:** Admin → Display Settings → Dashboard Widgets → *Dashboard Widget
+Configuration* ([control-center-config-view.tsx](src/app/(protected)/admin/display-settings/widgets/control-center-config-view.tsx)).
+
+**Notes:** theme tokens only — on is `brass` with a `paper` knob, off is `paper` with a
+`line` border and a `muted` knob — so it follows every colour theme.
 
 ## ColorField
 

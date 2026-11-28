@@ -30,7 +30,10 @@ import {
   photoThumbnailResizeValue,
 } from "@/lib/journal-photos/thumbnail-settings";
 import {
+  CONTROL_CENTER_SETTING_KEY,
   HOME_WIDGETS_SETTING_KEY,
+  controlCenterConfigToValue,
+  defaultControlCenterConfig,
   defaultHomeWidgets,
   homeWidgetsToValue,
 } from "@/lib/home-dashboard";
@@ -52,7 +55,8 @@ import type { Setting } from "./types";
 // migrations/0023_seed_icon_set_setting.sql,
 // migrations/0067_seed_home_widgets_setting.sql, and
 // migrations/0121_seed_chrome_style_setting.sql, and
-// migrations/0122_seed_border_widths_setting.sql.
+// migrations/0122_seed_border_widths_setting.sql, and
+// migrations/0188_seed_control_center_config.sql.
 // "Reset to Default" restores the table to exactly this list — keep both in sync.
 export const DEFAULT_APP_SETTINGS: Setting[] = [
   {
@@ -95,6 +99,14 @@ export const DEFAULT_APP_SETTINGS: Setting[] = [
     value: homeWidgetsToValue(defaultHomeWidgets()),
     description:
       'Which home screen cards are drawn and in what order. A "-" prefix hides one.',
+  },
+  {
+    // Encoded rather than spelled out so it can't drift from the catalogue in
+    // `@/lib/home-dashboard/control-center`. See migrations/0188.
+    key: CONTROL_CENTER_SETTING_KEY,
+    value: controlCenterConfigToValue(defaultControlCenterConfig()),
+    description:
+      "MyHomeBase Control Center: how many rows each system panel lists, and whether Media draws a random photo.",
   },
   {
     // The navigation's background picture, off by default: a fresh install draws

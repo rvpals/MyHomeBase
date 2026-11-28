@@ -22,3 +22,15 @@ export {
   visibleHomeWidgets,
   isHomeWidgetVisible,
 } from "./home-dashboard";
+export {
+  CONTROL_CENTER_COUNTS,
+  CONTROL_CENTER_COUNT_KEYS,
+  CONTROL_CENTER_SETTING_KEY,
+  controlCenterConfigSchema,
+  controlCenterConfigToValue,
+  defaultControlCenterConfig,
+  resolveControlCenterConfig,
+  type ControlCenterConfig,
+  type ControlCenterCountInfo,
+  type ControlCenterCountKey,
+} from "./control-center";

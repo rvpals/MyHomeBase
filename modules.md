@@ -3404,7 +3404,7 @@ alone is ambiguous once there are fifty-odd positions, because all five modules 
 
 **233 positions are registered and all 233 are wired up** — every module's section nav,
 the whole Admin nav, and the home screen's Daily Quote, Photo of the Day, Random Photo
-and Systems cards. (The figure quoted here was 86 for several releases after the section
+and MyHomeBase Control Center cards. (The figure quoted here was 86 for several releases after the section
 navs landed; it is a count of `ICON_SLOTS`, so check it rather than trusting it.) A slot that is registered but not yet converted at its call site would be
 inert (it appears in the admin list and accepts an upload, yet the screen keeps
 rendering the default concept); the `wired` flag on the slot drives that note in each
@@ -3581,7 +3581,7 @@ Four things worth knowing before touching it:
   to follow position — and it follows the first *drawn* card, not the first ticked one,
   because a ticked-but-empty card would otherwise leave a stray gap at the top.
 
-**The Systems card groups the modules.** It draws one panel per *system* — Money,
+**The MyHomeBase Control Center card (id `systems`) groups the modules.** It draws one panel per *system* — Money,
 Journal & Notes, Household, Media, Classroom, Workbench, and "Everything else" for
 anything the grouping has not been taught about. That registry is
 `src/lib/home-systems`, and it is **code, not data**: there is no table, no migration

@@ -108,6 +108,21 @@ export interface HomeSystemAction {
   primary?: boolean;
 }
 
+/**
+ * A row in a panel's module list that opens a SECTION rather than a module — Money's
+ * T-Bill, which lives inside Investments but is a destination of its own.
+ *
+ * Drawn exactly like a module row. The icon is the section's own registered slot (the
+ * same one its section-panel entry uses), so an uploaded T-Bill icon shows in both.
+ */
+export interface HomeSystemLink {
+  label: string;
+  description?: string;
+  href: string;
+  /** An `ICON_SLOTS` id, e.g. `stock_section_t_bill`. */
+  slotId: string;
+}
+
 /** One ticker's move today, as the Money panel lists it. */
 export interface HomeSystemMover {
   ticker: string;
@@ -124,6 +139,8 @@ export interface HomeSystemPanel {
   modules: HomeSystemPanelModule[];
   activity?: HomeSystemActivity;
   actions?: HomeSystemAction[];
+  /** Section destinations listed after the modules, in the same row style. */
+  links?: HomeSystemLink[];
   /**
    * Extra blocks below the activity strip. Separate fields rather than more
    * `activity` kinds: a panel can carry several (Household has the TODO bar AND
@@ -351,6 +368,31 @@ function SystemPanel({ panel }: { panel: HomeSystemPanel }) {
             </Link>
           </li>
         ))}
+        {panel.links?.map((link) => {
+          const linkSlot = getIconSlot(link.slotId);
+          return (
+            <li key={link.href}>
+              <Link
+                href={link.href}
+                className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-paper-raised"
+              >
+                <span className="shrink-0 rounded-lg bg-brass-soft p-1.5 text-brass-dark">
+                  {linkSlot ? (
+                    <SlotIcon slot={linkSlot} className="h-4 w-4" />
+                  ) : (
+                    <span className="block h-4 w-4" aria-hidden="true" />
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold">{link.label}</span>
+                  {link.description && (
+                    <span className="block truncate text-xs text-muted">{link.description}</span>
+                  )}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
 
       {panel.activity && <ActivityStrip activity={panel.activity} />}
@@ -372,7 +414,7 @@ export function HomeSystemsWidget({
 }) {
   return (
     <CollapsibleCard
-      title="Systems"
+      title="MyHomeBase Control Center"
       titleIcon={SYSTEMS_SLOT && <SlotIcon slot={SYSTEMS_SLOT} className="h-4 w-4" />}
       className={className}
       defaultOpen
