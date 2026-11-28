@@ -1,5 +1,23 @@
 # Change History
 
+## 2026-11-28 (night) — Docs: lessons learned from the NAS OCR hunt
+
+No code change, no migration, no new table, no `DEFAULT_MODULES` change, no dependency
+changes, no paid or outside service.
+
+- With the explicit `workerPath` deployed, the Dependency test's Tesseract check passes on
+  the NAS: the worker starts and reads the built-in sample.
+- **`lessons_learned.md`** has a new entry, "OCR worked on the dev box and hung on the NAS:
+  the server loaded a different copy of tesseract.js". It covers the four layers (missing
+  `gzip: false`, the crash on a failed worker start, worker files untraced, and the server
+  loading the half copy under `.next/node_modules/tesseract.js-<hash>`), and five rules:
+  - patch both copies of a package on the NAS;
+  - mind the order of the publish's symlink step;
+  - ship `new Worker(path)` dependencies by hand and pass the worker path;
+  - wrap a worker you don't control with every listener;
+  - diagnose on the box that fails.
+- A matching pointer joins *Standing traps in this codebase*.
+
 ## 2026-11-28 — Fix: OCR worker start hung on the NAS (the server loaded a half copy of tesseract.js)
 
 No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or

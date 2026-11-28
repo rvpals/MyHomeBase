@@ -12,6 +12,77 @@ Newest first.
 
 ---
 
+## 2026-11-28 — OCR worked on the dev box and hung on the NAS: the server loaded a different copy of tesseract.js
+
+**Date:** 2026-11-27 to 2026-11-28
+**Module:** Documents (OCR), Admin → Code Tester → Dependency test
+**Files:** `src/lib/documents/text-engines.ts`, `src/lib/documents/ocr-worker-files.ts`,
+`scripts/publish-nas.mjs`, `src/lib/code-test/dependency-probes.ts`
+**Severity:** feature dead on the NAS only; first the whole server process died with it
+
+**What broke.** On the NAS, OCR never started. The browser said only "An unexpected
+response was received from the server". On the dev box everything passed, every time.
+It took four rounds to find, and each round fixed something real that was hiding the
+next problem:
+
+1. **`gzip: false` was missing.** With `MYHOMEBASE_TESSDATA` set, tesseract.js looked for
+   `eng.traineddata.gz`, but the folder holds the uncompressed file.
+2. **A worker start failure killed the server.** tesseract.js 7 swallows a failure
+   while loading the model inside `createWorker`. With no `errorHandler`, the worker
+   rethrows it uncaught and the process dies. With one, the promise never settles.
+3. **The worker's own files never shipped.** The worker is started with
+   `new Worker(path)`, which Next's file tracing can't follow. The standalone build
+   held 21 of tesseract.js's 42 files, and none of `wasm-feature-detect` or `bmp-js`.
+4. **The server loaded a half copy anyway.** With `node_modules/tesseract.js` now
+   complete, the start still hung. The server doesn't `require("tesseract.js")`. It
+   requires Turbopack's hashed alias, `.next/node_modules/tesseract.js-<hash>`, which
+   is a symlink in the build. The publish's "Materialising symlinks" step turned it into
+   a real copy of the traced half package, and that step runs *before* the step that
+   completes `node_modules/tesseract.js`. tesseract.js derives its worker path from its
+   own `__dirname`, so it started the worker from the half copy.
+
+**Why it happened.** Two things the dev box can't show you:
+
+- **The NAS runs the published package, not `node_modules`.** On the dev box every
+  require resolves against a complete install, so "it passes here" said nothing about
+  the package. The final check proved this: run directly from
+  `node_modules/tesseract.js`, the worker answered in 385 ms on the NAS, while the real
+  start, one second later, got nothing in 120 s.
+- **A worker thread's failures are invisible by default.** tesseract.js attaches only a
+  `'message'` listener to its Worker. A thread that throws, exits or stalls produces no
+  error anywhere. So a crash, a hang and a missing file all looked identical from outside.
+
+**The fix.** `startOcrWorker()` passes tesseract.js an **explicit `workerPath`**, which
+is the script `checkOcrWorkerFiles()` has just verified, so the worker never comes from
+whichever copy the server happened to load. It also checks the worker's whole require
+graph before spawning, rejects on the first worker error or after 120 s, and always sets
+`errorHandler`. `publish-nas.mjs` copies tesseract.js and its dependency closure, then
+overwrites every `.next/node_modules/tesseract.js-*` alias with the full package and
+checks it.
+
+### The rules
+
+1. **On the NAS, a package can exist twice: `node_modules/<pkg>` and
+   `.next/node_modules/<pkg>-<hash>`.** The server loads the second one. Anything the
+   publish adds or patches in a package has to land in **both** places. Fixing only
+   `node_modules/` looks finished and changes nothing the server runs.
+2. **Mind the publish order.** "Materialising symlinks" snapshots whatever the alias
+   points at *when it runs*. A step that completes a package after it doesn't reach
+   the copy.
+3. **A dependency that starts a worker thread is untraceable.** Next's file tracing
+   follows `import`/`require`, not `new Worker(path)`. Ship the package by hand, and
+   pass the worker path explicitly rather than trusting `__dirname`.
+4. **Wrap a worker you don't control with every listener.** For each of `online`,
+   `error`, `exit` and `messageerror`, log the event *as it happens*, not at the end.
+   If the process dies, the lines before it survive. The Dependency test's "Worker
+   thread smoke test" step does this.
+5. **Diagnose on the box that fails.** Make the failing environment report on itself
+   (the System Log with DEBUG, a "starting" line before every step, memory on each
+   line). Four rounds of laptop passes proved nothing. One NAS log with a step that ran
+   the worker directly ended it.
+
+---
+
 ## 2026-11-27 — A drag out of a text box closed the dialog
 
 **Date:** 2026-11-27
@@ -320,3 +391,8 @@ Short pointers to things that have already cost real time. Full detail in
 - **A backdrop click must check where the press started.** A drag from inside a
   dialog that's released on the backdrop sends `click` to the backdrop.
   `Modal` handles this now; a hand-rolled overlay doesn't get that for free.
+- **On the NAS the server loads `.next/node_modules/<pkg>-<hash>`, not
+  `node_modules/<pkg>`.** The publish materialises that alias early, so a package the
+  publish patches later must be refreshed there too. A dependency that starts a
+  `new Worker(path)` is invisible to file tracing. Check it with Admin → Code Tester →
+  Dependency test on the NAS, not on the dev box.
