@@ -1,5 +1,30 @@
 # Change History
 
+## 2026-11-28 — Fix: OCR worker start hung on the NAS (the server loaded a half copy of tesseract.js)
+
+No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or
+outside service.
+
+- **What the worker smoke test showed:** on the NAS, the worker script started directly
+  came online and answered `load` in 385 ms. tesseract.js's own `createWorker`, started
+  right after it, got no message at all in 120 seconds.
+- **Cause:** the server doesn't load `node_modules/tesseract.js`. It loads Turbopack's
+  hashed alias `.next/node_modules/tesseract.js-<hash>`, a symlink in the build. The
+  publish's "Materialising symlinks" step turned that into a copy of the traced half
+  package, before the step that completes `node_modules/tesseract.js` ran. tesseract.js
+  derives its worker path from its own `__dirname`, so it started the worker from the
+  half copy. The worker failed on its first `require`, and with no `'error'` listener the
+  start hung in silence.
+- **Fix:** `startOcrWorker()` now passes tesseract.js an explicit `workerPath`: the worker
+  script `checkOcrWorkerFiles()` has just verified in `node_modules/tesseract.js`. Whichever
+  copy of the main code the server loads, the worker comes from the complete one.
+- **Publish:** `scripts/publish-nas.mjs` also replaces every
+  `.next/node_modules/tesseract.js-*` alias with the full package and checks its worker
+  script, so the two copies stay identical.
+- **Dependency test:** a new fact, **Server's tesseract.js copies**, lists each alias under
+  `.next/node_modules` and whether it is complete. The worker log line now names the
+  `workerPath` used.
+
 ## 2026-11-28 — Dependency test: see inside the OCR worker thread
 
 No migration, no new table, no `DEFAULT_MODULES` change, no dependency changes, no paid or

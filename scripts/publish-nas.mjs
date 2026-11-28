@@ -552,6 +552,31 @@ step("Copying tesseract.js and its worker's dependencies (file tracing misses th
     throw new Error(`OCR worker files missing from the package: ${missing.join(", ")}`);
   }
   console.log(`  Shipped ${copied.length} packages: ${copied.join(", ")}`);
+
+  // The copy the SERVER actually loads is not `node_modules/tesseract.js` but Turbopack's
+  // hashed alias, `.next/node_modules/tesseract.js-<hash>` -- a symlink in the build that
+  // "Materialising symlinks" above turned into a copy of the traced HALF package, before
+  // this step completed `node_modules/tesseract.js`. tesseract.js derives its worker path
+  // from its own __dirname, so the NAS ran the worker from that half copy and the start
+  // hung in silence (2026-11-28). `startOcrWorker` now passes `workerPath` explicitly,
+  // which is the real fix; refreshing the aliases keeps the two copies identical anyway.
+  const aliasRoot = path.join(OUT, ".next", "node_modules");
+  const aliases = existsSync(aliasRoot)
+    ? readdirSync(aliasRoot).filter((entry) => entry.startsWith("tesseract.js-") && !entry.startsWith("tesseract.js-core"))
+    : [];
+  for (const alias of aliases) {
+    const dest = path.join(aliasRoot, alias);
+    rmSync(dest, { recursive: true, force: true });
+    cpSync(path.join(ROOT, "node_modules", "tesseract.js"), dest, { recursive: true });
+    if (!existsSync(path.join(dest, "src", "worker-script", "index.js"))) {
+      throw new Error(`Refreshed ${alias} but its worker script is still missing.`);
+    }
+  }
+  console.log(
+    aliases.length > 0
+      ? `  Refreshed the server's tesseract.js alias(es): ${aliases.join(", ")}`
+      : "  ! No .next/node_modules/tesseract.js-* alias found — check how the server loads tesseract.js.",
+  );
 }
 
 step("Vendoring the OCR language model (so the NAS never downloads one)");

@@ -178,9 +178,22 @@ export async function startOcrWorker(
     );
   });
 
+  // The worker script is named EXPLICITLY, as the one `checkOcrWorkerFiles` just
+  // verified. Left to itself tesseract.js derives it from its own `__dirname` -- and the
+  // copy of tesseract.js the server loads is not `node_modules/tesseract.js` but
+  // Turbopack's alias, `.next/node_modules/tesseract.js-<hash>`. On the NAS the publish
+  // materialised that alias from the traced HALF package, so the derived worker script
+  // could not load its own requires and the start hung in silence (no 'error' listener).
+  // Found 2026-11-28: the same script started directly answered in 385 ms.
+  const workerOptions = { ...options, workerPath: files.workerScript };
+
   try {
     return await Promise.race([
-      createWorker(OCR_LANGUAGE, undefined, hooks.logger ? { ...options, logger: hooks.logger } : options),
+      createWorker(
+        OCR_LANGUAGE,
+        undefined,
+        hooks.logger ? { ...workerOptions, logger: hooks.logger } : workerOptions,
+      ),
       startFailed,
       timedOut,
     ]);

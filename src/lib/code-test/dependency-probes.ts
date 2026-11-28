@@ -248,6 +248,29 @@ function createTesseractProbe(requireLocalModel: boolean): DependencyProbe {
         (check) => `${check.filesChecked} worker source files, every require resolves`,
       );
       record.fact("Worker script", files.workerScript);
+      // The copy of tesseract.js the SERVER loads: Turbopack requires a hashed alias under
+      // `.next/node_modules`, which on the NAS is a materialised copy, not a symlink. An
+      // incomplete one is what hung the worker start before `workerPath` was passed.
+      const aliasRoot = path.join(process.cwd(), ".next", "node_modules");
+      let aliases: string[] = [];
+      try {
+        aliases = readdirSync(aliasRoot).filter(
+          (entry) => entry.startsWith("tesseract.js-") && !entry.startsWith("tesseract.js-core"),
+        );
+      } catch {
+        // No .next/node_modules (dev server, CLI): nothing aliased.
+      }
+      record.fact(
+        "Server's tesseract.js copies",
+        aliases.length === 0
+          ? "none under .next/node_modules (dev, or loaded from node_modules)"
+          : aliases
+              .map((alias) => {
+                const complete = existsSync(path.join(aliasRoot, alias, "src", "worker-script", "index.js"));
+                return `${alias} (${complete ? "complete" : "INCOMPLETE: no worker-script/index.js"})`;
+              })
+              .join(", "),
+      );
 
       // The two WebAssembly probes the worker awaits before it sends ANY message. Run
       // here, on the main thread, with a timeout -- a hang in one of them is otherwise
@@ -309,7 +332,8 @@ function createTesseractProbe(requireLocalModel: boolean): DependencyProbe {
       record.debug(
         "creating worker",
         `language ${OCR_LANGUAGE}, langPath ${options.langPath ?? "(CDN)"}, gzip ${String(options.gzip ?? true)}, ` +
-          `start timeout ${OCR_WORKER_START_TIMEOUT_MS / 1000}s, cwd ${process.cwd()}`,
+          `start timeout ${OCR_WORKER_START_TIMEOUT_MS / 1000}s, cwd ${process.cwd()}, ` +
+          `workerPath ${files.workerScript} (passed explicitly)`,
       );
       let worker: Awaited<ReturnType<typeof startOcrWorker>>;
       try {
